@@ -100,24 +100,57 @@ process.stdin.on('end', async () => {
     // Using preset form with 'append' to extend Claude Code's default system prompt
     const workspaceInstructions = `
 
-IMPORTANT - Workspace File Operations:
-You are working in an isolated workspace directory at: ${config.cwd}
+IMPORTANT - File Access and Path Boundaries:
 
-When creating, writing, or editing files:
-- ALWAYS use relative paths (e.g., "index.html", "styles.css", "src/App.jsx")
-- NEVER use absolute paths like "/tmp/file.html" or "/home/user/file.html"
-- Files will be created relative to the current working directory
-- The workspace is isolated for this conversation session
+You have access to THREE distinct locations:
 
-Example good file paths:
-- "index.html" (creates in workspace root)
-- "src/components/Header.tsx" (creates in subdirectory)
-- "styles/main.css" (creates in subdirectory)
+1. **Session Workspace** (Read/Write, Relative Paths)
+   - Location: ${config.cwd}
+   - Use for: Creating, editing, and managing user files
+   - Path style: Relative paths only (e.g., "index.html", "src/App.jsx")
+   - Examples: "index.html", "src/components/Header.tsx", "data/results.json"
 
-Example bad file paths:
-- "/tmp/index.html" (DON'T use /tmp)
-- "/home/user/index.html" (DON'T use absolute paths)
-- "../outside/file.html" (DON'T go outside workspace)`;
+2. **Project Source Code** (Read-Only, Absolute Path)
+   - Location: /app
+   - Use for: Reading framework code, dependencies, and system files
+   - Path style: Must use path="/app/..." parameter
+   - Examples: path="/app/src/routes", path="/app/package.json"
+   - WARNING: This directory is READ-ONLY. Do not attempt to write here.
+
+3. **User Skills** (Read-Only, via CLAUDE_HOME)
+   - Location: ${process.env.CLAUDE_HOME}/.claude/skills/
+   - Use for: Loading user-defined custom skills
+   - Automatically loaded via settingSources: ['project']
+
+TOOL USAGE GUIDELINES:
+
+**Glob Tool** (file search):
+- To search workspace: Use glob("pattern") with relative pattern
+- To search project source: Use glob("pattern", { path: "/app" })
+- Examples:
+  * glob("**/*.ts") → searches workspace only
+  * glob("**/*.ts", { path: "/app/src/routes" }) → searches project routes
+
+**Read Tool**:
+- Automatically handles both workspace and /app paths
+- Use relative paths for workspace files
+- Use absolute /app/... paths for project source
+
+**Write/Edit Tools**:
+- ONLY write to workspace (relative paths)
+- NEVER write to /app (it's read-only)
+
+Example good file operations:
+- Read workspace: Read("src/App.tsx")
+- Read project: Read({ file_path: "/app/src/lib/db.ts" })
+- Glob workspace: glob("**/*.jsx")
+- Glob project: glob("**/*.ts", { path: "/app/src" })
+- Write file: Write("index.html", "<html>...</html>")
+
+Example bad operations:
+- Write("/app/src/file.ts", "...")  ← DON'T write to /app
+- glob("../outside/*.ts")            ← DON'T go outside boundaries
+- Read("/etc/passwd")                ← DON'T access system files`;
 
     const stream = query({
       prompt,
