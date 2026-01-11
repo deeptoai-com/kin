@@ -533,9 +533,12 @@ const ComposerAttachmentsSection: FC = () => {
 const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   // Get message using the hook to access runtime context
   const message = useMessage();
+  const messageStatus = message.status;
 
   // Access content parts - cast to our ContentPart type
   const messageContent = (message as any).content as ContentPart[] | undefined;
+  const isRunning = messageStatus?.type === 'running';
+  const hasContent = (messageContent?.length ?? 0) > 0;
 
   // State for showing usage card
   const [showUsageCard, setShowUsageCard] = useState(false);
@@ -553,6 +556,13 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
         <div className="relative leading-[1.65rem]">
           <div className="grid grid-cols-1 gap-2.5">
             <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
+              {isRunning && !hasContent && (
+                <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#ae5630]" />
+                  <span>Thinking...</span>
+                </div>
+              )}
+
               {/* Manual rendering to support custom tool-call type */}
               {messageContent?.map((part, index) => {
                 if (part.type === 'text') {
@@ -605,6 +615,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                     <ReasoningPart
                       key={index}
                       text={part.text}
+                      status={messageStatus}
                     />
                   );
                 }
@@ -618,6 +629,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                       argsText={part.argsText}
                       result={part.result}
                       isError={part.isError}
+                      status={messageStatus}
                     />
                   );
                 }
