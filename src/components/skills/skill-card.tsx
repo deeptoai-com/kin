@@ -1,14 +1,14 @@
 import { FC } from 'react';
-import { CheckCircle, Circle, Eye } from 'lucide-react';
+import { CheckCircle, Circle, Eye, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
-import { cn } from '~/lib/utils';
-import type { SkillInfo } from '~/claude/skills';
+import type { ExtendedSkillInfo } from '~/claude/skills';
 
 interface SkillCardProps {
-  skill: SkillInfo;
+  skill: ExtendedSkillInfo;
   isEnabled: boolean;
   onToggle: () => void;
   onViewDetails: () => void;
+  onDeleteSkill?: (skillSlug: string) => void;
 }
 
 export const SkillCard: FC<SkillCardProps> = ({
@@ -16,7 +16,11 @@ export const SkillCard: FC<SkillCardProps> = ({
   isEnabled,
   onToggle,
   onViewDetails,
+  onDeleteSkill,
 }) => {
+  // Determine if this is a user skill (for badge and delete button)
+  const isUserSkill = skill.store === 'user';
+
   return (
     <div className="group relative rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
       {/* Header */}
@@ -32,6 +36,12 @@ export const SkillCard: FC<SkillCardProps> = ({
           </div>
           <p className="mt-1 text-xs text-muted-foreground capitalize">
             {skill.category}
+            {/* Show "自定义" badge for user skills */}
+            {isUserSkill && (
+              <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+                自定义
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -51,17 +61,29 @@ export const SkillCard: FC<SkillCardProps> = ({
           onClick={onToggle}
           className="flex-1"
         >
-          {isEnabled ? 'Disable' : 'Enable'}
+          {isEnabled ? '禁用' : '启用'}
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={onViewDetails}
           className="shrink-0"
-          title="View details"
+          title="查看详情"
         >
           <Eye className="h-4 w-4" />
         </Button>
+        {/* Delete button: only for user skills */}
+        {isUserSkill && onDeleteSkill && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDeleteSkill(skill.slug)}
+            className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="删除技能"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,17 @@
-import { FC, useState, useMemo, useEffect } from 'react';
+import { FC, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Zap, Code, Palette, Plug, CheckCircle, Circle } from 'lucide-react';
+import { Search, Zap, Code, Palette, Plug, CheckCircle, Circle, Trash2 } from 'lucide-react';
 import { Input } from '~/components/ui/input';
-import { Button } from '~/components/ui/button';
-import { useSkillsStore } from '~/lib/skills-store';
-import type { SkillInfo, SkillDetail } from '~/claude/skills';
-import { getSkillDetailFn } from '~/server/function/skills.server';
+import { useServerFn } from '@tanstack/react-start';
+import {
+  enableUserSkill as enableUserSkillFn,
+  disableUserSkill as disableUserSkillFn,
+  enableUserUploadedSkillFn,
+  disableUserUploadedSkillFn,
+  deleteUserSkillFn,
+  getSkillDetailFn,
+} from '~/server/function/skills.server';
+import type { ExtendedSkillInfo, SkillDetail } from '~/claude/skills';
 import { SkillsSidebar } from './skills-sidebar';
 import { SkillsGrid } from './skills-grid';
 import { SkillDetailDialog } from './skill-detail-dialog';
@@ -25,16 +31,35 @@ const CATEGORIES: CategoryItem[] = [
   { id: 'installed', label: 'Installed', icon: CheckCircle },
 ];
 
-export const SkillsPageComponent: FC<{ skills: SkillInfo[] }> = ({ skills }) => {
-  const { enabledSkills, loadEnabledSkills, enableSkill, disableSkill } = useSkillsStore();
+/**
+ * Skills Page Component
+ *
+ * Displays all skills (official + user) in a unified list.
+ * Uses skill.store property to determine permissions and actions.
+ *
+ * Follows TanStack Start best practices:
+ * - Data passed from loader (SSR + streaming)
+ * - Server Functions for mutations (type-safe)
+ * - No useEffect for data fetching
+ */
+export const SkillsPageComponent: FC<{
+  skills: ExtendedSkillInfo[];
+  enabledSkills: string[];
+}> = ({ skills, enabledSkills }) => {
+  // Server Functions (type-safe RPC)
+  const enableOfficialSkill = useServerFn(enableUserSkillFn);
+  const disableOfficialSkill = useServerFn(disableUserSkillFn);
+  const enableUserSkillServer = useServerFn(enableUserUploadedSkillFn);
+  const disableUserSkillServer = useServerFn(disableUserUploadedSkillFn);
+  const deleteUserSkill = useServerFn(deleteUserSkillFn);
 
+  // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedSkillSlug, setSelectedSkillSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
 
-  // Query for skill detail
+  // Query for skill detail (lazy loading on dialog open)
   const { data: skillDetail, isLoading: isLoadingDetail } = useQuery({
     queryKey: ['skill-detail', selectedSkillSlug],
     queryFn: async () => {
@@ -44,27 +69,74 @@ export const SkillsPageComponent: FC<{ skills: SkillInfo[] }> = ({ skills }) => 
     enabled: !!selectedSkillSlug && isDetailOpen,
   });
 
-  // Get user ID from auth - for now use a simple approach
-  // In production, you'd use useSession() or similar
-  useEffect(() => {
-    // Placeholder: in production, get actual user ID from auth
-    setUserId('user-placeholder');
-    loadEnabledSkills('user-placeholder');
-  }, [loadEnabledSkills]);
-
-  // Handle toggle skill
+  // Handle toggle skill (using Server Functions)
   const handleToggleSkill = async (skillSlug: string) => {
-    if (!userId) return;
+    // Find the skill to determine its type
+    const skill = skills.find(s => s.slug === skillSlug);
+    if (!skill) {
+      console.error('Skill not found:', skillSlug);
+      return;
+    }
+
     const isEnabled = enabledSkills.includes(skillSlug);
 
     try {
-      if (isEnabled) {
-        await disableSkill(userId, skillSlug);
+      // Use appropriate function based on skill store
+      if (skill.store === 'official') {
+        // Official skills
+        if (isEnabled) {
+          await disableOfficialSkill({ data: { skillName: skillSlug } });
+        } else {
+          await enableOfficialSkill({ data: { skillName: skillSlug } });
+        }
       } else {
-        await enableSkill(userId, skillSlug);
+        // User skills
+        if (isEnabled) {
+          await disableUserSkillServer({ data: { skillName: skillSlug } });
+        } else {
+          await enableUserSkillServer({ data: { skillName: skillSlug } });
+        }
+      }
+
+      // Update local state
+      if (isEnabled) {
+        enabledSkills = enabledSkills.filter(s => s !== skillSlug);
+      } else {
+        enabledSkills = [...enabledSkills, skillSlug];
       }
     } catch (error) {
       console.error('Failed to toggle skill:', error);
+      // TODO: Show error toast to user
+    }
+  };
+
+  // Handle delete user skill
+  const handleDeleteSkill = async (skillSlug: string) => {
+    // Find the skill to verify it's a user skill
+    const skill = skills.find(s => s.slug === skillSlug);
+    if (!skill) {
+      console.error('Skill not found:', skillSlug);
+      return;
+    }
+
+    // Only allow deleting user skills
+    if (skill.store !== 'user') {
+      console.error('Cannot delete official skill:', skillSlug);
+      alert('只能删除自定义技能，不能删除官方技能');
+      return;
+    }
+
+    if (!confirm('确定要删除这个技能吗？此操作无法撤销。')) {
+      return;
+    }
+
+    try {
+      await deleteUserSkill({ data: { skillName: skillSlug } });
+      // Refresh page to update list
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to delete skill:', error);
+      alert('删除技能失败：' + (error as Error).message);
     }
   };
 
@@ -80,7 +152,7 @@ export const SkillsPageComponent: FC<{ skills: SkillInfo[] }> = ({ skills }) => 
     setSelectedSkillSlug(null);
   };
 
-  // Filter skills based on search and category
+  // Filter skills based on search and category (computed on render)
   const filteredSkills = useMemo(() => {
     let result = skills;
 
@@ -164,6 +236,7 @@ export const SkillsPageComponent: FC<{ skills: SkillInfo[] }> = ({ skills }) => 
               enabledSkills={enabledSkills}
               onToggleSkill={handleToggleSkill}
               onViewDetails={handleViewDetails}
+              onDeleteSkill={handleDeleteSkill}
             />
           )}
         </div>
