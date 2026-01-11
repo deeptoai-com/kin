@@ -1,0 +1,319 @@
+# Docker Compose configuration for Dokploy deployment
+# 
+# This file is optimized for Dokploy with Traefik reverse proxy.
+# Traefik will handle HTTPS, SSL certificates, and routing.
+#
+# Usage in Dokploy:
+# 1. Create a new application in Dokploy
+# 2. Upload this docker-compose.yml file
+# 3. Configure environment variables in Dokploy UI
+# 4. Add Traefik labels (see infra/deploy/dokploy-traefik-labels.yml)
+#
+# Key differences from docker-compose.yml:
+# - Uses `expose` instead of `ports` (Traefik handles external access)
+# - Includes Traefik labels for routing
+# - Optimized for single-host deployment
+# - Internal service communication via Docker network
+
+version: '3.8'
+
+# Build configuration (use image from registry in production)
+x-app-image: &app_image ${APP_IMAGE:-claude-agent-chat}:${APP_TAG:-latest}
+
+x-app-build: &app_build
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      # WebSocket URL (will be set via Traefik routing)
+      VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
+
+services:
+  # PostgreSQL database with pgvector extension
+  db:
+    image: pgvector/pgvector:0.8.0-pg17
+    container_name: ${APP_NAME:-claude-agent-chat}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - ex0-data:/var/lib/postgresql/data
+    # Expose port internally (not to host)
+    expose:
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # MinIO S3-compatible object storage
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: ${APP_NAME:-claude-agent-chat}-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    command: server /data --console-address ":9001"
+    volumes:
+      - ex0-minio-data:/data
+    # Expose ports internally
+    expose:
+      - '9000' # S3 API
+      - '9001' # Web Console (optional, for admin)
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # One-time MinIO bucket and policy provisioning
+  provision-minio:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/${MINIO_BUCKET} &&
+      mc anonymous set none local/${MINIO_BUCKET} || true
+      "
+    restart: 'no'
+    networks:
+      - private
+
+  # Redis for BullMQ jobs/queues
+  redis:
+    image: redis:7-alpine
+    container_name: ${APP_NAME:-claude-agent-chat}-redis
+    restart: unless-stopped
+    command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
+    volumes:
+      - ex0-redis-data:/data
+    expose:
+      - '6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # Meilisearch for fast lexical/symbol search
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: ${APP_NAME:-claude-agent-chat}-meili
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?changeme}
+    volumes:
+      - ex0-meili-data:/meili_data
+    expose:
+      - '7700'
+    healthcheck:
+      test: ['CMD', 'curl', '-sSf', 'http://localhost:7700/health']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    networks:
+      - private
+
+  # Database migrations (runs before app starts)
+  migrate:
+    <<: *app_build
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?}
+      NODE_ENV: production
+    entrypoint: ['sh', '-c', 'pnpm run db:migrate']
+    restart: 'no'
+    networks:
+      - private
+
+  # Background workers for BullMQ (cron + indexing, etc.)
+  worker:
+    <<: *app_build
+    container_name: ${APP_NAME:-claude-agent-chat}-worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      provision-minio:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?}
+      # S3-compatible config to reach MinIO inside the stack
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      S3_BUCKET: ${MINIO_BUCKET:?}
+      # Job queue + schedules
+      REDIS_URL: redis://redis:6379
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-constructa}
+      DAILY_CREDIT_REFILL_CRON: ${DAILY_CREDIT_REFILL_CRON:-0 3 * * *}
+      JOB_DAILY_CREDIT_REFILL_URL: ${JOB_DAILY_CREDIT_REFILL_URL:-http://app:5000/api/jobs/daily-credit-refill}
+      JOBS_SECRET: ${JOBS_SECRET:-}
+      # Search
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: ['npx', 'tsx', 'src/worker/index.ts']
+    restart: unless-stopped
+    networks:
+      - private
+
+  # Main application (Nitro + WebSocket server)
+  app:
+    <<: *app_build
+    container_name: ${APP_NAME:-claude-agent-chat}-app
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      provision-minio:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      WS_PORT: 3001
+      # Database
+      DATABASE_URL: ${DATABASE_URL:?}
+      # S3-compatible config to reach MinIO inside the stack
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      S3_BUCKET: ${MINIO_BUCKET:?}
+      # Email provider
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@${APP_HOSTNAME}}
+      # SMTP configuration (if EMAIL_PROVIDER=smtp)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      # Resend configuration (if EMAIL_PROVIDER=resend)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Redis + Meili for app features
+      REDIS_URL: redis://redis:6379
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # Authentication
+      BETTER_AUTH_URL: https://${APP_HOSTNAME}
+      BETTER_AUTH_INTERNAL_URL: http://localhost:5000
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      # Mastra Agent (Zhipu AI GLM-4.7 via Mastra built-in gateway)
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:?}
+      # Claude Agent SDK configuration
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      CLAUDE_SESSIONS_ROOT: /data/users
+      APP_URL: http://localhost:5000
+      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      # Structured Outputs for Artifacts (default: disabled for stability)
+      ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
+      # WebSocket URL (frontend configuration)
+      VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
+      # Polar billing (optional)
+      POLAR_SERVER: ${POLAR_SERVER:-production}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+      POLAR_ORGANIZATION_ID: ${POLAR_ORGANIZATION_ID:-}
+      POLAR_PRODUCT_PRO_MONTHLY: ${POLAR_PRODUCT_PRO_MONTHLY:-}
+      POLAR_PRODUCT_BUSINESS_MONTHLY: ${POLAR_PRODUCT_BUSINESS_MONTHLY:-}
+      POLAR_PRODUCT_CREDITS_50: ${POLAR_PRODUCT_CREDITS_50:-}
+      POLAR_PRODUCT_CREDITS_100: ${POLAR_PRODUCT_CREDITS_100:-}
+      CHECKOUT_SUCCESS_URL: ${CHECKOUT_SUCCESS_URL:-https://${APP_HOSTNAME}/billing/success}
+      CHECKOUT_CANCEL_URL: ${CHECKOUT_CANCEL_URL:-https://${APP_HOSTNAME}/dashboard}
+      # Sentry (optional)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+      SENTRY_LOGGING: ${SENTRY_LOGGING:-false}
+      VITE_SENTRY_LOGGING: ${VITE_SENTRY_LOGGING:-false}
+      SENTRY_LOG_LEVEL: ${SENTRY_LOG_LEVEL:-info}
+      VITE_SENTRY_LOG_LEVEL: ${VITE_SENTRY_LOG_LEVEL:-info}
+      VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-1.0}
+      VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0.1}
+    volumes:
+      - claude-sessions:/data/users
+    # Expose ports internally (Traefik will proxy to these)
+    expose:
+      - '5000' # HTTP (Nitro server)
+      - '3001' # WebSocket server
+    # Traefik labels for routing
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTP router (main application)
+      - "traefik.http.routers.app.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.app.service=app-service"
+      - "traefik.http.services.app-service.loadbalancer.server.port=5000"
+      
+      # WebSocket router (critical for real-time communication)
+      - "traefik.http.routers.ws.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=websecure"
+      - "traefik.http.routers.ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ws.service=ws-service"
+      - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
+      # Priority: ensure WebSocket router is matched before HTTP router
+      - "traefik.http.routers.ws.priority=10"
+      
+      # Optional: Add custom headers for WebSocket upgrade (usually not needed)
+      # - "traefik.http.middlewares.ws-headers.headers.customrequestheaders.Connection=Upgrade"
+      # - "traefik.http.middlewares.ws-headers.headers.customrequestheaders.Upgrade=websocket"
+      # - "traefik.http.routers.ws.middlewares=ws-headers"
+    restart: unless-stopped
+    networks:
+      - private
+
+# Docker networks
+networks:
+  private:
+    driver: bridge
+    name: ${APP_NAME:-claude-agent-chat}-network
+
+# Persistent volumes
+volumes:
+  ex0-data:
+    name: ${APP_NAME:-claude-agent-chat}-data
+  ex0-minio-data:
+    name: ${APP_NAME:-claude-agent-chat}-minio-data
+  ex0-redis-data:
+    name: ${APP_NAME:-claude-agent-chat}-redis-data
+  ex0-meili-data:
+    name: ${APP_NAME:-claude-agent-chat}-meili-data
+  claude-sessions:
+    name: ${APP_NAME:-claude-agent-chat}-claude-sessions

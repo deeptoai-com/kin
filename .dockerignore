@@ -1,0 +1,44 @@
+# Build artifacts - Docker will rebuild from source
+.output
+dist
+.tanstack
+
+# Dependencies - Docker will install fresh
+node_modules
+
+# Development and IDE
+.git
+.github
+.vscode
+.cursor
+.idea
+*.log
+
+# Documentation and non-essential
+docs
+*.md
+!README.md
+LICENSE
+CONTRIBUTING.md
+
+# Local environment files (use docker-compose env instead)
+.env
+.env.local
+.env.development
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+coverage
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache

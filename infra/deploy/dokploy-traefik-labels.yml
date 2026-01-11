@@ -1,0 +1,59 @@
+# Dokploy + Traefik WebSocket 配置示例
+# 
+# 使用方法：
+# 1. 在 Dokploy 中创建应用后，在 "Labels" 或 "Traefik" 配置部分添加这些标签
+# 2. 替换 `your-domain.com` 为你的实际域名
+# 3. 确保暴露端口 5000（HTTP）和 3001（WebSocket）
+
+# ============================================================================
+# 基础配置
+# ============================================================================
+traefik.enable: "true"
+
+# ============================================================================
+# HTTP 路由（主应用）
+# ============================================================================
+# 路由规则：匹配所有非 /ws 路径的请求
+traefik.http.routers.app.rule: "Host(`your-domain.com`) && !PathPrefix(`/ws`)"
+traefik.http.routers.app.entrypoints: "websecure"
+traefik.http.routers.app.tls.certresolver: "letsencrypt"
+traefik.http.routers.app.service: "app-service"
+traefik.http.services.app-service.loadbalancer.server.port: "5000"
+
+# ============================================================================
+# WebSocket 路由（关键配置）
+# ============================================================================
+# 路由规则：匹配所有 /ws 开头的路径（包括 /ws/agent）
+traefik.http.routers.ws.rule: "Host(`your-domain.com`) && PathPrefix(`/ws`)"
+traefik.http.routers.ws.entrypoints: "websecure"
+traefik.http.routers.ws.tls.certresolver: "letsencrypt"
+traefik.http.routers.ws.service: "ws-service"
+traefik.http.services.ws-service.loadbalancer.server.port: "3001"
+
+# 设置 WebSocket 路由优先级，确保优先匹配（避免被 HTTP 路由捕获）
+traefik.http.routers.ws.priority: "10"
+
+# ============================================================================
+# WebSocket 升级支持（可选，Traefik 2.x+ 通常自动处理）
+# ============================================================================
+# 如果需要显式配置 WebSocket 升级头（通常不需要）
+# traefik.http.middlewares.ws-headers.headers.customrequestheaders.Connection: "Upgrade"
+# traefik.http.middlewares.ws-headers.headers.customrequestheaders.Upgrade: "websocket"
+# traefik.http.routers.ws.middlewares: "ws-headers"
+
+# ============================================================================
+# 环境变量配置（在 Dokploy 的 Environment Variables 中设置）
+# ============================================================================
+# VITE_WS_URL=wss://your-domain.com/ws/agent  # 可选，如果不设置会使用默认路径
+# ANTHROPIC_API_KEY=your-api-key
+# DATABASE_URL=your-database-url
+# BETTER_AUTH_URL=https://your-domain.com
+# BETTER_AUTH_INTERNAL_URL=http://localhost:5000
+# WS_PORT=3001
+
+# ============================================================================
+# 端口暴露（在 Dokploy 的 Ports 配置中设置）
+# ============================================================================
+# 需要暴露两个端口：
+# - 5000 (HTTP - Nitro 服务器)
+# - 3001 (WebSocket - WebSocket 服务器)
