@@ -14,10 +14,20 @@ import {
   enableSkill,
   disableSkill,
   getSkillDetail,
+  uploadUserSkill,
+  getUserUploadedSkills,
+  deleteUserSkill,
+  enableUserUploadedSkill,
+  disableUserUploadedSkill,
+  getUserSkillFiles,
   type SkillInfo,
   type SkillDetail,
 } from '~/claude/skills';
 
+/**
+ * Require authenticated user
+ * Throws error if not authenticated
+ */
 const requireUser = async () => {
   const { headers } = getRequest();
   const session = await auth.api.getSession({ headers });
@@ -118,5 +128,171 @@ export const getSkillDetailFn = createServerFn({ method: 'GET' })
     return getSkillDetailSchema.parse({ skillSlug });
   })
   .handler(async ({ data }) => {
-    return await getSkillDetail(data.skillSlug);
+    // Get current user (optional, for user-uploaded skills)
+    const { headers } = getRequest();
+    const session = await auth.api.getSession({ headers });
+    const userId = session?.user?.id || null;
+
+    return await getSkillDetail(data.skillSlug, userId);
+  });
+
+// ============================================================================
+// User-Uploaded Skills Server Functions
+// ============================================================================
+
+/**
+ * Upload a user-created skill
+ * Authentication required
+ */
+export const uploadUserSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      name: z.string().min(1).max(50),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      files: z.array(z.object({
+        path: z.string(),
+        content: z.string(),
+      })),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+
+    // Validate file count
+    if (data.files.length > 100) {
+      throw new Error('Too many files. Maximum 100 files per skill.');
+    }
+
+    // Validate total size (10 MB limit)
+    const totalSize = data.files.reduce((sum, f) => sum + f.content.length, 0);
+    const maxSize = 10 * 1024 * 1024; // 10 MB
+    if (totalSize > maxSize) {
+      throw new Error(`Skill size exceeds limit (${(totalSize / 1024 / 1024).toFixed(2)} MB > 10 MB)`);
+    }
+
+    await uploadUserSkill(user.id, data.name, data.files);
+
+    return {
+      success: true,
+      skillName: data.name,
+    };
+  });
+
+/**
+ * Get all skills (both official and user-uploaded)
+ * Authentication required
+ */
+export const listAllSkillsFn = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    const user = await requireUser();
+
+    // Get official skills (from src/skills-store)
+    const allOfficialSkills = await getSkillsStore();
+    const enabledOfficialSlugs = await getUserEnabledSkills(user.id);
+
+    const officialSkills = allOfficialSkills.map(skill => ({
+      ...skill,
+      store: 'official' as const,
+      enabled: enabledOfficialSlugs.includes(skill.slug),
+    }));
+
+    // Get user-uploaded skills
+    const userSkills = await getUserUploadedSkills(user.id);
+
+    return {
+      official: officialSkills,
+      user: userSkills.map(skill => ({
+        ...skill,
+        store: 'user' as const,
+      })),
+    };
+  });
+
+/**
+ * Delete a user-uploaded skill
+ * Authentication required
+ */
+export const deleteUserSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillName: z.string().min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    await deleteUserSkill(user.id, data.skillName);
+
+    return { success: true };
+  });
+
+/**
+ * Enable a user-uploaded skill
+ * Authentication required
+ */
+export const enableUserUploadedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillName: z.string().min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    await enableUserUploadedSkill(user.id, data.skillName);
+
+    return { success: true };
+  });
+
+/**
+ * Disable a user-uploaded skill
+ * Authentication required
+ */
+export const disableUserUploadedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillName: z.string().min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    await disableUserUploadedSkill(user.id, data.skillName);
+
+    return { success: true };
+  });
+
+/**
+ * Get files in a user-uploaded skill
+ * Authentication required
+ */
+export const getUserSkillFilesFn = createServerFn({ method: 'GET' })
+  .inputValidator((input) => {
+    const searchParams = typeof input === 'string' ? new URLSearchParams(input) : null;
+    const skillName = searchParams?.get('skillName') || (typeof input === 'object' && input && 'skillName' in input ? (input as { skillName?: string }).skillName : null);
+    return z.object({
+      skillName: z.string().min(1),
+    }).parse({ skillName });
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    return await getUserSkillFiles(user.id, data.skillName);
   });

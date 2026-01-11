@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { SkillFile, SkillDetail } from './detail-types'
 import { parseSkillMetadata } from './metadata'
+import { getUserClaudeHome } from './manager'
 
 // Re-export types for frontend use
 export type { SkillFile, SkillDetail } from './detail-types'
@@ -116,25 +117,59 @@ async function buildFileTree(
 
 /**
  * Get full Skill detail including all files
+ *
+ * This function tries to find the skill in the following order:
+ * 1. Official skills store (src/skills-store/)
+ * 2. User-uploaded skills (.claude/skills/user/)
  */
-export async function getSkillDetail(skillSlug: string): Promise<SkillDetail> {
-  const skillDir = path.join(process.cwd(), 'src', 'skills-store', skillSlug)
+export async function getSkillDetail(skillSlug: string, userId?: string): Promise<SkillDetail> {
+  // Try official skills first
+  const officialSkillDir = path.join(process.cwd(), 'src', 'skills-store', skillSlug)
+  const officialInfo = await parseSkillMetadata(officialSkillDir, skillSlug)
 
-  // Get basic skill info from metadata
-  const baseInfo = await parseSkillMetadata(skillDir, skillSlug)
-
-  if (!baseInfo) {
-    throw new Error(`Skill not found: ${skillSlug}`)
+  if (officialInfo) {
+    // Found in official skills
+    const files = await buildFileTree(officialSkillDir)
+    return {
+      slug: skillSlug,
+      name: officialInfo.name,
+      description: officialInfo.description,
+      category: officialInfo.category,
+      files,
+    }
   }
 
-  // Build complete file tree
-  const files = await buildFileTree(skillDir)
+  // If userId provided, try user skills
+  if (userId) {
+    const userSkillDir = path.join(
+      getUserClaudeHome(userId),
+      '.claude',
+      'skills',
+      'user',
+      skillSlug
+    )
 
-  return {
-    slug: skillSlug,
-    name: baseInfo.name,
-    description: baseInfo.description,
-    category: baseInfo.category,
-    files,
+    // Check if directory exists
+    try {
+      await fs.access(userSkillDir)
+      const userInfo = await parseSkillMetadata(userSkillDir, skillSlug)
+
+      if (userInfo) {
+        // Found in user skills
+        const files = await buildFileTree(userSkillDir)
+        return {
+          slug: skillSlug,
+          name: userInfo.name,
+          description: userInfo.description,
+          category: userInfo.category,
+          files,
+        }
+      }
+    } catch (error) {
+      // Directory doesn't exist, continue to throw error
+    }
   }
+
+  // Skill not found in either location
+  throw new Error(`Skill not found: ${skillSlug}`)
 }

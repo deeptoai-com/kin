@@ -121,3 +121,257 @@ export async function disableSkill(userId: string, skillName: string): Promise<v
 
   console.log(`[Skills] Disabled skill: ${normalizedName} for user: ${userId}`)
 }
+
+// ============================================================================
+// User-Uploaded Skills Management (Private Skills Library)
+// ============================================================================
+
+/**
+ * Upload a user-created skill
+ */
+export async function uploadUserSkill(
+  userId: string,
+  skillName: string,
+  files: Array<{ path: string; content: string }>
+): Promise<void> {
+  const normalizedName = normalizeSkillName(skillName)
+  const userSkillsDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user', // Subdirectory for user-uploaded skills
+    normalizedName
+  )
+
+  // 1. Create directory
+  await fs.mkdir(userSkillsDir, { recursive: true })
+
+  // 2. Detect zip structure (with or without root directory)
+  // Collect all first-level directory names
+  const firstLevelDirs = new Set<string>()
+  for (const file of files) {
+    const normalizedPath = path.normalize(file.path)
+    const firstPart = normalizedPath.split(path.sep)[0]
+    if (firstPart && !firstPart.includes('.')) {
+      // Only consider non-file paths (likely directories)
+      firstLevelDirs.add(firstPart)
+    }
+  }
+
+  // If all files share the same first-level directory, it's a root directory to strip
+  const shouldStripRootDir = firstLevelDirs.size === 1 && files.every(f => {
+    const normalizedPath = path.normalize(f.path)
+    const firstPart = normalizedPath.split(path.sep)[0]
+    return firstPart === [...firstLevelDirs][0]
+  })
+
+  console.log(`[Skills] Zip structure detection:`, {
+    hasRootDir: shouldStripRootDir,
+    rootDir: shouldStripRootDir ? [...firstLevelDirs][0] : 'none',
+    fileCount: files.length
+  })
+
+  // 3. Write files
+  for (const file of files) {
+    // Validate file path (prevent directory traversal)
+    const normalizedPath = path.normalize(file.path)
+    if (normalizedPath.includes('..')) {
+      throw new Error(`Invalid file path: ${file.path}`)
+    }
+
+    // Strip root directory if detected
+    // e.g., "ai-market-intelligence/SKILL.md" → "SKILL.md"
+    let finalPath = normalizedPath
+    if (shouldStripRootDir) {
+      const pathParts = normalizedPath.split(path.sep)
+      finalPath = pathParts.slice(1).join(path.sep)
+      // Handle edge case: file at root level
+      if (!finalPath) {
+        finalPath = pathParts[0]
+      }
+    }
+
+    const filePath = path.join(userSkillsDir, finalPath)
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, file.content, 'utf-8')
+  }
+
+  // 4. Auto-enable: create .enabled flag
+  const enabledFlag = path.join(userSkillsDir, '.enabled')
+  await fs.writeFile(enabledFlag, new Date().toISOString())
+
+  console.log(`[Skills] Uploaded user skill: ${normalizedName} for user: ${userId}`)
+}
+
+/**
+ * Get user-uploaded skills
+ */
+export async function getUserUploadedSkills(userId: string): Promise<Array<SkillInfo & { enabled: boolean }>> {
+  const userSkillsDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user'
+  )
+
+  try {
+    const entries = await fs.readdir(userSkillsDir, { withFileTypes: true })
+
+    const skills = await Promise.all(
+      entries
+        .filter(e => e.isDirectory())
+        .map(async (entry) => {
+          const skillPath = path.join(userSkillsDir, entry.name)
+
+          // Check if enabled
+          const enabledFlag = path.join(skillPath, '.enabled')
+          const isEnabled = await fileExists(enabledFlag)
+
+          // Parse metadata (similar to official skills)
+          const skillMdPath = path.join(skillPath, 'SKILL.md')
+          let metadata: SkillInfo = {
+            slug: entry.name,
+            name: entry.name,
+            description: null,
+            category: 'general',
+          }
+
+          if (await fileExists(skillMdPath)) {
+            try {
+              const parsed = await parseSkillMetadata(skillPath, entry.name)
+              if (parsed) metadata = parsed
+            } catch (error) {
+              console.warn(`[Skills] Failed to parse metadata for ${entry.name}:`, error)
+            }
+          }
+
+          return {
+            ...metadata,
+            enabled: isEnabled,
+          }
+        })
+    )
+
+    return skills.filter((skill): skill is SkillInfo & { enabled: boolean } => Boolean(skill))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      // User hasn't uploaded any skills yet
+      return []
+    }
+    throw error
+  }
+}
+
+/**
+ * Delete a user-uploaded skill
+ */
+export async function deleteUserSkill(userId: string, skillName: string): Promise<void> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user',
+    normalizedName
+  )
+
+  // Delete entire skill directory
+  await fs.rm(skillDir, { recursive: true, force: true })
+
+  console.log(`[Skills] Deleted user skill: ${normalizedName} for user: ${userId}`)
+}
+
+/**
+ * Enable a user-uploaded skill
+ */
+export async function enableUserUploadedSkill(userId: string, skillName: string): Promise<void> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user',
+    normalizedName
+  )
+
+  // Verify skill exists
+  if (!await fileExists(skillDir)) {
+    throw new Error(`User skill not found: ${normalizedName}`)
+  }
+
+  // Create .enabled flag
+  const enabledFlag = path.join(skillDir, '.enabled')
+  await fs.writeFile(enabledFlag, new Date().toISOString())
+
+  console.log(`[Skills] Enabled user skill: ${normalizedName} for user: ${userId}`)
+}
+
+/**
+ * Disable a user-uploaded skill
+ */
+export async function disableUserUploadedSkill(userId: string, skillName: string): Promise<void> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user',
+    normalizedName
+  )
+
+  // Remove .enabled flag
+  const enabledFlag = path.join(skillDir, '.enabled')
+  await fs.rm(enabledFlag, { force: true })
+
+  console.log(`[Skills] Disabled user skill: ${normalizedName} for user: ${userId}`)
+}
+
+/**
+ * Get files in a user-uploaded skill
+ */
+export async function getUserSkillFiles(
+  userId: string,
+  skillName: string
+): Promise<Array<{ path: string; content: string }>> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(
+    getUserClaudeHome(userId),
+    '.claude',
+    'skills',
+    'user',
+    normalizedName
+  )
+
+  // Verify skill exists
+  if (!await fileExists(skillDir)) {
+    throw new Error(`User skill not found: ${normalizedName}`)
+  }
+
+  // Recursively read all files
+  const files: Array<{ path: string; content: string }> = []
+
+  async function readDirectory(dirPath: string, relativePath: string = '') {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      const relativeFilePath = path.join(relativePath, entry.name)
+
+      if (entry.isDirectory()) {
+        // Skip .enabled flag
+        if (entry.name === '.enabled') continue
+        await readDirectory(fullPath, relativeFilePath)
+      } else if (entry.isFile()) {
+        const content = await fs.readFile(fullPath, 'utf-8')
+        files.push({
+          path: relativeFilePath,
+          content,
+        })
+      }
+    }
+  }
+
+  await readDirectory(skillDir)
+
+  return files
+}
