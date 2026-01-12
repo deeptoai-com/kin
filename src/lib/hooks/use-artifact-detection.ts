@@ -7,11 +7,16 @@
  * 2. Phase 2 (Structured Outputs): Metadata from AI (overwrites temporary with complete info)
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { detectArtifact } from '~/lib/utils/artifact-detector'
 import { useArtifactsStore } from '~/lib/stores/artifacts-store'
 import { useChatSessionStore } from '~/lib/chat-session-store'
 import { validateArtifactMetadata, type ArtifactMetadata } from '~/lib/schemas/artifact-schema'
+import {
+  readWorkspaceFile,
+  saveArtifactRegistryEntry,
+  type ArtifactRegistryEntry,
+} from '~/lib/artifacts/artifact-registry'
 
 // Import the proper type from chat-session-store
 import type { ContentPart } from '~/lib/chat-session-store'
@@ -20,41 +25,60 @@ import type { ContentPart } from '~/lib/chat-session-store'
  * Detect artifact from tool-call content
  * Looks for Write tool calls with .html, .svg, .md, .jsx, or .tsx files
  */
-function detectArtifactFromToolCall(content: ContentPart[]): {
-  type: 'html' | 'svg' | 'markdown' | 'react'
-  content: string
-  fileName?: string
-} | null {
+type ArtifactType = 'html' | 'svg' | 'markdown' | 'react'
+
+type ArtifactTarget = {
+  filePath: string
+  type: ArtifactType
+  fileName: string
+  toolCallId: string
+}
+
+const ARTIFACT_EXTENSIONS: Array<{ ext: string; type: ArtifactType }> = [
+  { ext: '.html', type: 'html' },
+  { ext: '.htm', type: 'html' },
+  { ext: '.svg', type: 'svg' },
+  { ext: '.md', type: 'markdown' },
+  { ext: '.markdown', type: 'markdown' },
+  { ext: '.jsx', type: 'react' },
+  { ext: '.tsx', type: 'react' },
+  { ext: '.js', type: 'react' },
+  { ext: '.ts', type: 'react' },
+]
+
+function resolveArtifactTarget(filePath: string, toolCallId: string): ArtifactTarget | null {
+  const lower = filePath.toLowerCase()
+  const match = ARTIFACT_EXTENSIONS.find((entry) => lower.endsWith(entry.ext))
+  if (!match) return null
+  const fileName = filePath.split('/').pop() || filePath
+  return {
+    filePath,
+    type: match.type,
+    fileName,
+    toolCallId,
+  }
+}
+
+function extractArtifactTargets(
+  content: ContentPart[],
+  options: { requireResult?: boolean } = {}
+): ArtifactTarget[] {
+  const targets: ArtifactTarget[] = []
+  const requireResult = options.requireResult ?? true
+
   for (const part of content) {
-    // Check if this is a tool-call part with the Write tool
-    if (part.type === 'tool-call' && part.toolName === 'Write' && part.args) {
-      const filePath = part.args.file_path as string | undefined
-      const fileContent = part.args.content as string | undefined
+    if (part.type !== 'tool-call' || !part.args) continue
+    if (part.toolName !== 'Write' && part.toolName !== 'Edit') continue
+    if (requireResult && part.result === undefined) continue
 
-      if (!filePath || !fileContent) continue
+    const filePath = (part.args.file_path || part.args.path) as string | undefined
+    if (!filePath) continue
 
-      // Extract file name from path
-      const fileName = filePath.split('/').pop() || ''
-
-      // Check file extension
-      if (filePath.endsWith('.html') || filePath.endsWith('.htm')) {
-        return { type: 'html', content: fileContent, fileName }
-      } else if (filePath.endsWith('.svg')) {
-        return { type: 'svg', content: fileContent, fileName }
-      } else if (filePath.endsWith('.md') || filePath.endsWith('.markdown')) {
-        return { type: 'markdown', content: fileContent, fileName }
-      } else if (
-        filePath.endsWith('.jsx') ||
-        filePath.endsWith('.tsx') ||
-        filePath.endsWith('.js') ||
-        filePath.endsWith('.ts')
-      ) {
-        return { type: 'react', content: fileContent, fileName }
-      }
-    }
+    const target = resolveArtifactTarget(filePath, part.toolCallId)
+    if (target) targets.push(target)
   }
 
-  return null
+  return targets
 }
 
 /**
@@ -68,53 +92,152 @@ function detectArtifactFromToolCall(content: ContentPart[]): {
  * @returns Artifact if detected, null otherwise
  */
 export function useArtifactDetection(messageId: string, content: ContentPart[] | undefined) {
+  const sessionId = useChatSessionStore((state) => state.currentSessionId)
   const createArtifact = useArtifactsStore((state) => state.createArtifact)
   const updateArtifact = useArtifactsStore((state) => state.updateArtifact)
   const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact)
+  const getArtifactByFilePath = useArtifactsStore((state) => state.getArtifactByFilePath)
   const artifact = useArtifactsStore((state) => state.getArtifactByMessageId(messageId))
   const lastStructuredOutput = useChatSessionStore((state) => state.lastStructuredOutput)
+  const processedToolCallsRef = useRef<Set<string>>(new Set())
 
   // Phase 1: Heuristic Detection (Real-time Preview)
   useEffect(() => {
-    // Skip if artifact already exists (non-temporary) or no content
-    if ((artifact && !artifact.isTemporary) || !content || content.length === 0) return
+    if (!content || content.length === 0) return
 
     // ✅ FIX: Only detect artifacts from completed tool calls (with result)
     // This prevents rendering loops caused by detecting incomplete tool-use events
-    const hasCompletedToolCall = content.some(p =>
-      p.type === 'tool-call' &&
-      p.toolName === 'Write' &&
-      p.result !== undefined  // Must have a result (tool completed)
-    )
+    const toolTargets = extractArtifactTargets(content, { requireResult: true })
 
-    if (!hasCompletedToolCall) {
-      console.log('[Artifact Detection] Waiting for tool completion...')
-      return  // Exit early - don't detect until tool is done
+    if (toolTargets.length > 0) {
+      const pending = toolTargets.filter((target) => {
+        if (processedToolCallsRef.current.has(target.toolCallId)) {
+          return false
+        }
+        processedToolCallsRef.current.add(target.toolCallId)
+        return true
+      })
+
+      if (pending.length === 0) {
+        return
+      }
+
+      let isCancelled = false
+      const run = async () => {
+        for (const target of pending) {
+          try {
+            const fileContent = sessionId
+              ? await readWorkspaceFile(sessionId, target.filePath)
+              : null
+
+            const contentToUse = fileContent
+            if (!contentToUse) {
+              console.warn('[Artifact Detection] Failed to read workspace file:', target.filePath)
+              continue
+            }
+
+            const existing = sessionId
+              ? getArtifactByFilePath(sessionId, target.filePath)
+              : undefined
+
+            if (isCancelled) return
+
+            let artifactId: string
+
+            if (existing) {
+              updateArtifact(existing.id, {
+                content: contentToUse,
+                type: target.type,
+                fileName: target.fileName,
+                messageId,
+                isTemporary: false,
+              })
+              artifactId = existing.id
+            } else {
+              artifactId = createArtifact({
+                sessionId: sessionId || 'unknown',
+                sourceFilePath: target.filePath,
+                messageId,
+                type: target.type,
+                content: contentToUse,
+                fileName: target.fileName,
+                isTemporary: false,
+              })
+            }
+
+            setActiveArtifact(artifactId)
+            console.log('[Artifact Detection] Updated artifact from tool call:', target.filePath)
+
+            if (sessionId) {
+              const registryEntry: ArtifactRegistryEntry = {
+                filePath: target.filePath,
+                type: target.type,
+                fileName: target.fileName,
+                messageId,
+                updatedAt: Date.now(),
+              }
+              await saveArtifactRegistryEntry(sessionId, registryEntry)
+            }
+          } catch (error) {
+            console.error('[Artifact Detection] Failed to update artifact:', error)
+          }
+        }
+      }
+
+      run()
+
+      return () => {
+        isCancelled = true
+      }
     }
 
-    // Method 1: Check tool-call content (priority - more reliable)
-    const toolArtifact = detectArtifactFromToolCall(content)
-    if (toolArtifact) {
-      if (artifact) {
-        // ✅ FIX: Don't update if artifact already exists
-        // Updating triggers Store changes → re-render → infinite loop
-        // Phase 2 (Structured Outputs) will handle updates
-        console.log('[Artifact Detection] Artifact already exists, skipping update to avoid render loop')
-        return
-      } else {
-        // Create new temporary artifact
-        const artifactId = createArtifact({
-          messageId,
-          type: toolArtifact.type,
-          content: toolArtifact.content,
-          fileName: toolArtifact.fileName,
-          isTemporary: true, // Mark as temporary
-        })
-        // Auto-open the artifact panel
-        setActiveArtifact(artifactId)
-        console.log('[Artifact Detection] Created artifact after tool completion')
+    // Map existing artifacts to this message using file path (for historical sessions)
+    const linkTargets = extractArtifactTargets(content, { requireResult: false })
+    if (linkTargets.length > 0 && sessionId) {
+      let isCancelled = false
+      const runLink = async () => {
+        for (const target of linkTargets) {
+          const existing = getArtifactByFilePath(sessionId, target.filePath)
+          if (existing) {
+            if (existing.messageId !== messageId) {
+              updateArtifact(existing.id, {
+                messageId,
+                fileName: existing.fileName || target.fileName,
+              })
+            }
+            continue
+          }
+
+          const fileContent = await readWorkspaceFile(sessionId, target.filePath)
+          if (!fileContent || isCancelled) {
+            continue
+          }
+
+          createArtifact({
+            sessionId,
+            sourceFilePath: target.filePath,
+            messageId,
+            type: target.type,
+            content: fileContent,
+            fileName: target.fileName,
+            isTemporary: false,
+          })
+
+          await saveArtifactRegistryEntry(sessionId, {
+            filePath: target.filePath,
+            type: target.type,
+            fileName: target.fileName,
+            messageId,
+            updatedAt: Date.now(),
+          })
+        }
       }
-      return
+
+      runLink()
+
+      return () => {
+        isCancelled = true
+      }
     }
 
     // Method 2: Check text content for code blocks (fallback)
@@ -127,24 +250,29 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     if (detected && detected.type !== 'unknown') {
       const artifactContent = detected.type === 'html' ? detected.html! : detected.svg!
 
-      if (artifact) {
-        // ✅ FIX: Don't update if artifact already exists
-        // Updating triggers Store changes → re-render → infinite loop
-        console.log('[Artifact Detection] Artifact already exists (from text), skipping update')
-        return
-      } else {
-        // Create new temporary artifact
-        const artifactId = createArtifact({
-          messageId,
-          type: detected.type,
-          content: artifactContent,
-          isTemporary: true, // Mark as temporary
-        })
-        // Auto-open the artifact panel
-        setActiveArtifact(artifactId)
-      }
+      if (artifact) return
+
+      // Create new temporary artifact
+      const artifactId = createArtifact({
+        sessionId: sessionId || 'unknown',
+        messageId,
+        type: detected.type,
+        content: artifactContent,
+        isTemporary: true, // Mark as temporary
+      })
+      // Auto-open the artifact panel
+      setActiveArtifact(artifactId)
     }
-  }, [messageId, content, artifact, createArtifact, updateArtifact, setActiveArtifact])
+  }, [
+    messageId,
+    content,
+    sessionId,
+    createArtifact,
+    updateArtifact,
+    setActiveArtifact,
+    getArtifactByFilePath,
+    artifact,
+  ])
 
   // Phase 2: Structured Outputs (Complete Metadata)
   useEffect(() => {
@@ -167,34 +295,52 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
       return
     }
 
-    // Check if we have a temporary artifact for this message
-    if (artifact?.isTemporary) {
-      // Update temporary artifact with complete metadata
-      updateArtifact(artifact.id, {
-        title: metadata.title,
-        description: metadata.description,
-        type: metadata.type,
-        content: primaryContent,
-        isTemporary: false, // No longer temporary
-      })
-      console.log('[Artifact Detection] Updated temporary artifact with metadata')
-    } else if (!artifact) {
-      // Create new artifact from structured output
-      const artifactId = createArtifact({
-        messageId,
-        title: metadata.title,
-        description: metadata.description,
-        type: metadata.type,
-        content: primaryContent,
-        fileName: metadata.files[0]?.path,
-        isTemporary: false,
-      })
-      // Auto-open the artifact panel
-      setActiveArtifact(artifactId)
-      console.log('[Artifact Detection] Created artifact from structured output')
+    const primaryFilePath = metadata.files[0]?.path
+
+    if (!primaryFilePath || !sessionId) {
+      return
     }
-    // If artifact exists and is not temporary, don't overwrite
-  }, [lastStructuredOutput, messageId, artifact, createArtifact, updateArtifact, setActiveArtifact])
+
+    const existing = getArtifactByFilePath(sessionId, primaryFilePath)
+    if (!existing || existing.messageId !== messageId) {
+      return
+    }
+
+    const run = async () => {
+      try {
+        updateArtifact(existing.id, {
+          title: metadata.title,
+          description: metadata.description,
+          type: metadata.type,
+          content: primaryContent,
+          fileName: metadata.files[0]?.path,
+          isTemporary: false,
+        })
+        console.log('[Artifact Detection] Updated artifact metadata from structured output')
+
+        const fileName = metadata.files[0]?.path?.split('/').pop() || metadata.files[0]?.path
+        await saveArtifactRegistryEntry(sessionId, {
+          filePath: primaryFilePath,
+          type: metadata.type,
+          title: metadata.title,
+          description: metadata.description,
+          fileName,
+          messageId,
+          updatedAt: Date.now(),
+        })
+      } catch (error) {
+        console.error('[Artifact Detection] Failed to persist metadata:', error)
+      }
+    }
+
+    run()
+  }, [
+    lastStructuredOutput,
+    messageId,
+    sessionId,
+    getArtifactByFilePath,
+    updateArtifact,
+  ])
 
   return artifact
 }

@@ -9,7 +9,9 @@ import { create } from 'zustand'
 
 export interface Artifact {
   id: string
-  messageId: string
+  sessionId: string
+  messageId?: string
+  sourceFilePath?: string
   type: 'html' | 'svg' | 'markdown' | 'react'
   title?: string
   description?: string // Description of what the artifact does
@@ -21,7 +23,7 @@ export interface Artifact {
 }
 
 export interface ArtifactsState {
-  // Map of messageId -> Artifact
+  // Map of artifactId -> Artifact
   artifacts: Map<string, Artifact>
 
   // Currently active artifact ID (for display in panel)
@@ -29,10 +31,11 @@ export interface ArtifactsState {
 
   // Actions
   createArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => string
-  updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id' | 'messageId'>>) => void
+  updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id'>>) => void
   deleteArtifact: (id: string) => void
   setActiveArtifact: (id: string | null) => void
   getArtifactByMessageId: (messageId: string) => Artifact | undefined
+  getArtifactByFilePath: (sessionId: string, filePath: string) => Artifact | undefined
   getArtifactById: (id: string) => Artifact | undefined
   clearAll: () => void
 }
@@ -60,7 +63,7 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
 
     set((state) => {
       const newArtifacts = new Map(state.artifacts)
-      newArtifacts.set(artifact.messageId, newArtifact)
+      newArtifacts.set(newArtifact.id, newArtifact)
       return { artifacts: newArtifacts }
     })
 
@@ -86,12 +89,11 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
         ...artifact,
         ...updates,
         id: artifact.id, // Prevent id change
-        messageId: artifact.messageId, // Prevent messageId change
         updatedAt: Date.now(),
       }
 
       const newArtifacts = new Map(state.artifacts)
-      newArtifacts.set(artifact.messageId, updated)
+      newArtifacts.set(artifact.id, updated)
 
       return { artifacts: newArtifacts }
     })
@@ -104,15 +106,13 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
    */
   deleteArtifact: (id) => {
     set((state) => {
-      const artifact = Array.from(state.artifacts.values()).find((a) => a.id === id)
-
-      if (!artifact) {
+      if (!state.artifacts.has(id)) {
         console.warn(`Artifact with id ${id} not found`)
         return state
       }
 
       const newArtifacts = new Map(state.artifacts)
-      newArtifacts.delete(artifact.messageId)
+      newArtifacts.delete(id)
 
       return {
         artifacts: newArtifacts,
@@ -137,7 +137,20 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
    * @returns Artifact or undefined if not found
    */
   getArtifactByMessageId: (messageId) => {
-    return get().artifacts.get(messageId)
+    return Array.from(get().artifacts.values()).find((artifact) => artifact.messageId === messageId)
+  },
+
+  /**
+   * Get artifact by session + file path
+   *
+   * @param sessionId - Session ID
+   * @param filePath - Artifact source file path
+   * @returns Artifact or undefined if not found
+   */
+  getArtifactByFilePath: (sessionId, filePath) => {
+    return Array.from(get().artifacts.values()).find(
+      (artifact) => artifact.sessionId === sessionId && artifact.sourceFilePath === filePath
+    )
   },
 
   /**
@@ -147,7 +160,7 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
    * @returns Artifact or undefined if not found
    */
   getArtifactById: (id) => {
-    return Array.from(get().artifacts.values()).find((a) => a.id === id)
+    return get().artifacts.get(id)
   },
 
   /**
