@@ -5,12 +5,10 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { eq, and } from 'drizzle-orm';
-import { readdir } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { db } from '~/db/db-config';
-import { agentSession } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
+import { getWorkspaceSession } from '~/server/workspace-session';
 
 /**
  * Recursively list all files in a directory
@@ -41,6 +39,24 @@ async function listFilesRecursive(dirPath: string, basePath: string = ''): Promi
   return files;
 }
 
+/**
+ * Validate file path to prevent path traversal attacks
+ */
+function validateFilePath(filePath: string): boolean {
+  // Reject paths with path traversal patterns
+  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
+    return false;
+  }
+
+  // Normalize and check again
+  const normalized = path.normalize(filePath);
+  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
+    return false;
+  }
+
+  return true;
+}
+
 export const Route = createFileRoute('/api/workspace/$sessionId/files')({
   server: {
     handlers: {
@@ -49,14 +65,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
         const user = await requireUser(request);
         const { sessionId } = params;
 
-        // Find session in database
-        const [session] = await db
-          .select()
-          .from(agentSession)
-          .where(and(
-            eq(agentSession.id, sessionId),
-            eq(agentSession.userId, user.id)
-          ));
+        const session = await getWorkspaceSession(user.id, sessionId);
 
         if (!session) {
           return new Response(
@@ -83,6 +92,65 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           workspacePath,
           files,
         });
+      },
+      // POST /api/workspace/:sessionId/files - Upload a file into workspace
+      POST: async ({ request, params }) => {
+        const user = await requireUser(request);
+        const { sessionId } = params;
+
+        const formData = await request.formData();
+        const file = formData.get('file');
+        const rawFilePath = formData.get('filePath');
+        const filePath = rawFilePath ? String(rawFilePath) : file instanceof File ? file.name : '';
+
+        if (!(file instanceof File) || !filePath) {
+          return new Response(
+            JSON.stringify({ error: 'Missing file upload' }),
+            { status: 400, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
+        if (!validateFilePath(filePath)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid file path' }),
+            { status: 400, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
+        const session = await getWorkspaceSession(user.id, sessionId);
+
+        if (!session) {
+          return new Response(
+            JSON.stringify({ error: 'Session not found' }),
+            { status: 404, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
+        const workspacePath = path.join(
+          session.claudeHomePath,
+          'sessions',
+          session.sdkSessionId,
+          'workspace'
+        );
+        const fullFilePath = path.join(workspacePath, filePath);
+
+        try {
+          await mkdir(path.dirname(fullFilePath), { recursive: true });
+          const buffer = Buffer.from(await file.arrayBuffer());
+          await writeFile(fullFilePath, buffer);
+
+          return Response.json({
+            sessionId: session.id,
+            filePath,
+            storedPath: fullFilePath,
+          });
+        } catch (error) {
+          console.error('[Workspace API] Error writing file:', error);
+          return new Response(
+            JSON.stringify({ error: 'Failed to upload file' }),
+            { status: 500, headers: { 'content-type': 'application/json' } }
+          );
+        }
       },
     },
   },

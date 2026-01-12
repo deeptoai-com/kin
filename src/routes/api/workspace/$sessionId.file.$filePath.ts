@@ -5,12 +5,10 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { eq, and } from 'drizzle-orm';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { db } from '~/db/db-config';
-import { agentSession } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
+import { getWorkspaceSession } from '~/server/workspace-session';
 
 /**
  * Validate file path to prevent path traversal attacks
@@ -46,14 +44,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
           );
         }
 
-        // Find session in database
-        const [session] = await db
-          .select()
-          .from(agentSession)
-          .where(and(
-            eq(agentSession.id, sessionId),
-            eq(agentSession.userId, user.id)
-          ));
+        const session = await getWorkspaceSession(user.id, sessionId);
 
         if (!session) {
           return new Response(
