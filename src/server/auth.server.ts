@@ -2,8 +2,10 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { reactStartCookies } from 'better-auth/react-start';
 import { magicLink } from 'better-auth/plugins';
+import { organization } from 'better-auth/plugins';
 import { Polar } from '@polar-sh/sdk';
 import { polar, checkout, portal, webhooks } from '@polar-sh/better-auth';
+import { sql, eq } from 'drizzle-orm';
 
 import { db } from '~/db/db-config';
 import { sendEmail } from './email';
@@ -46,7 +48,45 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),
-  advanced: {
+  user: {
+    deleteUser: {
+      enabled: true,
+      afterDelete: async (deletedUser) => {
+        // Only try to delete Polar customer if Polar is enabled
+        if (!polarClient) return;
+        try {
+          await polarClient.customers.deleteExternal({ externalId: deletedUser.id });
+        } catch (error: any) {
+          if (error?.error !== 'ResourceNotFound') {
+            console.error('[polar] failed to delete external customer', error);
+          }
+        }
+      },
+    },
+    // Add hook to set first user as system admin
+    onCreate: async (user) => {
+      try {
+        // Check if this is the first user in the system
+        const { user: userTable } = await import('~/db/schema');
+        const users = await db.select({ count: sql<number>`count(*)::int` })
+          .from(userTable);
+
+        const userCount = users[0]?.count || 0;
+
+        // If this is the first user (count is 1 because the user was just created),
+        // set them as system admin
+        if (userCount === 1) {
+          await db.update(userTable)
+            .set({ systemRole: 'admin' })
+            .where(eq(userTable.id, user.id));
+          console.log('[auth] First user registered, set as system admin:', user.email);
+        }
+      } catch (error) {
+        console.error('[auth] Failed to set first user as admin:', error);
+        // Don't throw - let registration succeed
+      }
+    },
+  },
     useSecureCookies: isProd,
     defaultCookieAttributes: {
       httpOnly: true,
@@ -107,6 +147,15 @@ export const auth = betterAuth({
           `,
         });
       },
+    }),
+    // Organization plugin for multi-tenant permissions
+    organization({
+      // Allow any user to create an organization (can be restricted later)
+      allowUserToCreateOrganization: true,
+      // Role of the organization creator
+      creatorRole: 'owner',
+      // Maximum members per organization (100 by default)
+      membershipLimit: 100,
     }),
     // Only include Polar plugin if Polar is configured
     ...(isPolarEnabled && polarClient

@@ -12,14 +12,16 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAssistantApi,
+  useComposer,
   useLocalRuntime,
   useMessage,
+  useThread,
 } from '@assistant-ui/react';
 import * as Avatar from '@radix-ui/react-avatar';
 import {
   ArrowUpIcon,
   BarChartIcon,
-  ChevronDownIcon,
   ClipboardIcon,
   Cross2Icon,
   InfoCircledIcon,
@@ -31,20 +33,23 @@ import {
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
 import { ThumbsDown, ThumbsUp, FolderOpen, Plus } from 'lucide-react';
-import { useEffect, useState, useCallback, type FC } from 'react';
+import { useEffect, useState, useCallback, useRef, type ChangeEvent, type FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { SessionList } from '~/components/claude-chat/session-list';
 import { UsageCard } from '~/components/claude-chat/usage-card';
-import { SessionInfoPanel } from '~/components/claude-chat/session-info-panel';
+import { SessionInfoPanel, type SessionMetadata } from '~/components/claude-chat/session-info-panel';
 import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
 import { ReasoningPart } from '~/components/agent-chat/reasoning-part';
 import { ToolCallPart } from '~/components/agent-chat/tool-call-part';
 import { KnowledgeBasePanel } from '~/components/claude-chat/knowledge-base-panel';
+import { PermissionBadge, type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
+import { fetchArtifactRegistry, readWorkspaceFile } from '~/lib/artifacts/artifact-registry';
+import { getPermissionInfo } from '~/server/permissions.server';
 // Use WebSocket adapter for more reliable real-time communication
 import {
   ClaudeAgentWSAdapter,
@@ -65,9 +70,17 @@ import {
 
 export const Route = createFileRoute('/agents/claude-chat')({
   component: RouteComponent,
+  loader: async () => {
+    // Fetch permission info on server side
+    const permissionInfo = await getPermissionInfo();
+    return { permissionInfo };
+  },
 });
 
 function RouteComponent() {
+  // Get permission info from loader
+  const { permissionInfo } = Route.useLoaderData();
+
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   // Key to force re-mount of chat surface when session changes
   const [chatKey, setChatKey] = useState(0);
@@ -130,6 +143,32 @@ function RouteComponent() {
     });
     return unsubscribe;
   }, [setSessionId]);
+
+  // Hydrate artifacts from registry when session changes
+  useEffect(() => {
+    if (!currentSessionId) {
+      return;
+    }
+
+    useArtifactsStore.getState().clearAll();
+
+    let isCancelled = false;
+    const run = async () => {
+      try {
+        await hydrateArtifactsFromRegistry(currentSessionId);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('[Route] Failed to hydrate artifacts:', error);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentSessionId]);
 
   // Perform the actual session switch (after confirmation or if no query running)
   const performSessionSwitch = useCallback(async (sdkSessionId: string | null, isNewSession: boolean) => {
@@ -231,7 +270,7 @@ function RouteComponent() {
                 )}
               </div>
             )}
-            <ClaudeChatSurface key={chatKey} />
+            <ClaudeChatSurface key={chatKey} permissionInfo={permissionInfo} />
           </div>
 
           {/* Artifacts Panel - only show when artifact exists */}
@@ -321,7 +360,7 @@ function RouteComponent() {
                 )}
               </div>
             )}
-            <ClaudeChatSurface key={chatKey} />
+            <ClaudeChatSurface key={chatKey} permissionInfo={permissionInfo} />
           </div>
 
           {/* Artifacts Panel - only show when artifact exists */}
@@ -361,7 +400,85 @@ function RouteComponent() {
   );
 }
 
-function ClaudeChatSurface() {
+type UploadedWorkspaceFile = {
+  name: string;
+  path: string;
+  status: 'uploaded' | 'error';
+  error?: string;
+};
+
+async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: string) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('filePath', filePath ?? file.name);
+
+  const response = await fetch(`/api/workspace/${sessionId}/files`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const message = payload?.error || `Upload failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<{
+    filePath: string;
+    storedPath: string;
+  }>;
+}
+
+async function hydrateArtifactsFromRegistry(sessionId: string) {
+  const registry = await fetchArtifactRegistry(sessionId);
+  if (registry.length === 0) {
+    return;
+  }
+
+  const {
+    createArtifact,
+    updateArtifact,
+    getArtifactByFilePath,
+  } = useArtifactsStore.getState();
+
+  for (const entry of registry) {
+    const content = await readWorkspaceFile(sessionId, entry.filePath);
+    if (!content) {
+      continue;
+    }
+
+    const existing = getArtifactByFilePath(sessionId, entry.filePath);
+    const fileName = entry.fileName || entry.filePath.split('/').pop() || entry.filePath;
+
+    if (existing) {
+      updateArtifact(existing.id, {
+        content,
+        type: entry.type,
+        title: entry.title,
+        description: entry.description,
+        fileName,
+        messageId: entry.messageId,
+        sourceFilePath: entry.filePath,
+        sessionId,
+        isTemporary: false,
+      });
+    } else {
+      createArtifact({
+        sessionId,
+        sourceFilePath: entry.filePath,
+        messageId: entry.messageId,
+        type: entry.type,
+        title: entry.title,
+        description: entry.description,
+        fileName,
+        content,
+        isTemporary: false,
+      });
+    }
+  }
+}
+
+function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo }) {
   const runtime = useLocalRuntime(ClaudeAgentWSAdapter);
   const historicalMessages = useChatSessionStore((state) => state.messages);
   const hasHistoricalMessages = historicalMessages.length > 0;
@@ -372,7 +489,7 @@ function ClaudeChatSurface() {
 
   // Workspace panel state (session-level, persists across messages)
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const currentSessionId = getSessionId();
+  const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
 
   return (
     <div className="flex h-full flex-col">
@@ -404,123 +521,323 @@ function ClaudeChatSurface() {
             <div aria-hidden="true" className="h-4" />
           </ThreadPrimitive.Viewport>
 
-          <ComposerPrimitive.Root className="shrink-0 mx-auto flex w-full max-w-3xl flex-col rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow">
-            <div className="m-3.5 flex flex-col gap-3.5">
-              <div className="relative">
-                <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
-                  <ComposerPrimitive.Input
-                    placeholder="How can I help you today?"
-                    className="block min-h-6 w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-              </div>
-              <div className="flex w-full items-center gap-2">
-                <div className="relative flex min-w-0 flex-1 shrink items-center gap-2">
-                  <ComposerPrimitive.AddAttachment className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]">
-                    <PlusIcon width={16} height={16} />
-                  </ComposerPrimitive.AddAttachment>
-                  <button
-                    type="button"
-                    className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]"
-                    aria-label="Open tools menu"
-                  >
-                    <MixerHorizontalIcon width={16} height={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]"
-                    aria-label="Extended thinking"
-                  >
-                    <ReloadIcon width={16} height={16} />
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="flex h-8 min-w-16 items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 pr-2 pl-2.5 text-foreground text-xs transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-accent active:scale-[0.985]"
-                >
-                  <span className="font-serif text-[14px]">GLM 4.7</span>
-                  <ChevronDownIcon width={20} height={20} className="opacity-75" />
-                </button>
-
-                {/* Workspace Toggle Button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowWorkspace(!showWorkspace)}
-                    className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="切换工作空间"
-                    disabled={!currentSessionId}
-                  >
-                    <FolderOpen width={16} height={16} />
-                  </button>
-
-                  {/* Workspace Panel */}
-                  {showWorkspace && currentSessionId && (
-                    <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
-                      {/* Header */}
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
-                          📚 Knowledge Base
-                        </h3>
-                        <button
-                          onClick={() => setShowWorkspace(false)}
-                          className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
-                          aria-label="关闭"
-                        >
-                          <Cross2Icon width={14} height={14} />
-                        </button>
-                      </div>
-
-                      <div className="space-y-3 text-xs">
-                        <KnowledgeBasePanel sessionId={currentSessionId} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Session Info Button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowSessionInfo(!showSessionInfo)}
-                    className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="查看会话信息"
-                    disabled={!sessionMetadata}
-                  >
-                    <InfoCircledIcon width={16} height={16} />
-                  </button>
-
-                  {/* Session Info Panel */}
-                  {showSessionInfo && sessionMetadata && (
-                    <SessionInfoPanel
-                      data={sessionMetadata}
-                      onClose={() => setShowSessionInfo(false)}
-                    />
-                  )}
-                </div>
-
-                <ComposerPrimitive.Send className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50">
-                  <ArrowUpIcon width={16} height={16} />
-                </ComposerPrimitive.Send>
-              </div>
-            </div>
-            <ComposerAttachmentsSection />
-          </ComposerPrimitive.Root>
+          <ChatComposer
+            permissionInfo={permissionInfo}
+            currentSessionId={currentSessionId}
+            showWorkspace={showWorkspace}
+            setShowWorkspace={setShowWorkspace}
+            showSessionInfo={showSessionInfo}
+            setShowSessionInfo={setShowSessionInfo}
+            sessionMetadata={sessionMetadata}
+          />
         </ThreadPrimitive.Root>
       </AssistantRuntimeProvider>
     </div>
   );
 }
 
-const ComposerAttachmentsSection: FC = () => {
+type ChatComposerProps = {
+  permissionInfo: PermissionInfo;
+  currentSessionId: string | null;
+  showWorkspace: boolean;
+  setShowWorkspace: (value: boolean) => void;
+  showSessionInfo: boolean;
+  setShowSessionInfo: (value: boolean) => void;
+  sessionMetadata: SessionMetadata | null;
+};
+
+const ChatComposer: FC<ChatComposerProps> = ({
+  permissionInfo,
+  currentSessionId,
+  showWorkspace,
+  setShowWorkspace,
+  showSessionInfo,
+  setShowSessionInfo,
+  sessionMetadata,
+}) => {
+  const api = useAssistantApi();
+  const composerRunConfig = useComposer((state) => state.runConfig);
+  const isRunning = useThread((state) => state.isRunning);
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setUploadedFiles([]);
+    setUploadError(null);
+  }, [currentSessionId]);
+
+  const handleToggleThinking = useCallback(() => {
+    setThinkingEnabled((prev) => {
+      const next = !prev;
+      const custom = {
+        ...(composerRunConfig?.custom ?? {}),
+        thinking: next ? 'extended' : 'default',
+      };
+      api.composer().setRunConfig({ custom });
+      return next;
+    });
+  }, [api, composerRunConfig]);
+
+  const handleClearInput = useCallback(async () => {
+    setUploadedFiles([]);
+    setUploadError(null);
+    await api.composer().reset();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [api]);
+
+  const handleUploadClick = useCallback(() => {
+    if (!currentSessionId) {
+      setUploadError('请先发送一条消息以创建会话，再上传文件。');
+      return;
+    }
+    setUploadError(null);
+    fileInputRef.current?.click();
+  }, [currentSessionId]);
+
+  const handleFilesSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+    if (!currentSessionId) {
+      setUploadError('请先发送一条消息以创建会话，再上传文件。');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    for (const file of Array.from(files)) {
+      try {
+        const result = await uploadWorkspaceFile(currentSessionId, file);
+        setUploadedFiles((prev) => ([
+          ...prev,
+          {
+            name: file.name,
+            path: result.filePath,
+            status: 'uploaded',
+          },
+        ]));
+        await api.composer().addAttachment(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '上传失败';
+        setUploadedFiles((prev) => ([
+          ...prev,
+          {
+            name: file.name,
+            path: file.name,
+            status: 'error',
+            error: message,
+          },
+        ]));
+        setUploadError(message);
+      }
+    }
+
+    setIsUploading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [api, currentSessionId]);
+
+  return (
+    <ComposerPrimitive.Root className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow">
+      <div className="m-3.5 flex flex-col gap-3.5">
+        <div className="relative z-10">
+          <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
+            <ComposerPrimitive.Input
+              placeholder="How can I help you today?"
+              className="block min-h-6 w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+        </div>
+        <div className="flex w-full items-center gap-2">
+          <div className="relative flex min-w-0 flex-1 shrink items-center gap-2">
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="上传文件"
+              disabled={!currentSessionId || isUploading}
+              title={!currentSessionId ? '请先创建会话再上传文件' : '上传文件到工作区'}
+            >
+              <PlusIcon width={16} height={16} />
+            </button>
+            <button
+              type="button"
+              onClick={handleToggleThinking}
+              className={`flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] ${thinkingEnabled ? 'bg-accent text-foreground' : 'bg-transparent'}`}
+              aria-label="扩展推理能力"
+              aria-pressed={thinkingEnabled}
+              title={thinkingEnabled ? '已开启扩展推理' : '开启扩展推理'}
+            >
+              <MixerHorizontalIcon width={16} height={16} />
+            </button>
+            <button
+              type="button"
+              onClick={handleClearInput}
+              className="flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]"
+              aria-label="清空输入"
+              title="清空输入"
+            >
+              <ReloadIcon width={16} height={16} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={handleFilesSelected}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
+              title="当前模型"
+            >
+              <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
+            </div>
+            <span
+              className={`text-[11px] font-medium ${thinkingEnabled ? 'text-emerald-600' : 'text-muted-foreground'}`}
+              title="推理能力状态"
+            >
+              {thinkingEnabled ? '推理：开' : '推理：关'}
+            </span>
+
+            {/* Workspace Toggle Button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowWorkspace(!showWorkspace)}
+                className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="切换工作空间"
+                title="知识库 / 工作区"
+                disabled={!currentSessionId}
+              >
+                <FolderOpen width={16} height={16} />
+              </button>
+
+              {/* Workspace Panel */}
+              {showWorkspace && currentSessionId && (
+                <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
+                  {/* Header */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
+                      📚 Knowledge Base
+                    </h3>
+                    <button
+                      onClick={() => setShowWorkspace(false)}
+                      className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
+                      aria-label="关闭"
+                    >
+                      <Cross2Icon width={14} height={14} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 text-xs">
+                    <KnowledgeBasePanel sessionId={currentSessionId} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Session Info Button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSessionInfo(!showSessionInfo)}
+                className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="查看会话信息"
+                title="会话信息"
+                disabled={!sessionMetadata}
+              >
+                <InfoCircledIcon width={16} height={16} />
+              </button>
+
+              {/* Session Info Panel */}
+              {showSessionInfo && sessionMetadata && (
+                <SessionInfoPanel
+                  data={sessionMetadata}
+                  onClose={() => setShowSessionInfo(false)}
+                />
+              )}
+            </div>
+
+            {isRunning ? (
+              <button
+                type="button"
+                onClick={() => api.composer().cancel()}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 active:scale-95"
+                aria-label="停止生成"
+                title="停止生成"
+              >
+                <Cross2Icon width={16} height={16} />
+              </button>
+            ) : (
+              <ComposerPrimitive.Send
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                title="发送消息"
+                aria-label="发送消息"
+              >
+                <ArrowUpIcon width={16} height={16} />
+              </ComposerPrimitive.Send>
+            )}
+          </div>
+        </div>
+      </div>
+      <ComposerAttachmentsSection
+        permissionInfo={permissionInfo}
+        uploadedFiles={uploadedFiles}
+        uploadError={uploadError}
+        isUploading={isUploading}
+      />
+    </ComposerPrimitive.Root>
+  );
+};
+
+const ComposerAttachmentsSection: FC<{
+  permissionInfo: PermissionInfo;
+  uploadedFiles: UploadedWorkspaceFile[];
+  uploadError: string | null;
+  isUploading: boolean;
+}> = ({ permissionInfo, uploadedFiles, uploadError, isUploading }) => {
   // Note: Attachments display is simplified - the full implementation would require
   // using useComposer() hook to check attachment state
+
+  const hasUploads = uploadedFiles.length > 0;
+
   return (
-    <div className="hidden has-[[data-attachments]]:block overflow-hidden rounded-b-2xl">
-      <div className="overflow-x-auto rounded-b-2xl border border-t bg-muted p-3.5">
-        <div className="flex flex-row gap-3" data-attachments>
+    <div className="relative z-40 overflow-visible rounded-b-2xl">
+      <div className="overflow-x-auto overflow-y-visible rounded-b-2xl border border-t bg-muted p-3.5">
+        <div className="relative z-50 flex flex-wrap items-center gap-3" data-attachments="true">
           <ComposerPrimitive.Attachments components={{ Attachment: ClaudeAttachment }} />
+          {hasUploads && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {uploadedFiles.map((file) => (
+                <span
+                  key={`${file.path}-${file.status}`}
+                  className={`rounded-md border px-2 py-0.5 ${file.status === 'error' ? 'border-destructive text-destructive' : 'border-transparent bg-card text-foreground'}`}
+                  title={file.error || file.path}
+                >
+                  {file.path}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Permission Badge */}
+          <PermissionBadge permissionInfo={permissionInfo} />
         </div>
+        {(uploadError || isUploading) && (
+          <div className="mt-2 text-xs">
+            {isUploading && <span className="text-muted-foreground">正在上传文件...</span>}
+            {uploadError && <span className="text-destructive">{uploadError}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
