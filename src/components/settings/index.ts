@@ -11,6 +11,7 @@ export { PlaceholderSettings } from './sections/PlaceholderSettings';
 export { PreferencesSettings } from './sections/PreferencesSettings';
 export { PlanSettingsSection } from './sections/PlanSettings';
 export { BillingSettingsSection } from './sections/BillingSettings';
+export { OrganizationSettings } from './sections/OrganizationSettings';
 
 // Re-export the main dialog (we'll update this later)
 export { SettingsDialog } from './SettingsDialog';
