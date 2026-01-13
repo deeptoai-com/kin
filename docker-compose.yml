@@ -211,8 +211,8 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       CLAUDE_SESSIONS_ROOT: /data/users
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
-      # Structured Outputs for Artifacts (default: disabled for stability)
-      ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
+      # Structured Outputs for Artifacts (default: enabled for testing)
+      ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-true}
     volumes:
       - claude-sessions:/data/users
     ports:
