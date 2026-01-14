@@ -299,29 +299,41 @@ services:
       - '3001' # WebSocket server
     # Traefik labels for routing
     labels:
-      # Enable Traefik
+      # Base Traefik toggle + network
       - "traefik.enable=true"
-      
-      # HTTP router (main application)
-      - "traefik.http.routers.app.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
-      - "traefik.http.routers.app.entrypoints=websecure"
-      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.app.service=app-service"
-      - "traefik.http.services.app-service.loadbalancer.server.port=5000"
-      
-      # WebSocket router (critical for real-time communication)
-      - "traefik.http.routers.ws.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
-      - "traefik.http.routers.ws.entrypoints=websecure"
-      - "traefik.http.routers.ws.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.ws.service=ws-service"
+      - "traefik.docker.network=dokploy-network"
+
+      # ---------------------------------------------------------
+      # 1. Main HTTP service (Web) - exclude /ws
+      # ---------------------------------------------------------
+      # HTTP router (port 80) -> redirect to HTTPS
+      - "traefik.http.routers.main-web.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-web.entrypoints=web"
+      - "traefik.http.routers.main-web.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.main-web.service=main-service"
+      - "traefik.http.routers.main-web.priority=50"
+
+      # HTTPS router (port 443)
+      - "traefik.http.routers.main-websecure.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-websecure.entrypoints=websecure"
+      - "traefik.http.routers.main-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.main-websecure.service=main-service"
+      - "traefik.http.routers.main-websecure.priority=50"
+
+      # Main service (Nitro)
+      - "traefik.http.services.main-service.loadbalancer.server.port=5000"
+
+      # ---------------------------------------------------------
+      # 2. WebSocket service (WS) - exclusive /ws + higher priority
+      # ---------------------------------------------------------
+      - "traefik.http.routers.ws-router.rule=Host(`deeptoai.com`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws-router.entrypoints=websecure"
+      - "traefik.http.routers.ws-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ws-router.priority=100"
+      - "traefik.http.routers.ws-router.service=ws-service"
+
+      # WS service (ws-server)
       - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
-      # Priority: ensure WebSocket router is matched before HTTP router
-      - "traefik.http.routers.ws.priority=10"
-      
-      # Optional: Add custom headers for WebSocket upgrade (usually not needed)
-      # - "traefik.http.middlewares.ws-headers.headers.customrequestheaders.Connection=Upgrade"
-      # - "traefik.http.middlewares.ws-headers.headers.customrequestheaders.Upgrade=websocket"
-      # - "traefik.http.routers.ws.middlewares=ws-headers"
     restart: unless-stopped
     networks:
       - private
