@@ -12,6 +12,35 @@ import { sendEmail } from './email';
 import { polarEnv } from '~/conf/polar';
 import { polarWebhookHandlers } from '~/server/polar-webhooks';
 
+const DEFAULT_AUTH_BASE_PATH = '/api/auth';
+
+const normalizeAuthBasePath = (rawPath?: string) => {
+  const trimmed = (rawPath ?? DEFAULT_AUTH_BASE_PATH).trim();
+  if (!trimmed) return DEFAULT_AUTH_BASE_PATH;
+  const normalized = `/${trimmed.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+  return normalized === '/' ? DEFAULT_AUTH_BASE_PATH : normalized;
+};
+
+const resolveAuthBaseURL = (rawUrl: string | undefined, basePath: string) => {
+  if (!rawUrl) return undefined;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.pathname !== '/' && parsed.pathname !== basePath) {
+      console.warn(
+        `[auth] BETTER_AUTH_URL includes path "${parsed.pathname}". ` +
+          `Ignoring it and using basePath "${basePath}".`,
+      );
+    }
+    return parsed.origin;
+  } catch {
+    console.warn(`[auth] Invalid BETTER_AUTH_URL: ${rawUrl}`);
+    return undefined;
+  }
+};
+
+const authBasePath = normalizeAuthBasePath(process.env.BETTER_AUTH_BASE_PATH);
+const authBaseURL = resolveAuthBaseURL(process.env.BETTER_AUTH_URL, authBasePath);
+
 const isProd = process.env.NODE_ENV === 'production';
 const sessionCookieName = process.env.SESSION_COOKIE_NAME ?? 'ex0_session';
 
@@ -45,6 +74,8 @@ const checkoutProducts = isPolarEnabled
   : [];
 
 export const auth = betterAuth({
+  baseURL: authBaseURL,
+  basePath: authBasePath,
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),

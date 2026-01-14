@@ -19,12 +19,11 @@ const buildAuthRequest = async (
   params: Record<string, unknown>,
 ) => {
   const splat = (params as { _splat?: string })._splat ?? '';
-  const pathSegment = splat.replace(/^\/+/, '');
+  const pathSegment = splat.replace(/^\/+/, '').replace(/\/+$/, '');
   const url = new URL(request.url);
-  const routeBase = '/api/auth';
-  const baseIndex = url.pathname.lastIndexOf(routeBase);
-  const prefix = baseIndex >= 0 ? url.pathname.slice(0, baseIndex) : '';
-  const basePath = `${prefix}${routeBase}`;
+  const routeBase = auth.options?.basePath ?? '/api/auth';
+  const cleanedBase = routeBase.replace(/^\/+/, '').replace(/\/+$/, '');
+  const basePath = cleanedBase ? `/${cleanedBase}` : '/api/auth';
   const newPath = pathSegment ? `${basePath}/${pathSegment}` : basePath;
   const newUrl = new URL(newPath + url.search, url.origin);
 
