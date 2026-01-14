@@ -142,9 +142,19 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Ensure DATABASE_URL is set (Docker Compose will fail if not set)
       DATABASE_URL: ${DATABASE_URL:?}
       NODE_ENV: production
-    entrypoint: ['sh', '-c', 'pnpm run db:migrate']
+    # Add debug output to verify DATABASE_URL is set
+    entrypoint: >
+      sh -c "
+      echo '=== Migration Debug Info ===' &&
+      echo 'DATABASE_URL is set: '$$([ -z \"$$DATABASE_URL\" ] && echo 'NO' || echo 'YES') &&
+      echo 'DATABASE_URL length: '$$(echo -n \"$$DATABASE_URL\" | wc -c) &&
+      echo 'DATABASE_URL preview: '$$(echo \"$$DATABASE_URL\" | sed 's/:[^:@]*@/:****@/') &&
+      echo '===========================' &&
+      pnpm run db:migrate
+      "
     restart: 'no'
     networks:
       - private
