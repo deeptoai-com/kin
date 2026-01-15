@@ -4,10 +4,22 @@
  * Main panel component for displaying and interacting with artifacts.
  */
 
-import { Download, X } from 'lucide-react'
-import type { FC } from 'react'
+import JSZip from 'jszip'
+import { Download, Package, Upload, X } from 'lucide-react'
+import { useMemo, useState, type FC } from 'react'
+import { useServerFn } from '@tanstack/react-start'
+import { toast } from 'sonner'
 import { Button } from '~/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
 import { useArtifactsStore } from '~/lib/stores/artifacts-store'
+import { uploadUserSkillFn } from '~/server/function/skills.server'
 import { HTMLArtifact } from './artifact-html'
 import { SVGArtifact } from './artifact-svg'
 import { MarkdownArtifact } from './artifact-markdown'
@@ -18,11 +30,148 @@ export interface ArtifactsPanelProps {
   onClose: () => void
 }
 
+type SkillInfo = {
+  root: string
+  skillName: string
+}
+
+function normalizeWorkspacePath(path: string): string {
+  return path.replace(/^\/+/, '').replace(/\\/g, '/')
+}
+
+function parseSkillName(content: string): string | null {
+  const match = content.match(/^name:\s*(.+)$/m)
+  if (!match) return null
+  return match[1].trim().replace(/^["']|["']$/g, '')
+}
+
+function getSkillRoot(path: string): string | null {
+  const normalized = normalizeWorkspacePath(path)
+  if (!/skill\.md$/i.test(normalized)) return null
+  return normalized.replace(/skill\.md$/i, '').replace(/\/$/, '')
+}
+
 export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose }) => {
   const artifact = useArtifactsStore((state) => {
     if (!artifactId) return null
     return state.getArtifactById(artifactId)
   })
+  const [isSkillBusy, setIsSkillBusy] = useState(false)
+  const uploadSkill = useServerFn(uploadUserSkillFn)
+
+  const skillInfo = useMemo<SkillInfo | null>(() => {
+    if (!artifact) return null
+    const filePath = artifact.sourceFilePath || artifact.fileName
+    if (!filePath) return null
+    const root = getSkillRoot(filePath)
+    if (root === null) return null
+    const skillName =
+      parseSkillName(artifact.content) ||
+      root.split('/').pop() ||
+      artifact.title ||
+      'skill'
+    return { root, skillName }
+  }, [artifact])
+
+  const loadSkillFiles = async () => {
+    if (!artifact || !skillInfo) return []
+    if (!artifact.sessionId || artifact.sessionId === 'unknown') {
+      toast.error('当前会话不可用，无法读取技能文件')
+      return []
+    }
+
+    const listResponse = await fetch(`/api/workspace/${artifact.sessionId}/files`)
+    if (!listResponse.ok) {
+      throw new Error('Failed to list workspace files')
+    }
+    const { files } = await listResponse.json()
+    const prefix = skillInfo.root ? `${skillInfo.root.replace(/\/$/, '')}/` : ''
+    const candidates = (files as string[])
+      .map((path) => normalizeWorkspacePath(path))
+      .filter((path) => (prefix ? path.startsWith(prefix) : true))
+
+    const resolved = await Promise.all(
+      candidates.map(async (path) => {
+        const contentResponse = await fetch(`/api/workspace/${artifact.sessionId}/file/${path}`)
+        if (!contentResponse.ok) {
+          console.warn('Failed to load workspace file:', path)
+          return null
+        }
+        const { content } = await contentResponse.json()
+        return { path, content }
+      })
+    )
+
+    return resolved.filter(
+      (entry): entry is { path: string; content: string } => Boolean(entry)
+    )
+  }
+
+  const validateSkillFiles = (files: Array<{ path: string; content: string }>) => {
+    if (files.length === 0) {
+      toast.error('未找到可打包的技能文件')
+      return false
+    }
+    if (files.length > 100) {
+      toast.error('文件数量超过限制（最多 100 个文件）')
+      return false
+    }
+    const totalSize = files.reduce((sum, file) => sum + file.content.length, 0)
+    if (totalSize > 10 * 1024 * 1024) {
+      toast.error('技能包大小超过 10 MB 限制')
+      return false
+    }
+    return true
+  }
+
+  const handleDownloadSkill = async () => {
+    if (!skillInfo || isSkillBusy) return
+    setIsSkillBusy(true)
+    try {
+      const files = await loadSkillFiles()
+      if (!validateSkillFiles(files)) return
+      const zip = new JSZip()
+      for (const file of files) {
+        zip.file(file.path, file.content)
+      }
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${skillInfo.skillName}.skill`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`已导出 ${skillInfo.skillName}.skill`)
+    } catch (error) {
+      console.error('Failed to package skill:', error)
+      toast.error('技能打包失败')
+    } finally {
+      setIsSkillBusy(false)
+    }
+  }
+
+  const handleImportSkill = async () => {
+    if (!skillInfo || isSkillBusy) return
+    setIsSkillBusy(true)
+    try {
+      const files = await loadSkillFiles()
+      if (!validateSkillFiles(files)) return
+      await uploadSkill({
+        data: {
+          name: skillInfo.skillName,
+          files,
+        },
+      })
+      toast.success(`已导入技能：${skillInfo.skillName}`)
+    } catch (error) {
+      console.error('Failed to import skill:', error)
+      toast.error('技能导入失败')
+    } finally {
+      setIsSkillBusy(false)
+    }
+  }
 
   const downloadArtifact = () => {
     if (!artifact) return
@@ -80,6 +229,33 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
           </div>
 
           <div className="flex items-center gap-1">
+            {skillInfo && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Skill actions"
+                    className="h-8 w-8"
+                    disabled={isSkillBusy}
+                  >
+                    <Package className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>{skillInfo.skillName}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={handleDownloadSkill} disabled={isSkillBusy}>
+                    <Download className="h-4 w-4" />
+                    Download .skill
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={handleImportSkill} disabled={isSkillBusy}>
+                    <Upload className="h-4 w-4" />
+                    Import to Skills
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button
               variant="ghost"
               size="icon"

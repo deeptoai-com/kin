@@ -6,11 +6,26 @@
  */
 
 import type { FC } from 'react'
-import { useState, useEffect } from 'react'
-import { X, Download } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Download, Package, Upload, X } from 'lucide-react'
 import { Sandpack } from '@codesandbox/sandpack-react'
 import { Button } from '~/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
 import { WorkspaceFileBrowser } from './workspace-file-browser'
+import JSZip from 'jszip'
+import { useServerFn } from '@tanstack/react-start'
+import { uploadUserSkillFn } from '~/server/function/skills.server'
+import { toast } from 'sonner'
 
 export interface WorkspaceSandpackPanelProps {
   sessionId: string
@@ -50,6 +65,18 @@ function getEntryFile(template: 'react' | 'react-ts' | 'vanilla'): string {
   }
 }
 
+type WorkspaceSkillCandidate = {
+  root: string
+  displayName: string
+  skillName: string
+}
+
+function parseSkillName(content: string): string | null {
+  const match = content.match(/^name:\s*(.+)$/m)
+  if (!match) return null
+  return match[1].trim().replace(/^["']|["']$/g, '')
+}
+
 export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
   sessionId,
   onClose,
@@ -57,6 +84,49 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
   const [workspaceFiles, setWorkspaceFiles] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [isSkillBusy, setIsSkillBusy] = useState(false)
+  const uploadSkill = useServerFn(uploadUserSkillFn)
+
+  const normalizedWorkspaceFiles = useMemo(() => {
+    const normalized: Record<string, string> = {}
+    for (const [path, content] of Object.entries(workspaceFiles)) {
+      const trimmedPath = path.startsWith('/') ? path.slice(1) : path
+      if (trimmedPath) {
+        normalized[trimmedPath] = content
+      }
+    }
+    return normalized
+  }, [workspaceFiles])
+
+  const workspaceSkills = useMemo(() => {
+    const candidates = new Map<string, WorkspaceSkillCandidate>()
+    for (const [path, content] of Object.entries(normalizedWorkspaceFiles)) {
+      if (!/skill\.md$/i.test(path)) continue
+      const root = path.replace(/skill\.md$/i, '').replace(/\/$/, '')
+      const skillName = parseSkillName(content) || root.split('/').pop() || 'skill'
+      const displayName = root ? root.split('/').pop() || root : skillName
+      const key = root || skillName
+      if (!candidates.has(key)) {
+        candidates.set(key, {
+          root,
+          displayName,
+          skillName,
+        })
+      }
+    }
+    return Array.from(candidates.values())
+  }, [normalizedWorkspaceFiles])
+
+  const collectSkillFiles = (root: string) => {
+    const files: Array<{ path: string; content: string }> = []
+    const prefix = root ? `${root.replace(/\/$/, '')}/` : ''
+    for (const [path, content] of Object.entries(normalizedWorkspaceFiles)) {
+      if (!prefix || path.startsWith(prefix)) {
+        files.push({ path, content })
+      }
+    }
+    return files
+  }
 
   useEffect(() => {
     const loadWorkspaceFiles = async () => {
@@ -128,6 +198,70 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
     URL.revokeObjectURL(url)
   }
 
+  const handleDownloadSkill = async (skill: WorkspaceSkillCandidate) => {
+    if (isSkillBusy) return
+    setIsSkillBusy(true)
+    try {
+      const files = collectSkillFiles(skill.root)
+      if (files.length === 0) {
+        toast.error('未找到可打包的技能文件')
+        return
+      }
+      const zip = new JSZip()
+      for (const file of files) {
+        zip.file(file.path, file.content)
+      }
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${skill.skillName}.skill`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`已导出 ${skill.skillName}.skill`)
+    } catch (error) {
+      console.error('Failed to package skill:', error)
+      toast.error('技能打包失败')
+    } finally {
+      setIsSkillBusy(false)
+    }
+  }
+
+  const handleImportSkill = async (skill: WorkspaceSkillCandidate) => {
+    if (isSkillBusy) return
+    setIsSkillBusy(true)
+    try {
+      const files = collectSkillFiles(skill.root)
+      if (files.length === 0) {
+        toast.error('未找到可导入的技能文件')
+        return
+      }
+      const totalSize = files.reduce((sum, file) => sum + file.content.length, 0)
+      if (files.length > 100) {
+        toast.error('文件数量超过限制（最多 100 个文件）')
+        return
+      }
+      if (totalSize > 10 * 1024 * 1024) {
+        toast.error('技能包大小超过 10 MB 限制')
+        return
+      }
+      await uploadSkill({
+        data: {
+          name: skill.skillName,
+          files,
+        },
+      })
+      toast.success(`已导入技能：${skill.skillName}`)
+    } catch (error) {
+      console.error('Failed to import skill:', error)
+      toast.error('技能导入失败')
+    } finally {
+      setIsSkillBusy(false)
+    }
+  }
+
   const template = detectTemplate(workspaceFiles)
   const entryFile = getEntryFile(template)
   const fileCount = Object.keys(workspaceFiles).length
@@ -143,6 +277,49 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Skill actions"
+                className="h-8 w-8"
+                disabled={isLoading}
+              >
+                <Package className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Workspace Skills</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {workspaceSkills.length === 0 ? (
+                <DropdownMenuItem disabled>No SKILL.md found</DropdownMenuItem>
+              ) : (
+                workspaceSkills.map((skill) => (
+                  <DropdownMenuSub key={`${skill.root}-${skill.skillName}`}>
+                    <DropdownMenuSubTrigger>{skill.displayName}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem
+                        onSelect={() => handleDownloadSkill(skill)}
+                        disabled={isSkillBusy}
+                      >
+                        <Download className="h-4 w-4" />
+                        Download .skill
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => handleImportSkill(skill)}
+                        disabled={isSkillBusy}
+                      >
+                        <Upload className="h-4 w-4" />
+                        Import to Skills
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
             size="icon"

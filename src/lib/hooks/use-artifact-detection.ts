@@ -15,6 +15,7 @@ import { validateArtifactMetadata, type ArtifactMetadata } from '~/lib/schemas/a
 import {
   readWorkspaceFile,
   saveArtifactRegistryEntry,
+  writeWorkspaceFile,
   type ArtifactRegistryEntry,
 } from '~/lib/artifacts/artifact-registry'
 
@@ -100,6 +101,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
   const artifact = useArtifactsStore((state) => state.getArtifactByMessageId(messageId))
   const lastStructuredOutput = useChatSessionStore((state) => state.lastStructuredOutput)
   const processedToolCallsRef = useRef<Set<string>>(new Set())
+  const processingToolCallsRef = useRef<Set<string>>(new Set())
 
   // Phase 1: Heuristic Detection (Real-time Preview)
   useEffect(() => {
@@ -114,7 +116,9 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
         if (processedToolCallsRef.current.has(target.toolCallId)) {
           return false
         }
-        processedToolCallsRef.current.add(target.toolCallId)
+        if (processingToolCallsRef.current.has(target.toolCallId)) {
+          return false
+        }
         return true
       })
 
@@ -125,6 +129,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
       let isCancelled = false
       const run = async () => {
         for (const target of pending) {
+          processingToolCallsRef.current.add(target.toolCallId)
           try {
             const fileContent = sessionId
               ? await readWorkspaceFile(sessionId, target.filePath)
@@ -167,6 +172,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
 
             setActiveArtifact(artifactId)
             console.log('[Artifact Detection] Updated artifact from tool call:', target.filePath)
+            processedToolCallsRef.current.add(target.toolCallId)
 
             if (sessionId) {
               const registryEntry: ArtifactRegistryEntry = {
@@ -180,6 +186,8 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             }
           } catch (error) {
             console.error('[Artifact Detection] Failed to update artifact:', error)
+          } finally {
+            processingToolCallsRef.current.delete(target.toolCallId)
           }
         }
       }
@@ -312,30 +320,55 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     const existing = getArtifactByFilePath(sessionId, primaryFilePath)
     console.log('[Artifact Detection] Found existing artifact:', existing ? `${existing.id} (messageId: ${existing.messageId})` : 'null')
 
-    if (!existing) {
-      console.warn('[Artifact Detection] No existing artifact found for filePath:', primaryFilePath)
-      console.log('[Artifact Detection] Current artifacts in store:', Array.from(useArtifactsStore.getState().artifacts.values()).map(a => ({ id: a.id, sourceFilePath: a.sourceFilePath, messageId: a.messageId })))
-      return
-    }
-
-    if (existing.messageId !== messageId) {
-      console.warn('[Artifact Detection] Artifact messageId mismatch:', { existing: existing.messageId, current: messageId })
-      return
-    }
+    const fileName = metadata.files[0]?.path?.split('/').pop() || metadata.files[0]?.path
 
     const run = async () => {
       try {
-        updateArtifact(existing.id, {
-          title: metadata.title,
-          description: metadata.description,
-          type: metadata.type,
-          content: primaryContent,
-          fileName: metadata.files[0]?.path,
-          isTemporary: false,
-        })
-        console.log('[Artifact Detection] Updated artifact metadata from structured output')
+        if (existing) {
+          // Update existing artifact (original Phase 2 behavior)
+          if (existing.messageId !== messageId) {
+            console.warn('[Artifact Detection] Artifact messageId mismatch:', { existing: existing.messageId, current: messageId })
+            return
+          }
 
-        const fileName = metadata.files[0]?.path?.split('/').pop() || metadata.files[0]?.path
+          updateArtifact(existing.id, {
+            title: metadata.title,
+            description: metadata.description,
+            type: metadata.type,
+            content: primaryContent,
+            fileName: metadata.files[0]?.path,
+            isTemporary: false,
+          })
+          setActiveArtifact(existing.id)
+          console.log('[Artifact Detection] Phase 2: Updated existing artifact metadata')
+        } else {
+          // NEW: Create artifact directly from structured output when no Phase 1 artifact exists
+          // This fixes the issue where enabling Structured Outputs causes artifacts to disappear
+          // because the model outputs JSON directly instead of calling Write/Edit tools
+          console.log('[Artifact Detection] Phase 2: No existing artifact, creating from structured output')
+
+          const artifactId = createArtifact({
+            sessionId,
+            sourceFilePath: primaryFilePath,
+            messageId,
+            type: metadata.type,
+            content: primaryContent,
+            title: metadata.title,
+            description: metadata.description,
+            fileName,
+            isTemporary: false,
+          })
+
+          setActiveArtifact(artifactId)
+          console.log('[Artifact Detection] Phase 2: Created new artifact:', artifactId)
+        }
+
+        const wrote = await writeWorkspaceFile(sessionId, primaryFilePath, primaryContent)
+        if (!wrote) {
+          console.warn('[Artifact Detection] Failed to write artifact to workspace:', primaryFilePath)
+        }
+
+        // Persist to registry
         await saveArtifactRegistryEntry(sessionId, {
           filePath: primaryFilePath,
           type: metadata.type,
@@ -346,7 +379,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
           updatedAt: Date.now(),
         })
       } catch (error) {
-        console.error('[Artifact Detection] Failed to persist metadata:', error)
+        console.error('[Artifact Detection] Failed to process structured output:', error)
       }
     }
 
@@ -357,6 +390,8 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     sessionId,
     getArtifactByFilePath,
     updateArtifact,
+    createArtifact,
+    setActiveArtifact,
   ])
 
   return artifact

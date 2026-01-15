@@ -198,6 +198,10 @@ You have access to THREE distinct locations:
    - Location: ${process.env.CLAUDE_HOME}/.claude/skills/
    - Use for: Loading user-defined custom skills
    - Automatically loaded via settingSources: ['project']
+   - READ-ONLY: Never Write/Edit here. The workspace .claude path is a symlink.
+   - To create a new skill: write files under the workspace (e.g., "my-skill/SKILL.md"),
+     then export/import via the Skill actions in the Artifact panel (or Workspace panel),
+     and do NOT write into .claude.
 
 TOOL USAGE GUIDELINES:
 
@@ -216,6 +220,7 @@ TOOL USAGE GUIDELINES:
 **Write/Edit Tools**:
 - ONLY write to workspace (relative paths)
 - NEVER write to /app (it's read-only)
+- NEVER write to .claude/ or ${process.env.CLAUDE_HOME}/.claude/skills/
 
 Example good file operations:
 - Read workspace: Read("src/App.tsx")
@@ -227,7 +232,8 @@ Example good file operations:
 Example bad operations:
 - Write("/app/src/file.ts", "...")  ← DON'T write to /app
 - glob("../outside/*.ts")            ← DON'T go outside boundaries
-- Read("/etc/passwd")                ← DON'T access system files`;
+- Read("/etc/passwd")                ← DON'T access system files
+- Write(".claude/skills/my-skill/SKILL.md", "...")  ← DON'T write to skills`;
 
     const stream = query({
       prompt,

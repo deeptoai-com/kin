@@ -66,3 +66,26 @@ export async function saveArtifactRegistryEntry(
     // Best-effort persistence only.
   }
 }
+
+export async function writeWorkspaceFile(
+  sessionId: string,
+  filePath: string,
+  content: string
+): Promise<boolean> {
+  try {
+    const formData = new FormData()
+    const fileName = filePath.split('/').pop() || 'artifact'
+    const blob = new Blob([content], { type: 'text/plain' })
+    formData.append('file', blob, fileName)
+    formData.append('filePath', filePath)
+
+    const response = await fetch(`/api/workspace/${sessionId}/files`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    return response.ok
+  } catch {
+    return false
+  }
+}
