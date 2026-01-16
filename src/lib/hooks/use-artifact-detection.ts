@@ -33,6 +33,8 @@ type ArtifactTarget = {
   type: ArtifactType
   fileName: string
   toolCallId: string
+  toolName: string
+  content?: string
 }
 
 const ARTIFACT_EXTENSIONS: Array<{ ext: string; type: ArtifactType }> = [
@@ -47,7 +49,12 @@ const ARTIFACT_EXTENSIONS: Array<{ ext: string; type: ArtifactType }> = [
   { ext: '.ts', type: 'react' },
 ]
 
-function resolveArtifactTarget(filePath: string, toolCallId: string): ArtifactTarget | null {
+function resolveArtifactTarget(
+  filePath: string,
+  toolCallId: string,
+  toolName: string,
+  content?: string
+): ArtifactTarget | null {
   const lower = filePath.toLowerCase()
   const match = ARTIFACT_EXTENSIONS.find((entry) => lower.endsWith(entry.ext))
   if (!match) return null
@@ -57,6 +64,8 @@ function resolveArtifactTarget(filePath: string, toolCallId: string): ArtifactTa
     type: match.type,
     fileName,
     toolCallId,
+    toolName,
+    content,
   }
 }
 
@@ -75,7 +84,11 @@ function extractArtifactTargets(
     const filePath = (part.args.file_path || part.args.path) as string | undefined
     if (!filePath) continue
 
-    const target = resolveArtifactTarget(filePath, part.toolCallId)
+    const content =
+      part.toolName === 'Write' && typeof part.args?.content === 'string'
+        ? (part.args.content as string)
+        : undefined
+    const target = resolveArtifactTarget(filePath, part.toolCallId, part.toolName, content)
     if (target) targets.push(target)
   }
 
@@ -135,7 +148,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
               ? await readWorkspaceFile(sessionId, target.filePath)
               : null
 
-            const contentToUse = fileContent
+            const contentToUse = fileContent ?? target.content
             if (!contentToUse) {
               console.warn('[Artifact Detection] Failed to read workspace file:', target.filePath)
               continue
