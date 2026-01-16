@@ -4,11 +4,27 @@
  * Handles MCP store metadata and per-user enablement.
  */
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseMcpMetadata, fileExists } from './metadata.js';
 
-const MCP_STORE_DIR = path.join(process.cwd(), 'src', 'mcp-store');
+function resolveMcpStoreDir() {
+  const envDir = process.env.CLAUDE_MCP_STORE_DIR || process.env.MCP_STORE_DIR;
+  if (envDir && envDir.trim()) {
+    return path.resolve(envDir);
+  }
+
+  const cwdCandidate = path.join(process.cwd(), 'src', 'mcp-store');
+  if (existsSync(cwdCandidate)) {
+    return cwdCandidate;
+  }
+
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(moduleDir, '..', '..', 'mcp-store');
+}
+
+const MCP_STORE_DIR = resolveMcpStoreDir();
 
 const ENABLED_FILENAME = 'enabled.json';
 
