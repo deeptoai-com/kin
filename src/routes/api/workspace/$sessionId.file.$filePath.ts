@@ -37,13 +37,34 @@ function validateFilePath(filePath: string): boolean {
   return true;
 }
 
+function resolveFilePathFromRequest(
+  request: Request,
+  sessionId: string,
+  fallback: string
+): string {
+  try {
+    const url = new URL(request.url);
+    const prefix = `/api/workspace/${sessionId}/file/`;
+    if (url.pathname.startsWith(prefix)) {
+      const remainder = url.pathname.slice(prefix.length);
+      if (remainder) {
+        return remainder.replace(/^\/+/, '');
+      }
+    }
+  } catch {
+    // Fall back to the route param if URL parsing fails.
+  }
+  return fallback;
+}
+
 export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')({
   server: {
     handlers: {
       // GET /api/workspace/:sessionId/file/:filePath - Get file content
       GET: async ({ request, params }) => {
         const user = await requireUser(request);
-        const { sessionId, filePath } = params;
+        const { sessionId, filePath: rawFilePath } = params;
+        const filePath = resolveFilePathFromRequest(request, sessionId, rawFilePath);
 
         // Validate file path
         if (!validateFilePath(filePath)) {
