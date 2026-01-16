@@ -87,8 +87,9 @@ COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
-# Non-root user (create before copying files that need correct ownership)
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+# Non-root user (Debian adduser/addgroup syntax)
+RUN addgroup --gid 1001 nodejs \
+  && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
 
 # Copy WebSocket server, worker, and production startup script
 COPY --from=builder --chown=nodejs:nodejs /app/ws-server.mjs ./ws-server.mjs
