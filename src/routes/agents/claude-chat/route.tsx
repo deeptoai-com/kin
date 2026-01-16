@@ -959,6 +959,10 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                 <div className="mt-3">
                   <ArtifactButton
                     type={artifact.type}
+                    title={artifact.title}
+                    fileName={artifact.fileName}
+                    filePath={artifact.sourceFilePath}
+                    isTemporary={artifact.isTemporary}
                     onClick={() => setActiveArtifact(artifact.id)}
                   />
                 </div>
