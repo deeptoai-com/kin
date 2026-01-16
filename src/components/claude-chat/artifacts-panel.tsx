@@ -73,6 +73,19 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
     return { root, skillName }
   }, [artifact])
 
+  const getFallbackSkillFile = () => {
+    if (!artifact || !skillInfo) return null
+    if (!artifact.content) return null
+    const rawPath =
+      artifact.sourceFilePath ||
+      artifact.fileName ||
+      (skillInfo.root ? `${skillInfo.root}/SKILL.md` : 'SKILL.md')
+    return {
+      path: normalizeWorkspacePath(rawPath),
+      content: artifact.content,
+    }
+  }
+
   const loadSkillFiles = async () => {
     if (!artifact || !skillInfo) return []
     if (!artifact.sessionId || artifact.sessionId === 'unknown') {
@@ -80,8 +93,13 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
       return []
     }
 
+    const fallbackFile = getFallbackSkillFile()
     const listResponse = await fetch(`/api/workspace/${artifact.sessionId}/files`)
     if (!listResponse.ok) {
+      if (fallbackFile) {
+        toast.message('工作区不可用，已仅打包 SKILL.md')
+        return [fallbackFile]
+      }
       throw new Error('Failed to list workspace files')
     }
     const { files } = await listResponse.json()
@@ -89,6 +107,11 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
     const candidates = (files as string[])
       .map((path) => normalizeWorkspacePath(path))
       .filter((path) => (prefix ? path.startsWith(prefix) : true))
+
+    if (candidates.length === 0 && fallbackFile) {
+      toast.message('未找到工作区文件，已仅打包 SKILL.md')
+      return [fallbackFile]
+    }
 
     const resolved = await Promise.all(
       candidates.map(async (path) => {
