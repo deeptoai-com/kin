@@ -33,7 +33,7 @@ import {
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
 import { ThumbsDown, ThumbsUp, FolderOpen, Plus } from 'lucide-react';
-import { useEffect, useState, useCallback, useRef, type ChangeEvent, type FC } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
@@ -518,6 +518,7 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
 
             {/* Render live messages from runtime */}
             <ThreadPrimitive.Messages components={{ Message: ChatMessage }} />
+            <ThreadArtifactCallout />
             <div aria-hidden="true" className="h-4" />
           </ThreadPrimitive.Viewport>
 
@@ -535,6 +536,50 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
     </div>
   );
 }
+
+const ThreadArtifactCallout: FC = () => {
+  const messages = useThread((state) => state.messages) as Array<{
+    id: string;
+    role?: string;
+  }>;
+  const artifacts = useArtifactsStore((state) => state.artifacts);
+  const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
+
+  const artifact = useMemo(() => {
+    if (!messages || messages.length === 0) return null;
+
+    const candidateMessageIds: string[] = [];
+    for (let i = messages.length - 1; i >= 0 && candidateMessageIds.length < 3; i -= 1) {
+      const msg = messages[i];
+      if (msg?.role === 'assistant') {
+        candidateMessageIds.push(msg.id);
+      }
+    }
+
+    if (candidateMessageIds.length === 0) return null;
+    const candidateSet = new Set(candidateMessageIds);
+    const matches = Array.from(artifacts.values()).filter(
+      (entry) => entry.messageId && candidateSet.has(entry.messageId)
+    );
+    if (matches.length === 0) return null;
+    return matches.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  }, [messages, artifacts]);
+
+  if (!artifact) return null;
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-2 pb-2">
+      <ArtifactButton
+        type={artifact.type}
+        title={artifact.title}
+        fileName={artifact.fileName}
+        filePath={artifact.sourceFilePath}
+        isTemporary={artifact.isTemporary}
+        onClick={() => setActiveArtifact(artifact.id)}
+      />
+    </div>
+  );
+};
 
 type ChatComposerProps = {
   permissionInfo: PermissionInfo;
@@ -864,8 +909,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const usageData = useChatSessionStore((state) => state.usageData);
 
   // Artifact detection - pass full content array to support both text and tool-call detection
-  const artifact = useArtifactDetection(message.id, messageContent);
-  const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
+  useArtifactDetection(message.id, messageContent);
 
   return (
     <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
@@ -954,19 +998,6 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                 return null;
               })}
 
-              {/* Artifact Button */}
-              {artifact && (
-                <div className="mt-3">
-                  <ArtifactButton
-                    type={artifact.type}
-                    title={artifact.title}
-                    fileName={artifact.fileName}
-                    filePath={artifact.sourceFilePath}
-                    isTemporary={artifact.isTemporary}
-                    onClick={() => setActiveArtifact(artifact.id)}
-                  />
-                </div>
-              )}
             </div>
           </div>
         </div>
