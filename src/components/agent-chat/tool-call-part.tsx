@@ -60,13 +60,34 @@ const formatArgs = (args: Record<string, unknown>, toolName: string): string => 
   if (name.includes('grep') && args.pattern) {
     return `"${args.pattern}"`;
   }
+  // TodoWrite: show count of todos
+  if (name === 'todowrite' && Array.isArray(args.todos)) {
+    const todos = args.todos as Array<{ content?: string; status?: string }>;
+    const pending = todos.filter(t => t.status === 'pending').length;
+    const inProgress = todos.filter(t => t.status === 'in_progress').length;
+    const completed = todos.filter(t => t.status === 'completed').length;
+    return `${todos.length} tasks (${completed}✓ ${inProgress}⟳ ${pending}○)`;
+  }
+  // Task/Agent: show description
+  if ((name === 'task' || name.includes('agent')) && args.description) {
+    const desc = String(args.description);
+    return desc.length > 50 ? desc.slice(0, 50) + '...' : desc;
+  }
 
   // Default: show first key-value or truncated JSON
   const keys = Object.keys(args);
   if (keys.length === 0) return '';
   if (keys.length === 1) {
-    const val = String(args[keys[0]]);
-    return val.length > 50 ? val.slice(0, 50) + '...' : val;
+    const val = args[keys[0]];
+    // Handle arrays and objects properly
+    if (Array.isArray(val)) {
+      return `${val.length} items`;
+    }
+    if (typeof val === 'object' && val !== null) {
+      return `{${Object.keys(val).length} fields}`;
+    }
+    const strVal = String(val);
+    return strVal.length > 50 ? strVal.slice(0, 50) + '...' : strVal;
   }
   return `${keys.length} params`;
 };
@@ -103,10 +124,30 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const autoExpandedRef = useRef(false);
-  const isRunning = status?.type === 'running';
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+
+  // A tool is running if message is running AND this tool has no result yet
+  const isRunning = status?.type === 'running' && result === undefined;
   const hasResult = result !== undefined;
   const style = getToolStyle(toolName);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+
+  // Track elapsed time when running
+  useEffect(() => {
+    if (isRunning) {
+      if (!startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+      const timer = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTimeRef.current!) / 1000));
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      startTimeRef.current = null;
+      setElapsedTime(0);
+    }
+  }, [isRunning]);
   const parsedResult = useMemo(() => {
     if (!result) return null;
     if (typeof result === 'string') {
@@ -139,7 +180,7 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   }, [hasFileOutputs]);
 
   return (
-    <div className={`my-2 overflow-hidden rounded-lg border border-[#e5e4df] dark:border-[#3a3938] ${style.bg}`}>
+    <div className={`my-2 overflow-hidden rounded-lg border ${isRunning ? 'border-[#ae5630] ring-1 ring-[#ae5630]/30' : 'border-[#e5e4df] dark:border-[#3a3938]'} ${style.bg}`}>
       {/* Header */}
       <button
         type="button"
@@ -166,9 +207,12 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
           </span>
         )}
 
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex items-center gap-1.5">
           {isRunning && (
-            <GearIcon className="h-4 w-4 animate-spin text-[#ae5630]" />
+            <>
+              <span className="text-[10px] text-[#ae5630]">{elapsedTime}s</span>
+              <GearIcon className="h-4 w-4 animate-spin text-[#ae5630]" />
+            </>
           )}
           {hasResult && !isError && (
             <CheckCircledIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
