@@ -2,11 +2,12 @@
  * Reasoning Part Component
  *
  * Displays Claude's thinking/reasoning process with a collapsible UI.
- * Uses Assistant UI's ReasoningMessagePartProps.
+ * Respects the global showThinking setting from chat session store.
  */
 
 import { ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import { useState, type FC } from 'react';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 
 interface ReasoningPartProps {
   text: string;
@@ -15,7 +16,13 @@ interface ReasoningPartProps {
 
 export const ReasoningPart: FC<ReasoningPartProps> = ({ text, status }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const showThinking = useChatSessionStore((state) => state.showThinking);
   const isRunning = status?.type === 'running';
+
+  // If showThinking is disabled, don't render anything
+  if (!showThinking) {
+    return null;
+  }
 
   // Truncate for preview
   const previewLength = 100;

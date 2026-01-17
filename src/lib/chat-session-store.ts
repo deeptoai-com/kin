@@ -111,6 +111,9 @@ interface ChatSessionState {
   // Structured output from last query (for artifact metadata)
   lastStructuredOutput: unknown | null;
 
+  // UI Settings: Whether to show thinking/reasoning blocks
+  showThinking: boolean;
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -122,6 +125,7 @@ interface ChatSessionState {
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
+  setShowThinking: (show: boolean) => void;
   clearMessages: () => void;
 
   // Load historical messages from SDK format
@@ -246,6 +250,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   usageData: null,
   sessionMetadata: null,
   lastStructuredOutput: null,
+  showThinking: true, // Default: show thinking/reasoning blocks
 
   setSessionId: (sessionId) => {
     set({ currentSessionId: sessionId });
@@ -302,6 +307,10 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setLastStructuredOutput: (data) => {
     set({ lastStructuredOutput: data });
+  },
+
+  setShowThinking: (show) => {
+    set({ showThinking: show });
   },
 
   clearMessages: () => {

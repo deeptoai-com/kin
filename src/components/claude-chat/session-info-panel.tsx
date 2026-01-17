@@ -7,11 +7,13 @@
  * - Built-in tools
  * - Working directory
  * - Session ID (with copy button)
+ * - UI Settings (showThinking toggle)
  */
 
-import { type FC, useState } from 'react';
+import { type FC, useState, useEffect } from 'react';
 import { Cross2Icon, CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { SkillsManagerPanel } from './skills-manager-panel';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 
 export interface SessionMetadata {
   session_id: string;
@@ -30,9 +32,40 @@ interface SessionInfoPanelProps {
   onClose: () => void;
 }
 
+// Helper to safely convert array items to strings
+// Handles cases where SDK returns objects like { name: string, status: string }
+const toStringArray = (arr: unknown[]): string[] => {
+  return arr.map((item) => {
+    if (typeof item === 'string') return item;
+    if (item && typeof item === 'object' && 'name' in item) {
+      return String((item as { name: unknown }).name);
+    }
+    return String(item);
+  });
+};
+
 export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) => {
   const [copied, setCopied] = useState(false);
   const [showSkillsManager, setShowSkillsManager] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're on the client before accessing the store (SSR safety)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Access store after mount to avoid SSR/hydration issues
+  const storeShowThinking = useChatSessionStore((state) => state.showThinking);
+  const storeSetShowThinking = useChatSessionStore((state) => state.setShowThinking);
+
+  // Use safe values - default to true before mount
+  const showThinking = mounted ? storeShowThinking : true;
+
+  const handleToggleThinking = (checked: boolean) => {
+    if (mounted && storeSetShowThinking) {
+      storeSetShowThinking(checked);
+    }
+  };
 
   const handleCopySessionId = async () => {
     try {
@@ -43,6 +76,12 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
       console.error('Failed to copy session ID:', error);
     }
   };
+
+  // Safely convert arrays to strings (SDK may return objects with {name, status})
+  const skills = toStringArray(data.skills || []);
+  const mcpServers = toStringArray(data.mcp_servers || []);
+  const agents = toStringArray(data.agents || []);
+  const tools = toStringArray(data.tools || []);
 
   return (
     <div className="absolute bottom-full right-0 z-50 mb-2 w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
@@ -65,7 +104,7 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <div className="font-medium text-[#1a1a18] dark:text-[#eee]">
-              📦 Skills {data.skills.length > 0 && `(${data.skills.length})`}
+              📦 Skills {skills.length > 0 && `(${skills.length})`}
             </div>
             <button
               onClick={() => setShowSkillsManager(!showSkillsManager)}
@@ -74,9 +113,9 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
               管理 Skills
             </button>
           </div>
-          {data.skills.length > 0 ? (
+          {skills.length > 0 ? (
             <ul className="space-y-1 pl-4">
-              {data.skills.map((skill) => (
+              {skills.map((skill) => (
                 <li key={skill} className="text-[#6b6a68] dark:text-[#9a9893]">
                   • {skill}
                 </li>
@@ -92,11 +131,11 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
         {/* MCP 服务器 */}
         <div>
           <div className="mb-1.5 font-medium text-[#1a1a18] dark:text-[#eee]">
-            🔌 MCP 服务器 {data.mcp_servers.length > 0 && `(${data.mcp_servers.length})`}
+            🔌 MCP 服务器 {mcpServers.length > 0 && `(${mcpServers.length})`}
           </div>
-          {data.mcp_servers.length > 0 ? (
+          {mcpServers.length > 0 ? (
             <ul className="space-y-1 pl-4">
-              {data.mcp_servers.map((server) => (
+              {mcpServers.map((server) => (
                 <li key={server} className="text-[#6b6a68] dark:text-[#9a9893]">
                   • {server}
                 </li>
@@ -115,24 +154,24 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
         {/* 子代理 */}
         <div>
           <div className="mb-1 font-medium text-[#1a1a18] dark:text-[#eee]">
-            🤖 子代理 ({data.agents.length})
+            🤖 子代理 ({agents.length})
           </div>
           <div className="pl-4 text-[#6b6a68] dark:text-[#9a9893]">
-            {data.agents.join(', ')}
+            {agents.join(', ')}
           </div>
         </div>
 
         {/* 内置工具 */}
         <div>
           <div className="mb-1 font-medium text-[#1a1a18] dark:text-[#eee]">
-            ⚡ 内置工具 ({data.tools.length})
+            ⚡ 内置工具 ({tools.length})
           </div>
           <details className="pl-4">
             <summary className="cursor-pointer text-[#8a8985] hover:text-[#1a1a18] dark:text-[#b8b5a9] dark:hover:text-[#eee]">
               <span className="inline-block transition group-open:rotate-90">▶</span> 点击查看全部
             </summary>
             <div className="mt-1 text-[#6b6a68] dark:text-[#9a9893]">
-              {data.tools.join(', ')}
+              {tools.join(', ')}
             </div>
           </details>
         </div>
@@ -170,6 +209,29 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
                 <CopyIcon width={12} height={12} />
               )}
             </button>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-[#e5e4df] dark:border-[#3a3938]" />
+
+        {/* UI Settings */}
+        <div>
+          <div className="mb-2 font-medium text-[#1a1a18] dark:text-[#eee]">
+            ⚙️ 显示设置
+          </div>
+          <div className="pl-4 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showThinking}
+                onChange={(e) => handleToggleThinking(e.target.checked)}
+                className="h-4 w-4 rounded border-[#e5e4df] text-[#ae5630] focus:ring-[#ae5630] dark:border-[#3a3938]"
+              />
+              <span className="text-[#6b6a68] dark:text-[#9a9893]">
+                显示 Thinking/Reasoning
+              </span>
+            </label>
           </div>
         </div>
       </div>
