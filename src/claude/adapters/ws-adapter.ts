@@ -81,7 +81,7 @@ type StreamEvent = {
 
 // WebSocket message types (matching ws-server.ts)
 type InboundMessage =
-  | { type: 'chat'; content: string; sessionId?: string; thinking?: string }
+  | { type: 'chat'; content: string; sessionId?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'ping' };
@@ -377,9 +377,8 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
       }
     };
 
-    const thinkingMode = typeof runConfig?.custom?.thinking === 'string'
-      ? runConfig.custom.thinking
-      : undefined;
+    // Note: thinkingMode is no longer sent to server - SDK's claude_code preset handles this automatically
+    // The showThinking toggle in UI only controls whether to display received reasoning content
 
     // 4. Send chat message
     try {
@@ -391,7 +390,6 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         type: 'chat',
         content: prompt,
         sessionId: currentSessionId,
-        ...(thinkingMode === 'extended' && { thinking: 'extended' }),
       });
       console.log('[WS Adapter] ✅ Message sent successfully');
     } catch (connectError) {

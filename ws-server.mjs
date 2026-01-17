@@ -54,14 +54,8 @@ const BYPASS_USER_IDS = new Set(
 
 const ALLOW_BASH_IN_BYPASS = process.env.CLAUDE_ALLOW_BASH === 'true';
 
-function resolveMaxThinkingTokens(thinkingMode) {
-  if (thinkingMode !== 'extended') {
-    return undefined;
-  }
-  const raw = process.env.CLAUDE_MAX_THINKING_TOKENS;
-  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
+// Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
+// No need to explicitly pass maxThinkingTokens - SDK uses sensible defaults
 
 function normalizePermissionMode(mode) {
   if (!mode) {
@@ -517,8 +511,9 @@ function sendMessage(ws, msg) {
 
 /**
  * Handle chat message using child process for user and session isolation
+ * Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
  */
-async function handleChat(ws, prompt, resumeSessionId, thinkingMode) {
+async function handleChat(ws, prompt, resumeSessionId) {
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -592,7 +587,6 @@ async function handleChat(ws, prompt, resumeSessionId, thinkingMode) {
     }
 
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
-    const maxThinkingTokens = resolveMaxThinkingTokens(thinkingMode);
     workerEnv.CLAUDE_PERMISSION_MODE = permissionMode;
 
     // Spawn worker process with user-specific CLAUDE_HOME
@@ -611,7 +605,6 @@ async function handleChat(ws, prompt, resumeSessionId, thinkingMode) {
       disallowedTools,
       allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
       userId: ws.userId,
-      ...(maxThinkingTokens ? { maxThinkingTokens } : {}),
     });
     worker.stdin.write(request);
     worker.stdin.end();
@@ -773,7 +766,7 @@ async function handleMessage(ws, msg) {
         });
         return;
       }
-      await handleChat(ws, message.content, message.sessionId, message.thinking);
+      await handleChat(ws, message.content, message.sessionId);
       break;
 
     case 'resume':

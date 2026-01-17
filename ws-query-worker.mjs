@@ -142,7 +142,6 @@ process.stdin.on('end', async () => {
       permissionMode: requestedPermissionMode,
       disallowedTools: requestedDisallowedTools,
       allowBash: requestedAllowBash = false,
-      maxThinkingTokens,
       userId,
     } = request;
     const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
@@ -318,7 +317,7 @@ Example bad operations:
         disallowedTools,
         ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
         ...(permissionMode !== 'bypassPermissions' && { canUseTool }),
-        ...(Number.isFinite(maxThinkingTokens) && { maxThinkingTokens }),
+        // Note: maxThinkingTokens is handled by SDK's claude_code preset automatically
         // Enable skills loading from project (.claude/skills in cwd)
         // Note: We use symlink to share user's skills across sessions, so only 'project' is needed
         settingSources: ['project'],
