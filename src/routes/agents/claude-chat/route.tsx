@@ -25,7 +25,6 @@ import {
   ClipboardIcon,
   Cross2Icon,
   InfoCircledIcon,
-  MixerHorizontalIcon,
   Pencil1Icon,
   PlusIcon,
   ReloadIcon,
@@ -603,7 +602,6 @@ const ChatComposer: FC<ChatComposerProps> = ({
   const api = useAssistantApi();
   const composerRunConfig = useComposer((state) => state.runConfig);
   const isRunning = useThread((state) => state.isRunning);
-  const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -614,17 +612,8 @@ const ChatComposer: FC<ChatComposerProps> = ({
     setUploadError(null);
   }, [currentSessionId]);
 
-  const handleToggleThinking = useCallback(() => {
-    setThinkingEnabled((prev) => {
-      const next = !prev;
-      const custom = {
-        ...(composerRunConfig?.custom ?? {}),
-        thinking: next ? 'extended' : 'default',
-      };
-      api.composer().setRunConfig({ custom });
-      return next;
-    });
-  }, [api, composerRunConfig]);
+  // Note: thinkingMode toggle removed - SDK's claude_code preset handles this automatically
+  // Use showThinking in session-info-panel to control UI display of reasoning content
 
   const handleClearInput = useCallback(async () => {
     setUploadedFiles([]);
@@ -715,16 +704,6 @@ const ChatComposer: FC<ChatComposerProps> = ({
             </button>
             <button
               type="button"
-              onClick={handleToggleThinking}
-              className={`flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] ${thinkingEnabled ? 'bg-accent text-foreground' : 'bg-transparent'}`}
-              aria-label="扩展推理能力"
-              aria-pressed={thinkingEnabled}
-              title={thinkingEnabled ? '已开启扩展推理' : '开启扩展推理'}
-            >
-              <MixerHorizontalIcon width={16} height={16} />
-            </button>
-            <button
-              type="button"
               onClick={handleClearInput}
               className="flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]"
               aria-label="清空输入"
@@ -747,12 +726,6 @@ const ChatComposer: FC<ChatComposerProps> = ({
             >
               <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
             </div>
-            <span
-              className={`text-[11px] font-medium ${thinkingEnabled ? 'text-emerald-600' : 'text-muted-foreground'}`}
-              title="推理能力状态"
-            >
-              {thinkingEnabled ? '推理：开' : '推理：关'}
-            </span>
 
             {/* Workspace Toggle Button */}
             <div className="relative">
