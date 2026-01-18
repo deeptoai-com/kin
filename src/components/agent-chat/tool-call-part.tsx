@@ -3,11 +3,13 @@
  *
  * Displays tool invocations with their arguments and results.
  * Provides expandable details and status indicators.
+ * Includes Diff view for Edit/Write tools.
  */
 
 import { CheckCircledIcon, ChevronDownIcon, ChevronRightIcon, CrossCircledIcon, GearIcon } from '@radix-ui/react-icons';
 import { useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { useChatSessionStore } from '~/lib/chat-session-store';
+import { DiffView } from './diff-view';
 
 interface ToolCallPartProps {
   toolCallId: string;
@@ -226,15 +228,62 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
       {/* Expanded Details */}
       {isExpanded && (
         <div className="space-y-2 border-t border-[#e5e4df] px-3 py-2 dark:border-[#3a3938]">
-          {/* Arguments */}
-          <div>
-            <div className="mb-1 text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
-              Arguments
+          {/* Diff View for Edit tool */}
+          {toolName.toLowerCase() === 'edit' && args.old_string !== undefined && args.new_string !== undefined && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
+                  Changes
+                </span>
+                {args.file_path ? (
+                  <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400">
+                    {String(args.file_path)}
+                  </span>
+                ) : null}
+              </div>
+              <DiffView
+                oldString={String(args.old_string)}
+                newString={String(args.new_string)}
+                fileName={args.file_path ? String(args.file_path) : undefined}
+              />
             </div>
-            <pre className="overflow-x-auto rounded bg-[#1a1a18] p-2 font-mono text-xs text-[#eee] dark:bg-[#1f1e1b]">
-              {argsText || JSON.stringify(args, null, 2)}
-            </pre>
-          </div>
+          )}
+
+          {/* Diff View for Write tool (new file) */}
+          {toolName.toLowerCase() === 'write' && args.content !== undefined && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
+                  New File Content
+                </span>
+                {args.file_path ? (
+                  <span className="font-mono text-[10px] text-green-600 dark:text-green-400">
+                    {String(args.file_path)}
+                  </span>
+                ) : null}
+              </div>
+              <DiffView
+                oldString=""
+                newString={String(args.content)}
+                fileName={args.file_path ? String(args.file_path) : undefined}
+              />
+            </div>
+          )}
+
+          {/* Arguments (hide raw JSON for Edit/Write tools that have diff view) */}
+          {!(
+            (toolName.toLowerCase() === 'edit' && args.old_string !== undefined && args.new_string !== undefined) ||
+            (toolName.toLowerCase() === 'write' && args.content !== undefined)
+          ) && (
+            <div>
+              <div className="mb-1 text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
+                Arguments
+              </div>
+              <pre className="overflow-x-auto rounded bg-[#1a1a18] p-2 font-mono text-xs text-[#eee] dark:bg-[#1f1e1b]">
+                {argsText || JSON.stringify(args, null, 2)}
+              </pre>
+            </div>
+          )}
 
           {/* Result */}
           {hasResult && (
