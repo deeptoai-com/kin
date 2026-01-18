@@ -43,9 +43,12 @@ import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
 import { ReasoningPart } from '~/components/agent-chat/reasoning-part';
 import { ToolCallPart } from '~/components/agent-chat/tool-call-part';
+import { InlineStatus, ToolbarStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
+import { McpStatusIndicator } from '~/components/claude-chat/mcp-status-indicator';
 import { KnowledgeBasePanel } from '~/components/claude-chat/knowledge-base-panel';
 import { PermissionBadge, type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
+import { useBeforeUnloadProtection, useDraftAutoSave, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile } from '~/lib/artifacts/artifact-registry';
 import { getPermissionInfo } from '~/server/permissions.server';
@@ -142,6 +145,21 @@ function RouteComponent() {
     });
     return unsubscribe;
   }, [setSessionId]);
+
+  // Handle WebSocket reconnection - resume current session if any
+  useReconnectionRecovery(useCallback(() => {
+    const sessionToResume = currentSessionId;
+    if (sessionToResume) {
+      console.log('[Route] WebSocket reconnected, resuming session:', sessionToResume);
+      // Clear messages and reload from server
+      clearMessages();
+      resumeSession(sessionToResume).catch((error) => {
+        console.error('[Route] Failed to resume session after reconnection:', error);
+      });
+    } else {
+      console.log('[Route] WebSocket reconnected, no active session to resume');
+    }
+  }, [currentSessionId, clearMessages]));
 
   // Hydrate artifacts from registry when session changes
   useEffect(() => {
@@ -490,6 +508,9 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
   const [showWorkspace, setShowWorkspace] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
 
+  // Session protection: warn before closing page during active query
+  useBeforeUnloadProtection();
+
   return (
     <div className="flex h-full flex-col">
       <AssistantRuntimeProvider runtime={runtime}>
@@ -600,12 +621,39 @@ const ChatComposer: FC<ChatComposerProps> = ({
   sessionMetadata,
 }) => {
   const api = useAssistantApi();
-  const composerRunConfig = useComposer((state) => state.runConfig);
+  const composerText = useComposer((state) => state.text);
+  const composerSetText = useComposer((state) => state.setText);
   const isRunning = useThread((state) => state.isRunning);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get agent status from store for ToolbarStatus
+  const agentStatus = useChatSessionStore((state) => state.agentStatus);
+  const currentToolName = useChatSessionStore((state) => state.currentToolName);
+  const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
+
+  // Draft auto-save: persist unsent input to localStorage
+  const { saveDraft, clearDraft } = useDraftAutoSave(
+    useCallback(() => composerText, [composerText]),
+    useCallback((text: string) => composerSetText(text), [composerSetText])
+  );
+
+  // Save draft whenever text changes
+  useEffect(() => {
+    saveDraft(composerText);
+  }, [composerText, saveDraft]);
+
+  // Clear draft when query starts (message sent successfully)
+  const prevIsRunning = useRef(isRunning);
+  useEffect(() => {
+    // Detect transition from not running to running (query started)
+    if (isRunning && !prevIsRunning.current) {
+      clearDraft();
+    }
+    prevIsRunning.current = isRunning;
+  }, [isRunning, clearDraft]);
 
   useEffect(() => {
     setUploadedFiles([]);
@@ -720,83 +768,98 @@ const ChatComposer: FC<ChatComposerProps> = ({
             />
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
-              title="当前模型"
-            >
-              <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
-            </div>
-
-            {/* Workspace Toggle Button */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowWorkspace(!showWorkspace)}
-                className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="切换工作空间"
-                title="知识库 / 工作区"
-                disabled={!currentSessionId}
+            {/* Model indicator - only show when not running */}
+            {!isRunning && (
+              <div
+                className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
+                title="当前模型"
               >
-                <FolderOpen width={16} height={16} />
-              </button>
+                <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
+              </div>
+            )}
 
-              {/* Workspace Panel */}
-              {showWorkspace && currentSessionId && (
-                <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
-                  {/* Header */}
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
-                      📚 Knowledge Base
-                    </h3>
-                    <button
-                      onClick={() => setShowWorkspace(false)}
-                      className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
-                      aria-label="关闭"
-                    >
-                      <Cross2Icon width={14} height={14} />
-                    </button>
+            {/* Workspace Toggle Button - only show when not running */}
+            {!isRunning && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowWorkspace(!showWorkspace)}
+                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="切换工作空间"
+                  title="知识库 / 工作区"
+                  disabled={!currentSessionId}
+                >
+                  <FolderOpen width={16} height={16} />
+                </button>
+
+                {/* Workspace Panel */}
+                {showWorkspace && currentSessionId && (
+                  <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
+                    {/* Header */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
+                        📚 Knowledge Base
+                      </h3>
+                      <button
+                        onClick={() => setShowWorkspace(false)}
+                        className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
+                        aria-label="关闭"
+                      >
+                        <Cross2Icon width={14} height={14} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      <KnowledgeBasePanel sessionId={currentSessionId} />
+                    </div>
                   </div>
+                )}
+              </div>
+            )}
 
-                  <div className="space-y-3 text-xs">
-                    <KnowledgeBasePanel sessionId={currentSessionId} />
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Session Info Button - only show when not running */}
+            {!isRunning && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowSessionInfo(!showSessionInfo)}
+                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="查看会话信息"
+                  title="会话信息"
+                  disabled={!sessionMetadata}
+                >
+                  <InfoCircledIcon width={16} height={16} />
+                </button>
 
-            {/* Session Info Button */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowSessionInfo(!showSessionInfo)}
-                className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="查看会话信息"
-                title="会话信息"
-                disabled={!sessionMetadata}
-              >
-                <InfoCircledIcon width={16} height={16} />
-              </button>
+                {/* Session Info Panel */}
+                {showSessionInfo && sessionMetadata && (
+                  <SessionInfoPanel
+                    data={sessionMetadata}
+                    onClose={() => setShowSessionInfo(false)}
+                  />
+                )}
+              </div>
+            )}
 
-              {/* Session Info Panel */}
-              {showSessionInfo && sessionMetadata && (
-                <SessionInfoPanel
-                  data={sessionMetadata}
-                  onClose={() => setShowSessionInfo(false)}
-                />
-              )}
-            </div>
+            {/* Permission Badge - only show when not running */}
+            {!isRunning && (
+              <PermissionBadge permissionInfo={permissionInfo} />
+            )}
 
-            {isRunning ? (
-              <button
-                type="button"
-                onClick={() => api.composer().cancel()}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 active:scale-95"
-                aria-label="停止生成"
-                title="停止生成"
-              >
-                <Cross2Icon width={16} height={16} />
-              </button>
-            ) : (
+            {/* ToolbarStatus - show when running */}
+            {isRunning && (
+              <ToolbarStatus
+                status={displayStatus}
+                toolName={currentToolName}
+                onAbort={() => api.composer().cancel()}
+              />
+            )}
+
+            {/* MCP Status Indicator */}
+            <McpStatusIndicator className="ml-2" />
+
+            {/* Send button - only show when not running */}
+            {!isRunning && (
               <ComposerPrimitive.Send
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
                 title="发送消息"
@@ -809,7 +872,6 @@ const ChatComposer: FC<ChatComposerProps> = ({
         </div>
       </div>
       <ComposerAttachmentsSection
-        permissionInfo={permissionInfo}
         uploadedFiles={uploadedFiles}
         uploadError={uploadError}
         isUploading={isUploading}
@@ -819,19 +881,19 @@ const ChatComposer: FC<ChatComposerProps> = ({
 };
 
 const ComposerAttachmentsSection: FC<{
-  permissionInfo: PermissionInfo;
   uploadedFiles: UploadedWorkspaceFile[];
   uploadError: string | null;
   isUploading: boolean;
-}> = ({ permissionInfo, uploadedFiles, uploadError, isUploading }) => {
-  // Note: Attachments display is simplified - the full implementation would require
-  // using useComposer() hook to check attachment state
-
+}> = ({ uploadedFiles, uploadError, isUploading }) => {
   const hasUploads = uploadedFiles.length > 0;
+  const hasContent = hasUploads || uploadError || isUploading;
+
+  // Only render if there's something to show
+  if (!hasContent) return null;
 
   return (
     <div className="relative z-40 overflow-visible rounded-b-2xl">
-      <div className="overflow-x-auto overflow-y-visible rounded-b-2xl border border-t bg-muted p-3.5">
+      <div className="overflow-x-auto overflow-y-visible rounded-b-2xl border border-t bg-muted px-3.5 py-2">
         <div className="relative z-50 flex flex-wrap items-center gap-3" data-attachments="true">
           <ComposerPrimitive.Attachments components={{ Attachment: ClaudeAttachment }} />
           {hasUploads && (
@@ -847,8 +909,6 @@ const ComposerAttachmentsSection: FC<{
               ))}
             </div>
           )}
-          {/* Permission Badge */}
-          <PermissionBadge permissionInfo={permissionInfo} />
         </div>
         {(uploadError || isUploading) && (
           <div className="mt-2 text-xs">
@@ -883,28 +943,8 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const agentStatus = useChatSessionStore((state) => state.agentStatus);
   const currentToolName = useChatSessionStore((state) => state.currentToolName);
 
-  // Compute status display text based on agentStatus
-  const getStatusDisplay = () => {
-    if (!isRunning) return null;
-
-    switch (agentStatus) {
-      case 'reasoning':
-        return { icon: '🧠', text: 'Reasoning...', color: 'text-purple-500' };
-      case 'toolUse':
-        return {
-          icon: '🔧',
-          text: currentToolName ? `Running ${currentToolName}...` : 'Running tool...',
-          color: 'text-amber-500'
-        };
-      case 'streaming':
-        return { icon: '✨', text: 'Generating...', color: 'text-green-500' };
-      case 'thinking':
-      default:
-        return { icon: '💭', text: 'Thinking...', color: 'text-blue-500' };
-    }
-  };
-
-  const statusDisplay = getStatusDisplay();
+  // Determine display status for InlineStatus component
+  const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
 
   // Artifact detection - pass full content array to support both text and tool-call detection
   useArtifactDetection(message.id, messageContent);
@@ -916,19 +956,15 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
           <div className="grid grid-cols-1 gap-2.5">
             <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
               {/* Status indicator - shows different states based on agentStatus */}
-              {statusDisplay && !hasContent && (
-                <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="text-sm">{statusDisplay.icon}</span>
-                  <span className={statusDisplay.color}>{statusDisplay.text}</span>
+              {isRunning && !hasContent && (
+                <div className="mb-3">
+                  <InlineStatus status={displayStatus} toolName={currentToolName} />
                 </div>
               )}
 
               {/* Inline status when content exists but still running */}
-              {statusDisplay && hasContent && (
-                <div className="mb-2 flex items-center gap-2 text-xs">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#ae5630]" />
-                  <span className={`${statusDisplay.color} opacity-80`}>{statusDisplay.text}</span>
-                </div>
+              {isRunning && hasContent && (
+                <InlineStatus status={displayStatus} toolName={currentToolName} />
               )}
 
               {/* Manual rendering to support custom tool-call type */}

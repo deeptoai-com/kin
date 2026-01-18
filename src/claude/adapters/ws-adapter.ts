@@ -21,6 +21,14 @@ type SDKContentBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: unknown };
 
+// MCP Server status from SDK system.init event
+type McpServerStatus = {
+  name: string;
+  status: 'connected' | 'failed' | 'pending';
+  error?: string;
+  tool_count?: number;
+};
+
 // Local SDKMessage type for this adapter (content is always an array from streaming)
 type SDKMessage = {
   type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event';
@@ -52,7 +60,7 @@ type SDKMessage = {
   // System.init event fields for session metadata
   model?: string;
   skills?: string[];
-  mcp_servers?: string[];
+  mcp_servers?: string[] | McpServerStatus[];
   agents?: string[];
   tools?: string[];
   slash_commands?: string[];
@@ -231,12 +239,24 @@ function getWebSocket(): Promise<WebSocket> {
       console.log('[WS Adapter] Disconnected:', event.code, event.reason);
       ws = null;
 
+      // Dispatch disconnection event for session protection
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ws-disconnected'));
+      }
+
       // Auto-reconnect if not intentionally closed
       if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
         console.log(`[WS Adapter] Reconnecting (attempt ${reconnectAttempts})...`);
         setTimeout(() => {
-          getWebSocket().catch(() => {});
+          getWebSocket()
+            .then(() => {
+              // Dispatch reconnection event for session protection
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('ws-reconnected'));
+              }
+            })
+            .catch(() => {});
         }, RECONNECT_DELAY_MS * reconnectAttempts);
       }
     };
