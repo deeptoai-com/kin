@@ -232,13 +232,16 @@ process.stdin.on('end', async () => {
       tools: [pythonRunTool],
     });
 
-    const mcpServers = await resolveMcpServerConfigs({
+    const { mcpServers, allowedTools } = await resolveMcpServerConfigs({
       userId,
       userHome: process.env.CLAUDE_HOME,
       sdkServers: {
         python: pythonMcpServer,
       },
     });
+
+    console.error(`[Worker] MCP Servers: ${Object.keys(mcpServers).join(', ') || '(none)'}`);
+    console.error(`[Worker] Allowed Tools: ${allowedTools.length} entries`);
 
     // System prompt extension to guide Claude to use relative paths for file operations
     // Using preset form with 'append' to extend Claude Code's default system prompt
@@ -323,7 +326,14 @@ Example bad operations:
         settingSources: ['project'],
         // Use claude_code preset to get all default tools (which includes Skill tool)
         tools: { type: 'preset', preset: 'claude_code' },
+        // MCP configuration
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+        // allowedTools: control which MCP tools can be used
+        ...(allowedTools.length > 0 && { allowedTools }),
+        // Enable Tool Search when many MCP tools are available (auto:10 = when tools > 10% of context)
+        env: {
+          ENABLE_TOOL_SEARCH: 'auto:10',
+        },
         // Add system prompt to guide file path behavior
         // IMPORTANT: Use 'systemPrompt' (not 'systemMessage') with preset + append
         systemPrompt: {

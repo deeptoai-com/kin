@@ -89,6 +89,26 @@ function extractMcpMetadataFromMarkdown(content, fallbackName) {
         const defaultEnabled = Boolean(frontmatter.defaultEnabled);
         const mcp = normalizeMcpConfig(frontmatter.mcp, fallbackName);
 
+        // Parse allowedTools (array of tool name patterns)
+        let allowedTools = null;
+        if (Array.isArray(frontmatter.allowedTools)) {
+          allowedTools = frontmatter.allowedTools.filter(t => typeof t === 'string');
+        }
+
+        // Parse credentials (array of credential field definitions)
+        let credentials = null;
+        if (Array.isArray(frontmatter.credentials)) {
+          credentials = frontmatter.credentials
+            .map(c => ({
+              key: typeof c.key === 'string' ? c.key : null,
+              label: typeof c.label === 'string' ? c.label : c.key || '',
+              description: typeof c.description === 'string' ? c.description : null,
+              required: Boolean(c.required),
+              sensitive: Boolean(c.sensitive ?? true),
+            }))
+            .filter(c => c.key !== null);
+        }
+
         return {
           slug: fallbackName,
           name,
@@ -96,6 +116,8 @@ function extractMcpMetadataFromMarkdown(content, fallbackName) {
           category,
           defaultEnabled,
           mcp,
+          allowedTools,
+          credentials,
         };
       }
     } catch (error) {
@@ -126,5 +148,7 @@ function extractMcpMetadataFromMarkdown(content, fallbackName) {
     category: 'general',
     defaultEnabled: false,
     mcp: null,
+    allowedTools: null,
+    credentials: null,
   };
 }

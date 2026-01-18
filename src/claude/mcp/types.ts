@@ -14,6 +14,14 @@ export type McpConfig = {
   headers?: Record<string, string>;
 };
 
+export type CredentialField = {
+  key: string;
+  label: string;
+  description: string | null;
+  required: boolean;
+  sensitive: boolean;
+};
+
 export type McpInfo = {
   slug: string;
   name: string;
@@ -21,10 +29,12 @@ export type McpInfo = {
   category: McpCategory | string;
   defaultEnabled?: boolean;
   mcp: McpConfig | null;
+  allowedTools?: string[] | null;
+  credentials?: CredentialField[] | null;
 };
 
 export type ExtendedMcpInfo = McpInfo & {
-  store: 'official' | 'user';
+  store: 'official' | 'system' | 'user';
   enabled: boolean;
 };
 
@@ -45,4 +55,44 @@ export type McpDetail = {
   description: string | null;
   category: string;
   files: McpFile[];
+};
+
+/**
+ * Input for adding a custom MCP
+ */
+export type AddCustomMcpInput = {
+  /** Unique slug identifier */
+  slug: string;
+  /** Display name */
+  name: string;
+  /** Description */
+  description?: string | null;
+  /** Category */
+  category?: McpCategory | string;
+  /** MCP connection configuration */
+  mcp: McpConfig;
+  /** Allowed tools (optional, defaults to all) */
+  allowedTools?: string[] | null;
+  /** Credential field definitions */
+  credentials?: CredentialField[] | null;
+};
+
+/**
+ * Result of MCP store listing with system and user custom MCPs
+ */
+export type McpStoreResult = {
+  official: ExtendedMcpInfo[];
+  system: ExtendedMcpInfo[];
+  user: ExtendedMcpInfo[];
+};
+
+/**
+ * npm package info for auto-detection
+ */
+export type NpmPackageInfo = {
+  name: string;
+  version: string;
+  description?: string;
+  bin?: Record<string, string>;
+  keywords?: string[];
 };

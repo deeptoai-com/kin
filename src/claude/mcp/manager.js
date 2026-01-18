@@ -27,6 +27,8 @@ function resolveMcpStoreDir() {
 const MCP_STORE_DIR = resolveMcpStoreDir();
 
 const ENABLED_FILENAME = 'enabled.json';
+const CREDENTIALS_FILENAME = 'credentials.json';
+const OVERRIDES_FILENAME = 'overrides.json';
 
 const DEFAULT_BLOCKED_NAMES = new Set(['.ds_store']);
 
@@ -75,6 +77,142 @@ async function writeEnabledList(userHome, enabled) {
   await fs.mkdir(root, { recursive: true });
   const enabledPath = path.join(root, ENABLED_FILENAME);
   await fs.writeFile(enabledPath, JSON.stringify(enabled, null, 2));
+}
+
+// ============================================================================
+// Credentials management
+// ============================================================================
+
+/**
+ * Read user credentials for all MCPs
+ */
+async function readUserCredentials(userHome) {
+  const credPath = path.join(getUserMcpRoot(userHome), CREDENTIALS_FILENAME);
+  try {
+    const raw = await fs.readFile(credPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return {};
+    }
+    console.warn('[MCP] Failed to read credentials:', error);
+    return {};
+  }
+}
+
+/**
+ * Write user credentials
+ */
+async function writeUserCredentials(userHome, credentials) {
+  const root = getUserMcpRoot(userHome);
+  await fs.mkdir(root, { recursive: true });
+  const credPath = path.join(root, CREDENTIALS_FILENAME);
+  await fs.writeFile(credPath, JSON.stringify(credentials, null, 2));
+}
+
+/**
+ * Get credentials for a specific MCP
+ */
+export async function getMcpCredentials(userId, slug) {
+  const userHome = getUserClaudeHome(userId);
+  const allCredentials = await readUserCredentials(userHome);
+  const normalized = normalizeMcpName(slug);
+  return allCredentials[normalized] || {};
+}
+
+/**
+ * Set credentials for a specific MCP
+ */
+export async function setMcpCredentials(userId, slug, credentials) {
+  const userHome = getUserClaudeHome(userId);
+  const allCredentials = await readUserCredentials(userHome);
+  const normalized = normalizeMcpName(slug);
+  allCredentials[normalized] = credentials;
+  await writeUserCredentials(userHome, allCredentials);
+}
+
+// ============================================================================
+// User overrides (allowedTools)
+// ============================================================================
+
+/**
+ * Read user overrides for all MCPs
+ */
+async function readUserOverrides(userHome) {
+  const overridesPath = path.join(getUserMcpRoot(userHome), OVERRIDES_FILENAME);
+  try {
+    const raw = await fs.readFile(overridesPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return {};
+    }
+    console.warn('[MCP] Failed to read overrides:', error);
+    return {};
+  }
+}
+
+/**
+ * Write user overrides
+ */
+async function writeUserOverrides(userHome, overrides) {
+  const root = getUserMcpRoot(userHome);
+  await fs.mkdir(root, { recursive: true });
+  const overridesPath = path.join(root, OVERRIDES_FILENAME);
+  await fs.writeFile(overridesPath, JSON.stringify(overrides, null, 2));
+}
+
+/**
+ * Get user's allowedTools override for a specific MCP
+ */
+export async function getMcpAllowedToolsOverride(userId, slug) {
+  const userHome = getUserClaudeHome(userId);
+  const allOverrides = await readUserOverrides(userHome);
+  const normalized = normalizeMcpName(slug);
+  return allOverrides[normalized]?.allowedTools || null;
+}
+
+/**
+ * Set user's allowedTools override for a specific MCP
+ */
+export async function setMcpAllowedToolsOverride(userId, slug, allowedTools) {
+  const userHome = getUserClaudeHome(userId);
+  const allOverrides = await readUserOverrides(userHome);
+  const normalized = normalizeMcpName(slug);
+
+  if (!allOverrides[normalized]) {
+    allOverrides[normalized] = {};
+  }
+
+  if (allowedTools === null) {
+    delete allOverrides[normalized].allowedTools;
+  } else {
+    allOverrides[normalized].allowedTools = allowedTools;
+  }
+
+  await writeUserOverrides(userHome, allOverrides);
+}
+
+// ============================================================================
+// Environment variable template resolution
+// ============================================================================
+
+/**
+ * Resolve environment variable templates like ${VAR_NAME}
+ */
+function resolveEnvTemplate(template, credentials) {
+  if (!template || typeof template !== 'object') return {};
+
+  const result = {};
+  for (const [key, value] of Object.entries(template)) {
+    if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+      const credKey = value.slice(2, -1);
+      result[key] = credentials[credKey] || '';
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 /**
@@ -152,16 +290,24 @@ export async function disableMcpServer(userId, slug) {
 
 /**
  * Resolve enabled MCP server configs for the SDK
+ *
+ * Returns:
+ * - mcpServers: config map for SDK query()
+ * - allowedTools: merged list of allowed MCP tools
  */
 export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {} } = {}) {
   const resolvedHome = userHome || (userId ? getUserClaudeHome(userId) : null);
-  if (!resolvedHome) return {};
+  if (!resolvedHome) return { mcpServers: {}, allowedTools: [] };
 
   const enabled = await getUserEnabledMcpServers(userId, { userHome: resolvedHome });
-  if (enabled.length === 0) return {};
+  if (enabled.length === 0) return { mcpServers: {}, allowedTools: [] };
 
   const store = await getMcpStore();
+  const allCredentials = await readUserCredentials(resolvedHome);
+  const allOverrides = await readUserOverrides(resolvedHome);
+
   const configMap = {};
+  const allowedTools = [];
 
   for (const entry of store) {
     if (!entry?.mcp) continue;
@@ -169,6 +315,18 @@ export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {
 
     const mcpConfig = entry.mcp;
     const name = mcpConfig.name || entry.slug;
+    const credentials = allCredentials[entry.slug] || {};
+
+    // Collect allowedTools: user override > MCP.md definition > default wildcard
+    const userOverride = allOverrides[entry.slug]?.allowedTools;
+    if (userOverride && Array.isArray(userOverride)) {
+      allowedTools.push(...userOverride);
+    } else if (entry.allowedTools && Array.isArray(entry.allowedTools)) {
+      allowedTools.push(...entry.allowedTools);
+    } else {
+      // Default: allow all tools for this MCP
+      allowedTools.push(`mcp__${name}__*`);
+    }
 
     if (mcpConfig.type === 'sdk') {
       const sdkServer = sdkServers[name];
@@ -181,25 +339,30 @@ export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {
     }
 
     if (mcpConfig.type === 'stdio') {
+      // Resolve env templates with user credentials
+      const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials);
+
       configMap[name] = {
-        type: 'stdio',
         command: mcpConfig.command,
         ...(mcpConfig.args ? { args: mcpConfig.args } : {}),
-        ...(mcpConfig.env ? { env: mcpConfig.env } : {}),
+        ...(Object.keys(resolvedEnv).length > 0 ? { env: resolvedEnv } : {}),
       };
       continue;
     }
 
     if (mcpConfig.type === 'sse' || mcpConfig.type === 'http') {
+      // Resolve header templates with user credentials
+      const resolvedHeaders = resolveEnvTemplate(mcpConfig.headers, credentials);
+
       configMap[name] = {
         type: mcpConfig.type,
         url: mcpConfig.url,
-        ...(mcpConfig.headers ? { headers: mcpConfig.headers } : {}),
+        ...(Object.keys(resolvedHeaders).length > 0 ? { headers: resolvedHeaders } : {}),
       };
     }
   }
 
-  return configMap;
+  return { mcpServers: configMap, allowedTools };
 }
 
 // ============================================================================
@@ -314,4 +477,325 @@ export async function getMcpDetail(slug) {
     category: info.category,
     files,
   };
+}
+
+// ============================================================================
+// Custom MCP Management
+// ============================================================================
+
+const CUSTOM_MCP_DIR_NAME = 'custom';
+const SYSTEM_MCP_DIR_NAME = '_system';
+
+/**
+ * Get user's custom MCP directory
+ */
+export function getUserCustomMcpDir(userId) {
+  const userHome = getUserClaudeHome(userId);
+  return path.join(userHome, '.claude', 'mcp', CUSTOM_MCP_DIR_NAME);
+}
+
+/**
+ * Get system MCP directory (shared across all users)
+ */
+export function getSystemMcpDir() {
+  const envRoot = process.env.CLAUDE_SESSIONS_ROOT;
+  const sessionsRoot = (envRoot && envRoot.trim())
+    ? envRoot
+    : path.join(process.cwd(), 'user-data');
+  return path.join(sessionsRoot, SYSTEM_MCP_DIR_NAME, 'mcp');
+}
+
+/**
+ * Get all system MCPs (visible to all users)
+ */
+export async function getSystemMcps() {
+  const systemDir = getSystemMcpDir();
+
+  try {
+    const entries = await fs.readdir(systemDir, { withFileTypes: true });
+    const mcps = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .filter((entry) => !DEFAULT_BLOCKED_NAMES.has(entry.name.toLowerCase()))
+        .map(async (entry) => {
+          const mcpPath = path.join(systemDir, entry.name);
+          const slug = normalizeMcpName(entry.name);
+          const info = await parseMcpMetadata(mcpPath, slug);
+          if (info) {
+            return { ...info, isSystem: true, store: 'system' };
+          }
+          return null;
+        })
+    );
+
+    return mcps.filter(Boolean);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return [];
+    }
+    console.warn('[MCP] Failed to read system MCPs:', error);
+    return [];
+  }
+}
+
+/**
+ * Get all custom MCPs for a user
+ */
+export async function getUserCustomMcps(userId) {
+  const customDir = getUserCustomMcpDir(userId);
+
+  try {
+    const entries = await fs.readdir(customDir, { withFileTypes: true });
+    const mcps = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .filter((entry) => !DEFAULT_BLOCKED_NAMES.has(entry.name.toLowerCase()))
+        .map(async (entry) => {
+          const mcpPath = path.join(customDir, entry.name);
+          const slug = normalizeMcpName(entry.name);
+          const info = await parseMcpMetadata(mcpPath, slug);
+          if (info) {
+            return { ...info, isCustom: true };
+          }
+          return null;
+        })
+    );
+
+    return mcps.filter(Boolean);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return [];
+    }
+    console.warn('[MCP] Failed to read custom MCPs:', error);
+    return [];
+  }
+}
+
+/**
+ * Save a custom MCP configuration
+ */
+export async function saveCustomMcp(userId, mcpData) {
+  const slug = normalizeMcpName(mcpData.slug);
+  const customDir = getUserCustomMcpDir(userId);
+  const mcpDir = path.join(customDir, slug);
+
+  // Ensure directory exists
+  await fs.mkdir(mcpDir, { recursive: true });
+
+  // Build MCP.md content with YAML frontmatter
+  const frontmatter = {
+    name: mcpData.name || slug,
+    description: mcpData.description || null,
+    category: mcpData.category || 'general',
+    defaultEnabled: false,
+    mcp: mcpData.mcp,
+  };
+
+  if (mcpData.allowedTools && Array.isArray(mcpData.allowedTools)) {
+    frontmatter.allowedTools = mcpData.allowedTools;
+  }
+
+  if (mcpData.credentials && Array.isArray(mcpData.credentials)) {
+    frontmatter.credentials = mcpData.credentials;
+  }
+
+  const yaml = (await import('js-yaml')).default;
+  const yamlContent = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true });
+
+  const markdownContent = `---
+${yamlContent.trim()}
+---
+
+# ${mcpData.name || slug}
+
+${mcpData.description || 'Custom MCP server.'}
+`;
+
+  const mcpMdPath = path.join(mcpDir, 'MCP.md');
+  await fs.writeFile(mcpMdPath, markdownContent, 'utf-8');
+
+  return { slug, path: mcpMdPath };
+}
+
+/**
+ * Delete a custom MCP
+ */
+export async function deleteCustomMcp(userId, slug) {
+  const normalized = normalizeMcpName(slug);
+  const customDir = getUserCustomMcpDir(userId);
+  const mcpDir = path.join(customDir, normalized);
+
+  // Check if it exists
+  if (!await fileExists(mcpDir)) {
+    throw new Error(`Custom MCP not found: ${normalized}`);
+  }
+
+  // Remove directory recursively
+  await fs.rm(mcpDir, { recursive: true, force: true });
+
+  // Also remove from enabled list if present
+  const userHome = getUserClaudeHome(userId);
+  const enabled = await readEnabledList(userHome);
+  if (enabled && enabled.includes(normalized)) {
+    const next = enabled.filter((entry) => entry !== normalized);
+    await writeEnabledList(userHome, next);
+  }
+
+  return { slug: normalized };
+}
+
+/**
+ * Check if a custom MCP exists for a user
+ */
+export async function customMcpExists(userId, slug) {
+  const normalized = normalizeMcpName(slug);
+  const customDir = getUserCustomMcpDir(userId);
+  const mcpDir = path.join(customDir, normalized);
+  return await fileExists(mcpDir);
+}
+
+/**
+ * Check if a system MCP exists
+ */
+export async function systemMcpExists(slug) {
+  const normalized = normalizeMcpName(slug);
+  const systemDir = getSystemMcpDir();
+  const mcpDir = path.join(systemDir, normalized);
+  return await fileExists(mcpDir);
+}
+
+/**
+ * Save a system MCP configuration (visible to all users)
+ */
+export async function saveSystemMcp(mcpData) {
+  const slug = normalizeMcpName(mcpData.slug);
+  const systemDir = getSystemMcpDir();
+  const mcpDir = path.join(systemDir, slug);
+
+  // Ensure directory exists
+  await fs.mkdir(mcpDir, { recursive: true });
+
+  // Build MCP.md content with YAML frontmatter
+  const frontmatter = {
+    name: mcpData.name || slug,
+    description: mcpData.description || null,
+    category: mcpData.category || 'general',
+    defaultEnabled: false,
+    mcp: mcpData.mcp,
+  };
+
+  if (mcpData.allowedTools && Array.isArray(mcpData.allowedTools)) {
+    frontmatter.allowedTools = mcpData.allowedTools;
+  }
+
+  if (mcpData.credentials && Array.isArray(mcpData.credentials)) {
+    frontmatter.credentials = mcpData.credentials;
+  }
+
+  const yaml = (await import('js-yaml')).default;
+  const yamlContent = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true });
+
+  const markdownContent = `---
+${yamlContent.trim()}
+---
+
+# ${mcpData.name || slug}
+
+${mcpData.description || 'System MCP server.'}
+`;
+
+  const mcpMdPath = path.join(mcpDir, 'MCP.md');
+  await fs.writeFile(mcpMdPath, markdownContent, 'utf-8');
+
+  return { slug, path: mcpMdPath };
+}
+
+/**
+ * Delete a system MCP (requires admin permission - checked at caller level)
+ */
+export async function deleteSystemMcp(slug) {
+  const normalized = normalizeMcpName(slug);
+  const systemDir = getSystemMcpDir();
+  const mcpDir = path.join(systemDir, normalized);
+
+  // Check if it exists
+  if (!await fileExists(mcpDir)) {
+    throw new Error(`System MCP not found: ${normalized}`);
+  }
+
+  // Remove directory recursively
+  await fs.rm(mcpDir, { recursive: true, force: true });
+
+  return { slug: normalized };
+}
+
+/**
+ * Get custom MCP detail (for editing)
+ */
+export async function getCustomMcpDetail(userId, slug) {
+  const normalized = normalizeMcpName(slug);
+  const customDir = getUserCustomMcpDir(userId);
+  const mcpDir = path.join(customDir, normalized);
+
+  if (!await fileExists(mcpDir)) {
+    throw new Error(`Custom MCP not found: ${normalized}`);
+  }
+
+  const info = await parseMcpMetadata(mcpDir, normalized);
+  if (!info) {
+    throw new Error(`Custom MCP metadata not found: ${normalized}`);
+  }
+
+  const files = await buildFileTree(mcpDir);
+  return {
+    slug: normalized,
+    name: info.name,
+    description: info.description,
+    category: info.category,
+    mcp: info.mcp,
+    allowedTools: info.allowedTools,
+    credentials: info.credentials,
+    files,
+    isCustom: true,
+  };
+}
+
+/**
+ * Parse MCP configuration from raw content (YAML/JSON)
+ */
+export function parseMcpConfigFromContent(content) {
+  // Try YAML frontmatter format first
+  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
+  const match = content.match(frontmatterRegex);
+
+  if (match) {
+    try {
+      const yaml = require('js-yaml');
+      const parsed = yaml.load(match[1]);
+      if (parsed && typeof parsed === 'object') {
+        return { ok: true, data: parsed };
+      }
+    } catch (error) {
+      return { ok: false, error: `YAML parse error: ${error.message}` };
+    }
+  }
+
+  // Try pure YAML
+  try {
+    const yaml = require('js-yaml');
+    const parsed = yaml.load(content);
+    if (parsed && typeof parsed === 'object') {
+      return { ok: true, data: parsed };
+    }
+  } catch {}
+
+  // Try JSON
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object') {
+      return { ok: true, data: parsed };
+    }
+  } catch {}
+
+  return { ok: false, error: 'Unable to parse content as YAML or JSON' };
 }
