@@ -1,8 +1,10 @@
 import { json } from '@tanstack/react-start';
 import { createFileRoute } from '@tanstack/react-router';
-import { handleChatStream } from '@mastra/ai-sdk';
 import { createUIMessageStreamResponse } from 'ai';
-import { mastra } from '~/mastra';
+import { toAISdkStream } from '@mastra/ai-sdk';
+import type { Agent } from '@mastra/core/agent';
+import { chatAgent, createChatAgentWithMcp } from '~/mastra/agents/chat-agent';
+import { optionalUser } from '~/server/require-user';
 
 export const Route = createFileRoute('/api/chat')({
   server: {
@@ -16,20 +18,50 @@ export const Route = createFileRoute('/api/chat')({
           // Or legacy format: { messages, threadId }
           const { messages, memory, threadId, resourceId } = body;
 
-          // Build params with memory configuration
-          const params = {
-            messages,
-            // Support both new format (memory.thread) and legacy format (threadId)
-            memory: memory || (threadId ? { thread: threadId, resource: resourceId || 'default-user' } : undefined),
-          };
+          // Build memory configuration
+          const memoryConfig = memory || (threadId ? { thread: threadId, resource: resourceId || 'default-user' } : undefined);
 
-          const stream = await handleChatStream({
-            mastra,
-            agentId: 'chat-agent',
-            params,
-          });
+          // Get current user (optional - MCP tools require authentication)
+          const user = await optionalUser(request);
 
-          return createUIMessageStreamResponse({ stream });
+          // Use a generic agent type to allow both base and MCP-enhanced agents
+          let agent: Agent = chatAgent;
+          let cleanup: (() => Promise<void>) | null = null;
+
+          // If user is authenticated, create agent with their MCP tools
+          if (user) {
+            try {
+              const result = await createChatAgentWithMcp(user.id);
+              agent = result.agent;
+              cleanup = result.cleanup;
+            } catch (error) {
+              console.warn('[/api/chat] Failed to load MCP tools, using base agent:', error);
+              // Fall back to base agent without MCP tools
+            }
+          }
+
+          try {
+            // Stream the agent response
+            const agentStream = await agent.stream(messages, {
+              memory: memoryConfig,
+            });
+
+            // Convert Mastra agent stream to AI SDK format
+            const aiSdkStream = toAISdkStream(agentStream, {
+              from: 'agent',
+              sendStart: true,
+              sendFinish: true,
+            });
+
+            return createUIMessageStreamResponse({ stream: aiSdkStream });
+          } finally {
+            // Cleanup MCP connections after stream completes
+            if (cleanup) {
+              cleanup().catch((error) => {
+                console.error('[/api/chat] MCP cleanup failed:', error);
+              });
+            }
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unexpected error';
           console.error('POST /api/chat error', error);

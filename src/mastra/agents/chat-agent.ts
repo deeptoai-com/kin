@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import type { MastraMemory } from '@mastra/core/memory';
 import { getFileFromObjectStore } from '~/mastra/tools/get-file-from-object-store.tool';
+import { getMcpToolsForUser } from '~/mastra/mcp';
 
 /**
  * Lazy-initialize memory to avoid "Cannot access 'pg' before initialization" error.
@@ -59,3 +60,52 @@ export const chatAgent = new Agent({
   // DynamicArgument<MastraMemory> - Mastra calls this function when memory is needed
   memory: async () => createMemory(),
 });
+
+/**
+ * Base tools for chat agent (without MCP tools)
+ */
+const BASE_TOOLS = {
+  getFileFromObjectStore,
+};
+
+/**
+ * Agent instructions (shared between base and MCP-enhanced agents)
+ */
+const AGENT_INSTRUCTIONS = [
+  'You are a helpful AI assistant.',
+  'When a prompt references files or code, use the get-file-from-object-store tool to retrieve the exact content before answering.',
+  'Always mention the object key(s) you consulted, adapt verbosity to user directions, and escalate with follow-up questions when context is ambiguous.',
+  'You may have access to additional MCP tools based on user configuration. Use them when appropriate.',
+].join(' ');
+
+/**
+ * Create a chat agent with user's MCP tools dynamically injected.
+ *
+ * Use this when you need per-user MCP tool access. The returned agent
+ * includes all enabled MCP tools for the specified user.
+ *
+ * @param userId - User ID to resolve MCP tools for
+ * @returns Agent with MCP tools and cleanup function
+ */
+export async function createChatAgentWithMcp(userId: string): Promise<{
+  agent: Agent;
+  cleanup: () => Promise<void>;
+}> {
+  // Get MCP tools for this user
+  const { tools: mcpTools, cleanup } = await getMcpToolsForUser(userId);
+
+  // Create agent with both base tools and MCP tools
+  const agent = new Agent({
+    id: 'chat-agent-mcp',
+    name: 'Chat Agent (MCP)',
+    instructions: AGENT_INSTRUCTIONS,
+    model: 'zhipuai/glm-4.7',
+    tools: {
+      ...BASE_TOOLS,
+      ...mcpTools,
+    },
+    memory: async () => createMemory(),
+  });
+
+  return { agent, cleanup };
+}
