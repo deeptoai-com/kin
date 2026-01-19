@@ -109,7 +109,7 @@ export const disableMcpServerFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Get MCP detail (files + metadata)
+ * Get MCP detail (files + metadata + config + enabled status)
  */
 export const getMcpDetailFn = createServerFn({ method: 'GET' })
   .inputValidator((input) => {
@@ -119,7 +119,57 @@ export const getMcpDetailFn = createServerFn({ method: 'GET' })
     return detailSchema.parse({ slug });
   })
   .handler(async ({ data }) => {
-    return await getMcpDetail(data.slug);
+    const user = await requireUser();
+    const normalized = normalizeMcpName(data.slug);
+
+    // Get full MCP store to find store type and config
+    const store = await getMcpStore();
+    const entry = store.find((e) => e && e.slug === normalized);
+
+    if (!entry) {
+      throw new Error(`MCP not found: ${normalized}`);
+    }
+
+    // Get base detail (files, name, description, category)
+    const baseDetail = await getMcpDetail(normalized);
+
+    // Get user's enabled MCPs
+    const userHome = getUserClaudeHome(user.id);
+    const enabledMcps = await getUserEnabledMcpServers(user.id, { userHome });
+    const isEnabled = enabledMcps.includes(normalized);
+
+    // Determine store type
+    let storeType: 'official' | 'system' | 'user' = 'official';
+    // Check if it's a system or user MCP by looking at the store list
+    const systemMcps = await getSystemMcps();
+    const userMcps = await getUserCustomMcps(user.id);
+    if (systemMcps.some((m) => m && m.slug === normalized)) {
+      storeType = 'system';
+    } else if (userMcps.some((m) => m && m.slug === normalized)) {
+      storeType = 'user';
+    }
+
+    // Extract readme content from MCP.md file if available
+    let readme: string | null = null;
+    const mcpMdFile = baseDetail.files.find((f: { name: string }) => f.name === 'MCP.md');
+    if (mcpMdFile && mcpMdFile.content) {
+      // Remove YAML frontmatter from content for display
+      const content = mcpMdFile.content;
+      const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n/);
+      readme = frontmatterMatch
+        ? content.slice(frontmatterMatch[0].length).trim()
+        : content;
+    }
+
+    return {
+      ...baseDetail,
+      mcp: entry.mcp,
+      credentials: entry.credentials || null,
+      allowedTools: entry.allowedTools || null,
+      store: storeType,
+      enabled: isEnabled,
+      readme,
+    };
   });
 
 /**
@@ -761,14 +811,39 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
     const allCredentials = await readUserCredentials(userHome);
     const credentials = allCredentials[slug] || {};
 
-    // Resolve environment templates
-    function resolveEnvTemplate(template: Record<string, string> | undefined, creds: Record<string, string>) {
+    // Resolve environment templates with envFallback support
+    function resolveEnvTemplate(
+      template: Record<string, string> | undefined,
+      creds: Record<string, string>,
+      credentialDefs: Array<{ key: string; envFallback?: string | null }> = []
+    ) {
       if (!template) return {};
+
+      // Build envFallback map from credential definitions
+      const envFallbackMap: Record<string, string> = {};
+      for (const def of credentialDefs) {
+        if (def.key && def.envFallback) {
+          envFallbackMap[def.key] = def.envFallback;
+        }
+      }
+
       const result: Record<string, string> = {};
       for (const [key, value] of Object.entries(template)) {
-        if (value && typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-          const credKey = value.slice(2, -1);
-          result[key] = creds[credKey] || '';
+        if (value && typeof value === 'string') {
+          // Replace all ${VAR_NAME} patterns in the string
+          result[key] = value.replace(/\$\{([^}]+)\}/g, (match, credKey) => {
+            // Priority: user credential > envFallback from process.env
+            const userValue = creds[credKey];
+            if (userValue && userValue.trim()) {
+              return userValue;
+            }
+            // Check if there's an envFallback for this credential
+            const fallbackEnvVar = envFallbackMap[credKey];
+            if (fallbackEnvVar && process.env[fallbackEnvVar]) {
+              return process.env[fallbackEnvVar];
+            }
+            return '';
+          });
         } else if (value) {
           result[key] = value;
         }
@@ -776,8 +851,8 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
       return result;
     }
 
-    const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials);
-    const resolvedHeaders = resolveEnvTemplate(mcpConfig.headers, credentials);
+    const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials, entry.credentials || []);
+    const resolvedHeaders = resolveEnvTemplate(mcpConfig.headers, credentials, entry.credentials || []);
 
     try {
       // Import MCP SDK dynamically for tool discovery
@@ -792,10 +867,19 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
           env: { ...process.env, ...resolvedEnv },
         });
       } else if (mcpConfig.type === 'http' || mcpConfig.type === 'sse') {
-        const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse');
-        transport = new SSEClientTransport(new URL(mcpConfig.url!), {
-          requestInit: { headers: resolvedHeaders },
-        });
+        // Try Streamable HTTP first (newer protocol), fall back to SSE
+        try {
+          const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp');
+          transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url!), {
+            requestInit: { headers: resolvedHeaders },
+          });
+        } catch {
+          // Fall back to SSE transport
+          const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse');
+          transport = new SSEClientTransport(new URL(mcpConfig.url!), {
+            requestInit: { headers: resolvedHeaders },
+          });
+        }
       } else {
         return {
           ok: false,

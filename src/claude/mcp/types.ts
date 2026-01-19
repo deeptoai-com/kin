@@ -55,6 +55,18 @@ export type McpDetail = {
   description: string | null;
   category: string;
   files: McpFile[];
+  /** MCP connection configuration */
+  mcp: McpConfig | null;
+  /** Credential field definitions */
+  credentials?: CredentialField[] | null;
+  /** Allowed tools from MCP.md definition */
+  allowedTools?: string[] | null;
+  /** Store type: official, system, or user */
+  store: 'official' | 'system' | 'user';
+  /** Whether MCP is enabled for current user */
+  enabled: boolean;
+  /** Markdown content from MCP.md for About tab */
+  readme?: string | null;
 };
 
 /**

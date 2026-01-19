@@ -50,10 +50,10 @@ export const McpPageComponent: FC<{
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [mcps, setMcps] = useState<ExtendedMcpInfo[]>(() => initialMcps);
-  const [systemMcps, setSystemMcps] = useState<ExtendedMcpInfo[]>(() => initialSystemMcps);
-  const [userMcps, setUserMcps] = useState<ExtendedMcpInfo[]>(() => initialUserMcps);
-  const [enabledMcps, setEnabledMcps] = useState<string[]>(() => initialEnabled);
+  const [mcps, setMcps] = useState<ExtendedMcpInfo[]>(() => initialMcps || []);
+  const [systemMcps, setSystemMcps] = useState<ExtendedMcpInfo[]>(() => initialSystemMcps || []);
+  const [userMcps, setUserMcps] = useState<ExtendedMcpInfo[]>(() => initialUserMcps || []);
+  const [enabledMcps, setEnabledMcps] = useState<string[]>(() => initialEnabled || []);
   const [verifyingSlug, setVerifyingSlug] = useState<string | null>(null);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
 
@@ -260,6 +260,11 @@ export const McpPageComponent: FC<{
         mcp={detail as McpDetail | null}
         isOpen={isDetailOpen}
         onClose={handleCloseDetail}
+        onToggle={(slug, enabled) => {
+          setEnabledMcps((prev) =>
+            enabled ? [...prev.filter((s) => s !== slug), slug] : prev.filter((s) => s !== slug)
+          );
+        }}
       />
 
       <AddCustomMcpDialog

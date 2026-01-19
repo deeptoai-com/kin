@@ -6,16 +6,20 @@ import type { ExtendedMcpInfo } from '~/claude/mcp';
 export const Route = createFileRoute('/agents/mcp')({
   loader: async () => {
     const result = await listAllMcpsFn();
+    // Defensive: ensure arrays are never undefined
+    const official = result.official || [];
+    const system = result.system || [];
+    const user = result.user || [];
     const allMcps: ExtendedMcpInfo[] = [
-      ...result.official,
-      ...result.system,
-      ...result.user,
+      ...official,
+      ...system,
+      ...user,
     ];
 
     return {
-      officialMcps: result.official,
-      systemMcps: result.system,
-      userMcps: result.user,
+      officialMcps: official,
+      systemMcps: system,
+      userMcps: user,
       allMcps,
     };
   },
