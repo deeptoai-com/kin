@@ -448,15 +448,45 @@ async function ensureClaudeSymlink(workspacePath, claudeHome) {
 /**
  * Verify that skills are accessible through the .claude symlink
  * This health check ensures SDK can actually load skills from the workspace
+ *
+ * @param {string} workspacePath - Session workspace path
+ * @param {string} claudeHome - User's CLAUDE_HOME directory
  */
-async function verifySkillsAccess(workspacePath) {
+async function verifySkillsAccess(workspacePath, claudeHome) {
+  const symlinkPath = path.join(workspacePath, '.claude');
   const skillsPath = path.join(workspacePath, '.claude', 'skills');
+  const targetSkillsPath = path.join(claudeHome, '.claude', 'skills');
 
+  // Step 1: Check symlink status
+  let symlinkStatus = 'unknown';
+  let symlinkTarget = null;
   try {
-    // Check if skills directory is accessible
+    const stats = await lstat(symlinkPath);
+    if (stats.isSymbolicLink()) {
+      symlinkStatus = 'valid';
+      // Read the actual target
+      const { readlink } = await import('node:fs/promises');
+      symlinkTarget = await readlink(symlinkPath);
+    } else {
+      symlinkStatus = 'not_symlink';
+    }
+  } catch (error) {
+    symlinkStatus = error.code === 'ENOENT' ? 'missing' : `error:${error.code}`;
+  }
+
+  // Step 2: Check target directory exists
+  let targetExists = false;
+  try {
+    await access(targetSkillsPath);
+    targetExists = true;
+  } catch {
+    targetExists = false;
+  }
+
+  // Step 3: Try to access skills through the symlink
+  try {
     await access(skillsPath);
 
-    // Try to read skills directory
     const skillDirs = await readdir(skillsPath, { withFileTypes: true });
     const skills = skillDirs.filter(entry => entry.isDirectory()).map(entry => entry.name);
 
@@ -468,10 +498,28 @@ async function verifySkillsAccess(workspacePath) {
 
     return true;
   } catch (error) {
+    // Enhanced error logging with diagnostic info
+    const diagnostic = {
+      symlinkStatus,
+      symlinkTarget,
+      targetSkillsPath,
+      targetExists,
+      errorCode: error.code,
+    };
+
     if (error.code === 'ENOENT') {
-      console.warn(`[WS Server] ⚠ Skills directory not found: ${skillsPath}`);
+      if (!targetExists) {
+        // This is expected if user never enabled any skills
+        console.log(`[WS Server] ℹ Skills directory not found (user has no skills enabled)`);
+        console.log(`[WS Server]   diagnostic: ${JSON.stringify(diagnostic)}`);
+      } else {
+        // Target exists but can't access through symlink - this is a problem
+        console.warn(`[WS Server] ⚠ Skills directory not accessible through symlink`);
+        console.warn(`[WS Server]   diagnostic: ${JSON.stringify(diagnostic)}`);
+      }
     } else {
-      console.error(`[WS Server] ✗ Skills not accessible:`, error.message);
+      console.error(`[WS Server] ✗ Skills access error: ${error.message}`);
+      console.error(`[WS Server]   diagnostic: ${JSON.stringify(diagnostic)}`);
     }
     return false;
   }
@@ -544,7 +592,7 @@ async function handleChat(ws, prompt, resumeSessionId) {
     await ensureClaudeSymlink(workspacePath, claudeHome);
 
     // Verify skills are accessible through the symlink
-    await verifySkillsAccess(workspacePath);
+    await verifySkillsAccess(workspacePath, claudeHome);
 
     console.log(`[WS Server] User ${ws.userId} Session ${workspaceSessionId}`);
     console.log(`[WS Server]   CLAUDE_HOME: ${claudeHome}`);
