@@ -7,6 +7,16 @@ description: Knowledge comic creator supporting multiple styles (Logicomix/Ligne
 
 Create original knowledge comics with multiple visual styles.
 
+## Workspace Rules
+
+**IMPORTANT**: All file operations MUST use the session workspace directory.
+
+- **Use relative paths only** (e.g., `source/comic/01-page-intro.png`, NOT absolute paths)
+- **NEVER write to `.claude/skills/`** - this is read-only
+- **All output files** must be created in the workspace using relative paths
+- When user provides a file path like `source.md`, create output in `source/comic/` (relative to workspace)
+- When user pastes content, create output in `comic/<topic-slug>/` (relative to workspace)
+
 ## Usage
 
 ```bash
@@ -264,19 +274,36 @@ With confirmed storyboard + style + aspect ratio:
 2. Generate image using confirmed style and aspect ratio
 3. Report progress after each generation
 
-**Image Generation Skill Selection**:
-- Check available image generation skills
-- If multiple skills available, ask user preference
+**Image Generation Tool**:
+Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
+
+**Tool Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string (required) | Image generation prompt |
+| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
+| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `size` | string (optional) | Size based on aspect ratio (see below) |
+| `quality` | string (optional) | Quality: hd (default), standard |
+| `watermark` | boolean (optional) | Enable watermark (default: false) |
+
+**Size Mapping for Aspect Ratios**:
+- 3:4 Portrait (default): `768x1344` or `960x1280`
+- 4:3 Landscape: `1344x768` or `1280x960`
+- 16:9 Widescreen: `1280x720`
 
 **Character Reference Handling**:
-- If skill supports reference image: pass `characters/characters.png`
-- If skill does NOT support reference image: include `characters/characters.md` content in prompt
+Since MCP tool does NOT support reference images, include `characters/characters.md` content in prompt for visual consistency.
 
-**Session Management**:
-If image generation skill supports `--sessionId`:
-1. Generate unique session ID: `comic-{topic-slug}-{timestamp}`
-2. Use same session ID for all pages
-3. Ensures visual consistency across generated images
+**Example Usage**:
+```
+mcp__glm-image__generate({
+  prompt: "Comic page in Logicomix style, showing Alan Turing at Cambridge...\n\nCharacter reference:\n- Turing: Disheveled academic, intense eyes, dark hair...",
+  imagePath: "source/comic/01-page-cambridge.png",
+  size: "768x1344",
+  quality: "hd"
+})
+```
 
 ### Step 5: Merge to PDF
 

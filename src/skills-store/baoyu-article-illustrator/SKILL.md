@@ -7,6 +7,16 @@ description: Smart article illustration skill. Analyzes article content and gene
 
 Analyze article structure and content, identify positions requiring visual aids, and generate illustrations with flexible style options.
 
+## Workspace Rules
+
+**IMPORTANT**: All file operations MUST use the session workspace directory.
+
+- **Use relative paths only** (e.g., `article/illustrations/illustration-concept.png`, NOT absolute paths)
+- **NEVER write to `.claude/skills/`** - this is read-only
+- **All output files** must be created in the workspace using relative paths
+- When user provides a file path like `article.md`, create output in `article/illustrations/` (relative to workspace)
+- When user pastes content, create output in `illustrations/<topic-slug>/` (relative to workspace)
+
 ## Usage
 
 ```bash
@@ -272,12 +282,31 @@ Style notes: [specific style characteristics]
 
 ### Step 6: Generate Images
 
-**Image Generation Skill Selection**:
-1. Check available image generation skills
-2. If multiple skills available, ask user to choose
+**Image Generation Tool**:
+Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
+
+**Tool Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string (required) | Image generation prompt |
+| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
+| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `size` | string (optional) | Size: 1024x1024 (default), 1280x720, 720x1280, etc. |
+| `quality` | string (optional) | Quality: hd (default), standard |
+| `watermark` | boolean (optional) | Enable watermark (default: false) |
+
+**Example Usage**:
+```
+mcp__glm-image__generate({
+  prompt: "Minimalist illustration showing AI concept, notion style with black lines...",
+  imagePath: "article/illustrations/illustration-ai-overview.png",
+  size: "1024x1024",
+  quality: "hd"
+})
+```
 
 **Generation Flow**:
-1. Call selected image generation skill with prompt file and output path
+1. Call MCP tool with prompt from Step 5 and output path
 2. Generate images sequentially
 3. After each image, output progress: "Generated X/N"
 4. On failure, auto-retry once

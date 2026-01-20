@@ -7,6 +7,16 @@ description: Generate professional slide deck images from content. Creates compr
 
 Transform content into professional slide deck images with flexible style options.
 
+## Workspace Rules
+
+**IMPORTANT**: All file operations MUST use the session workspace directory.
+
+- **Use relative paths only** (e.g., `content/slide-deck/01-slide-cover.png`, NOT absolute paths)
+- **NEVER write to `.claude/skills/`** - this is read-only
+- **All output files** must be created in the workspace using relative paths
+- When user provides a file path like `content.md`, create output in `content/slide-deck/` (relative to workspace)
+- When user pastes content, create output in `slide-deck/<topic-slug>/` (relative to workspace)
+
 ## Usage
 
 ```bash
@@ -167,10 +177,37 @@ If `--outline-only`, stop here.
 
 ### Step 5: Generate Images
 
-1. Select available image generation skill
-2. Generate session ID: `slides-{topic-slug}-{timestamp}`
-3. Generate each slide with same session ID
-4. Report progress: "Generated X/N"
+**Image Generation Tool**:
+Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
+
+**Tool Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string (required) | Image generation prompt |
+| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
+| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `size` | string (optional) | Size: 1280x720 (16:9 recommended), 1024x1024, etc. |
+| `quality` | string (optional) | Quality: hd (default), standard |
+| `watermark` | boolean (optional) | Enable watermark (default: false) |
+
+**Size for Slides**:
+- Landscape 16:9 (recommended): `1280x720`
+- Landscape 4:3: `1280x960`
+- Square: `1024x1024`
+
+**Example Usage**:
+```
+mcp__glm-image__generate({
+  prompt: "Blueprint style slide cover for AI presentation, technical grid texture...",
+  imagePath: "content/slide-deck/01-slide-cover.png",
+  size: "1280x720",
+  quality: "hd"
+})
+```
+
+**Generation Flow**:
+1. Generate each slide with MCP tool
+2. Report progress: "Generated X/N"
 
 ### Step 6: Merge to PPTX and PDF
 

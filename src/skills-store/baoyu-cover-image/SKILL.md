@@ -7,6 +7,16 @@ description: Generate elegant cover images for articles. Analyzes content and cr
 
 Generate hand-drawn style cover images for articles with multiple style options.
 
+## Workspace Rules
+
+**IMPORTANT**: All file operations MUST use the session workspace directory.
+
+- **Use relative paths only** (e.g., `article/cover-image/cover.png`, NOT absolute paths)
+- **NEVER write to `.claude/skills/`** - this is read-only
+- **All output files** must be created in the workspace using relative paths
+- When user provides a file path like `article.md`, create output in `article/cover-image/` (relative to workspace)
+- When user pastes content, create output in `cover-image/<topic-slug>/` (relative to workspace)
+
 ## Usage
 
 ```bash
@@ -221,12 +231,36 @@ Note: No title text, pure visual illustration only.
 
 ### Step 6: Generate Image
 
-**Image Generation Skill Selection**:
-1. Check available image generation skills
-2. If multiple skills available, ask user to choose
+**Image Generation Tool**:
+Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
+
+**Tool Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string (required) | Image generation prompt |
+| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
+| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `size` | string (optional) | Size: 1024x1024 (default), 1280x720, 720x1280, etc. |
+| `quality` | string (optional) | Quality: hd (default), standard |
+| `watermark` | boolean (optional) | Enable watermark (default: false) |
+
+**Size Mapping for Aspect Ratios**:
+- 2.35:1 Cinematic → `1440x720` or `1280x720`
+- 16:9 Widescreen → `1280x720`
+- 1:1 Square → `1024x1024`
+
+**Example Usage**:
+```
+mcp__glm-image__generate({
+  prompt: "Hand-drawn style cover image for AI article, elegant design...",
+  imagePath: "article/cover-image/cover.png",
+  size: "1280x720",
+  quality: "hd"
+})
+```
 
 **Generation**:
-Call selected image generation skill with prompt file, output path, and confirmed aspect ratio.
+Call the MCP tool with prompt from Step 5, output path, and appropriate size for the confirmed aspect ratio.
 
 ### Step 7: Output Summary
 

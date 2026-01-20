@@ -7,6 +7,16 @@ description: Xiaohongshu (Little Red Book) infographic series generator with mul
 
 Break down complex content into eye-catching infographic series for Xiaohongshu with multiple style options.
 
+## Workspace Rules
+
+**IMPORTANT**: All file operations MUST use the session workspace directory.
+
+- **Use relative paths only** (e.g., `article/xhs-images/01-cover.png`, NOT absolute paths)
+- **NEVER write to `.claude/skills/`** - this is read-only
+- **All output files** must be created in the workspace using relative paths
+- When user provides a file path like `article.md`, create output in `article/xhs-images/` (relative to workspace)
+- When user pastes content, create output in `xhs-images/<topic-slug>/` (relative to workspace)
+
 ## Usage
 
 ```bash
@@ -209,15 +219,32 @@ With confirmed outline + style + layout:
 2. Generate image using confirmed style and layout
 3. Report progress after each generation
 
-**Image Generation Skill Selection**:
-- Check available image generation skills
-- If multiple skills available, ask user preference
+**Image Generation Tool**:
+Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 
-**Session Management**:
-If image generation skill supports `--sessionId`:
-1. Generate unique session ID: `xhs-{topic-slug}-{timestamp}`
-2. Use same session ID for all images
-3. Ensures visual consistency across generated images
+**Tool Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string (required) | Image generation prompt |
+| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
+| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `size` | string (optional) | Size: 1024x1024 (default), 768x1344 (portrait), 1344x768 (landscape) |
+| `quality` | string (optional) | Quality: hd (default), standard |
+| `watermark` | boolean (optional) | Enable watermark (default: false) |
+
+**Size for Xiaohongshu**:
+- Portrait (recommended): `768x1344` or `720x1280` (9:16 ratio)
+- Square: `1024x1024` (1:1 ratio)
+
+**Example Usage**:
+```
+mcp__glm-image__generate({
+  prompt: "Cute infographic about AI trends, pink and soft colors...",
+  imagePath: "article/xhs-images/01-cover-ai-trends.png",
+  size: "768x1344",
+  quality: "hd"
+})
+```
 
 ### Step 5: Completion Report
 
