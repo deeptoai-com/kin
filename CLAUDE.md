@@ -79,7 +79,7 @@ constructa-starter/
 # 启动开发服务器
 pnpm dev
 
-# 启动 WebSocket 服务器
+# 启动 WebSocket 服务器（开发/生产统一使用）
 node ws-server.mjs
 
 # Docker 部署

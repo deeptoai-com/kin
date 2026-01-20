@@ -57,6 +57,9 @@ cp .env.example .env
 
 # Start development server
 pnpm dev
+
+# Start WebSocket server (required for Claude Chat in all environments)
+node ws-server.mjs
 ```
 
 Open `http://localhost:3000/agents/claude-chat` for the main Claude Agent Chat interface.
