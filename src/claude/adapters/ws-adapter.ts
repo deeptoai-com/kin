@@ -31,7 +31,7 @@ type McpServerStatus = {
 
 // Local SDKMessage type for this adapter (content is always an array from streaming)
 type SDKMessage = {
-  type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event';
+  type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event' | 'tool_progress';
   subtype?: string;
   uuid?: string;
   session_id?: string;
@@ -69,6 +69,11 @@ type SDKMessage = {
   structured_output?: unknown;
   // Stream event fields (from includePartialMessages)
   event?: StreamEvent;
+  // Tool progress fields
+  tool_use_id?: string;
+  tool_name?: string;
+  parent_tool_use_id?: string | null;
+  elapsed_time_seconds?: number;
 };
 
 // Stream event types (from Anthropic SDK RawMessageStreamEvent)
@@ -115,7 +120,11 @@ type ReasoningPart = {
 };
 
 // Tool execution status (Craft-aligned)
-type ToolStatus = 'executing' | 'completed' | 'error';
+// - executing: tool is currently running
+// - completed: tool finished successfully
+// - error: tool failed
+// - backgrounded: tool is running in background (Bash with shell_id or Task with agentId)
+type ToolStatus = 'executing' | 'completed' | 'error' | 'backgrounded';
 
 type ToolCallPart = {
   readonly type: 'tool-call';
@@ -126,6 +135,12 @@ type ToolCallPart = {
   readonly toolStatus?: ToolStatus;
   readonly result?: unknown;
   readonly isError?: boolean;
+  // Backgrounded task fields (Craft-aligned)
+  readonly backgroundTaskId?: string;  // For Task tool with agentId
+  readonly backgroundShellId?: string; // For Bash tool with shell_id
+  readonly intent?: string;            // Description/intent of the background task
+  readonly command?: string;           // Command for Bash background task
+  readonly elapsedSeconds?: number;    // From tool_progress events
 };
 
 type ContentPart = TextPart | ReasoningPart | ToolCallPart;
@@ -703,11 +718,66 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                         }
 
                         const isError = Boolean(block.is_error ?? (block as { isError?: boolean }).isError);
+
+                        // Detect backgrounded status from tool_result (Craft-aligned)
+                        // Reference: craft-agent.ts:2864-2903
+                        let toolStatus: ToolStatus = isError ? 'error' : 'completed';
+                        let backgroundTaskId: string | undefined;
+                        let backgroundShellId: string | undefined;
+                        let intent: string | undefined;
+                        let command: string | undefined;
+
+                        if (!isError && resultContent) {
+                          const toolName = toolPart.toolName.toLowerCase();
+
+                          // Task tool: detect agentId in result
+                          if (toolName === 'task') {
+                            const agentIdMatch = resultContent.match(/agentId:\s*([a-zA-Z0-9_-]+)/);
+                            if (agentIdMatch && agentIdMatch[1]) {
+                              toolStatus = 'backgrounded';
+                              backgroundTaskId = agentIdMatch[1];
+                              // Extract intent from args if available
+                              const args = toolPart.args;
+                              if (typeof args.description === 'string') {
+                                intent = args.description;
+                              } else if (typeof args._intent === 'string') {
+                                intent = args._intent;
+                              }
+                              console.log(`[WS Adapter] Task backgrounded: taskId=${backgroundTaskId}, intent=${intent}`);
+                            }
+                          }
+
+                          // Bash tool: detect shell_id or backgroundTaskId in result
+                          if (toolName === 'bash') {
+                            const shellIdMatch = resultContent.match(/shell_id:\s*([a-zA-Z0-9_-]+)/)
+                              || resultContent.match(/"backgroundTaskId":\s*"([a-zA-Z0-9_-]+)"/);
+                            if (shellIdMatch && shellIdMatch[1]) {
+                              toolStatus = 'backgrounded';
+                              backgroundShellId = shellIdMatch[1];
+                              // Extract command and intent from args
+                              const args = toolPart.args;
+                              if (typeof args.command === 'string') {
+                                command = args.command;
+                              }
+                              if (typeof args.description === 'string') {
+                                intent = args.description;
+                              } else if (typeof args._intent === 'string') {
+                                intent = args._intent;
+                              }
+                              console.log(`[WS Adapter] Bash backgrounded: shellId=${backgroundShellId}, command=${command}`);
+                            }
+                          }
+                        }
+
                         const updatedPart: ToolCallPart = {
                           ...toolPart,
                           result: resultContent,
                           isError,
-                          toolStatus: isError ? 'error' : 'completed', // Craft-aligned: set status based on result
+                          toolStatus,
+                          ...(backgroundTaskId && { backgroundTaskId }),
+                          ...(backgroundShellId && { backgroundShellId }),
+                          ...(intent && { intent }),
+                          ...(command && { command }),
                         };
                         toolCalls.set(block.tool_use_id, updatedPart);
 
@@ -729,6 +799,47 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                   } satisfies ChatModelRunResult;
                 }
                 break;
+
+              case 'tool_progress': {
+                // SDK tool progress events (top-level)
+                // Reference: craft-agent.ts:2924-2946
+                const progress = event as {
+                  tool_use_id?: string;
+                  tool_name?: string;
+                  parent_tool_use_id?: string | null;
+                  elapsed_time_seconds?: number;
+                };
+
+                if (progress.elapsed_time_seconds !== undefined) {
+                  // Use parent_tool_use_id if this is a child tool, so progress updates the parent Task
+                  const targetToolId = progress.parent_tool_use_id || progress.tool_use_id;
+                  if (targetToolId) {
+                    const toolPart = toolCalls.get(targetToolId);
+                    if (toolPart) {
+                      const updatedPart: ToolCallPart = {
+                        ...toolPart,
+                        elapsedSeconds: progress.elapsed_time_seconds,
+                      };
+                      toolCalls.set(targetToolId, updatedPart);
+
+                      const index = content.findIndex(
+                        (p) => p.type === 'tool-call' && p.toolCallId === targetToolId
+                      );
+                      if (index !== -1) {
+                        content[index] = updatedPart;
+                      }
+
+                      console.log(`[WS Adapter] tool_progress: tool=${progress.tool_name}, elapsed=${progress.elapsed_time_seconds}s`);
+
+                      yield {
+                        content: [...content] as ChatModelRunResult['content'],
+                        status: { type: 'running' },
+                      } satisfies ChatModelRunResult;
+                    }
+                  }
+                }
+                break;
+              }
 
               case 'result':
                 // Extract and save usage data if available
@@ -854,6 +965,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                     case 'message_stop':
                       // Message complete
                       break;
+
                   }
                 }
                 break;
