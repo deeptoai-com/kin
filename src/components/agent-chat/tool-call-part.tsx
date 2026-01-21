@@ -29,6 +29,12 @@ interface ToolCallPartProps {
   isError?: boolean;
   toolStatus?: ToolStatus;
   status?: { type: string };
+  // Backgrounded task fields (Craft-aligned)
+  backgroundTaskId?: string;
+  backgroundShellId?: string;
+  intent?: string;
+  command?: string;
+  elapsedSeconds?: number;
 }
 
 // Tool-specific icons and colors
@@ -134,6 +140,12 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   isError,
   toolStatus,
   status,
+  // Backgrounded task fields
+  backgroundTaskId,
+  backgroundShellId,
+  intent,
+  command,
+  elapsedSeconds: propsElapsedSeconds,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const autoExpandedRef = useRef(false);
@@ -145,11 +157,15 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
 
   // Use toolStatus if available, otherwise fall back to legacy detection
   const isExecuting = toolStatus === 'executing' || (status?.type === 'running' && result === undefined);
-  const isCompleted = toolStatus === 'completed' || (result !== undefined && !isError);
+  const isCompleted = toolStatus === 'completed' || (result !== undefined && !isError && toolStatus !== 'backgrounded');
   const isErrorState = toolStatus === 'error' || isError;
+  const isBackgrounded = toolStatus === 'backgrounded';
   const hasResult = result !== undefined;
   const style = getToolStyle(toolName);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+
+  // Use propsElapsedSeconds if available (from tool_progress), otherwise track locally
+  const displayElapsedTime = propsElapsedSeconds ?? elapsedTime;
 
   // Track elapsed time when executing
   useEffect(() => {
@@ -232,11 +248,26 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
               <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                 executing
               </span>
-              <span className="text-[10px] text-[#ae5630]">{elapsedTime}s</span>
+              <span className="text-[10px] text-[#ae5630]">{displayElapsedTime}s</span>
               <GearIcon className="h-4 w-4 animate-spin text-[#ae5630]" />
             </>
           )}
-          {isCompleted && !isErrorState && (
+          {isBackgrounded && (
+            <>
+              <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                backgrounded
+              </span>
+              {(backgroundTaskId || backgroundShellId) && (
+                <span className="font-mono text-[10px] text-purple-600 dark:text-purple-400">
+                  {backgroundTaskId ? `task:${backgroundTaskId.slice(0, 8)}` : `shell:${backgroundShellId?.slice(0, 8)}`}
+                </span>
+              )}
+              {displayElapsedTime > 0 && (
+                <span className="text-[10px] text-[#6b6a68] dark:text-[#9a9893]">{displayElapsedTime}s</span>
+              )}
+            </>
+          )}
+          {isCompleted && !isErrorState && !isBackgrounded && (
             <>
               <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
                 completed

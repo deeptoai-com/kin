@@ -823,15 +823,15 @@ const ChatComposer: FC<ChatComposerProps> = ({
     }
   }, [api, currentSessionId]);
 
-  const canSend = composerIsEditing && !composerIsEmpty;
+  const canSend = composerIsEditing && !composerIsEmpty && !isRunning;
 
   const handleSend = useCallback((event?: FormEvent) => {
     if (event) {
       event.preventDefault();
     }
-    if (!canSend) return;
+    if (!canSend || isRunning) return;
     api.composer().send();
-  }, [api, canSend]);
+  }, [api, canSend, isRunning]);
 
   return (
     <ComposerPrimitive.Root
@@ -975,7 +975,7 @@ const ChatComposer: FC<ChatComposerProps> = ({
             <button
               type="submit"
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-              title={isRunning ? '发送消息（将打断当前回复并排队）' : '发送消息'}
+              title={isRunning ? '正在生成，先停止或等待' : '发送消息'}
               aria-label="发送消息"
               disabled={!canSend}
             >
@@ -1180,6 +1180,11 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                       isError={part.isError}
                       toolStatus={part.toolStatus}
                       status={messageStatus}
+                      backgroundTaskId={part.backgroundTaskId}
+                      backgroundShellId={part.backgroundShellId}
+                      intent={part.intent}
+                      command={part.command}
+                      elapsedSeconds={part.elapsedSeconds}
                     />
                   );
                 }
@@ -1429,6 +1434,11 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
                         result={part.result}
                         isError={part.isError}
                         toolStatus={part.toolStatus}
+                        backgroundTaskId={part.backgroundTaskId}
+                        backgroundShellId={part.backgroundShellId}
+                        intent={part.intent}
+                        command={part.command}
+                        elapsedSeconds={part.elapsedSeconds}
                       />
                     );
                   }
