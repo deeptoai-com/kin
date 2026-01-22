@@ -97,8 +97,8 @@ COPY --from=builder --chown=nodejs:nodejs /app/ws-query-worker.mjs ./ws-query-wo
 COPY --from=builder --chown=nodejs:nodejs /app/start-production.mjs ./start-production.mjs
 RUN chmod +x ./start-production.mjs
 
-# Create user sessions directory for Claude Agent
-RUN mkdir -p /data/users && chown -R nodejs:nodejs /data/users
+# Create data directories for Claude Agent (skills-store for global Skills, users for sessions)
+RUN mkdir -p /data/users /data/skills-store && chown -R nodejs:nodejs /data
 
 USER nodejs
 
