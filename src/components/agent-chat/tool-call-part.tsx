@@ -152,6 +152,9 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number | null>(null);
 
+  // Error details collapse state (default: collapsed)
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+
   // Overlay state
   const [overlayType, setOverlayType] = useState<'code' | 'terminal' | 'diff' | 'json' | null>(null);
 
@@ -368,12 +371,12 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
             </div>
           )}
 
-          {/* Result */}
-          {hasResult && (
+          {/* Result - for non-error state, show normally */}
+          {hasResult && !isErrorState && (
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
-                  {isError ? 'Error' : 'Result'}
+                  Result
                 </span>
                 <button
                   type="button"
@@ -399,14 +402,51 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
                 </button>
               </div>
               <pre
-                className={`max-h-64 overflow-auto rounded p-2 font-mono text-xs ${
-                  isError
-                    ? 'bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-200'
-                    : 'bg-[#1a1a18] text-[#eee] dark:bg-[#1f1e1b]'
-                }`}
+                className="max-h-64 overflow-auto rounded p-2 font-mono text-xs bg-[#1a1a18] text-[#eee] dark:bg-[#1f1e1b]"
               >
                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
               </pre>
+            </div>
+          )}
+
+          {/* Error Result - collapsible technical details */}
+          {hasResult && isErrorState && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowErrorDetails(!showErrorDetails)}
+                className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+              >
+                {showErrorDetails ? (
+                  <ChevronDownIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRightIcon className="h-3.5 w-3.5" />
+                )}
+                <span>{showErrorDetails ? '隐藏技术细节' : '显示技术细节'}</span>
+              </button>
+              {showErrorDetails && (
+                <div className="mt-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                      Error Details
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOverlayType('terminal')}
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#6b6a68] hover:bg-black/5 dark:text-[#9a9893] dark:hover:bg-white/5"
+                      title="View fullscreen"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      <span>Full</span>
+                    </button>
+                  </div>
+                  <pre
+                    className="max-h-64 overflow-auto rounded p-2 font-mono text-xs bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-200"
+                  >
+                    {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
 

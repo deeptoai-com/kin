@@ -31,31 +31,31 @@ const STATUS_CONFIG: Record<AgentStatusType, {
 }> = {
   idle: {
     icon: '✓',
-    baseText: 'Ready',
+    baseText: '就绪',
     color: 'text-gray-500',
     bgColor: 'bg-gray-100 dark:bg-gray-800',
   },
   thinking: {
     icon: '💭',
-    baseText: 'Thinking',
+    baseText: '正在思考',
     color: 'text-blue-500',
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
   },
   reasoning: {
     icon: '🧠',
-    baseText: 'Reasoning',
+    baseText: '正在推理',
     color: 'text-purple-500',
     bgColor: 'bg-purple-50 dark:bg-purple-950/30',
   },
   toolUse: {
     icon: '🔧',
-    baseText: 'Running',
+    baseText: '工具执行中',
     color: 'text-amber-500',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
   },
   streaming: {
     icon: '✨',
-    baseText: 'Generating',
+    baseText: '正在生成',
     color: 'text-green-500',
     bgColor: 'bg-green-50 dark:bg-green-950/30',
   },
@@ -63,12 +63,12 @@ const STATUS_CONFIG: Record<AgentStatusType, {
 
 // Action words that cycle during thinking
 const ACTION_WORDS = [
-  'Thinking',
-  'Processing',
-  'Analyzing',
-  'Working',
-  'Computing',
-  'Reasoning',
+  '正在思考',
+  '正在处理',
+  '正在分析',
+  '正在处理',
+  '正在计算',
+  '正在推理',
 ];
 
 // Spinner animation characters
@@ -184,8 +184,8 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
             className="flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
             title="Stop (Esc)"
           >
-            <Cross2Icon className="h-3 w-3" />
-            <span className="hidden sm:inline">Stop</span>
+          <Cross2Icon className="h-3 w-3" />
+          <span className="hidden sm:inline">停止</span>
           </button>
         )}
       </div>
@@ -206,7 +206,7 @@ export const InlineStatus: FC<{
   if (status === 'idle') return null;
 
   const text = status === 'toolUse' && toolName
-    ? `Running ${toolName}...`
+    ? `工具执行中：${toolName}`
     : `${config.baseText}...`;
 
   return (
@@ -305,10 +305,15 @@ export const ToolbarStatus: FC<{
           {elapsedTime}s
         </span>
 
+        {/* Stoppable hint */}
+        <span className="hidden sm:inline text-[10px] text-[#9a9893] dark:text-[#6b6a68]">
+          · 可停止 (Esc)
+        </span>
+
         {/* Queue count badge */}
         {queueCount > 0 && (
           <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-            +{queueCount} queued
+            +{queueCount} 等待
           </span>
         )}
       </div>

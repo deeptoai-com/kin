@@ -31,8 +31,8 @@ import {
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
-import { ThumbsDown, ThumbsUp, FolderOpen, Plus, Layers } from 'lucide-react';
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC, type FormEvent } from 'react';
+import { ThumbsDown, ThumbsUp, FolderOpen, Plus, Layers, FolderTree, Paperclip } from 'lucide-react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC, type FormEvent, type MutableRefObject } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { SessionList } from '~/components/claude-chat/session-list';
@@ -47,10 +47,14 @@ import { McpStatusIndicator } from '~/components/claude-chat/mcp-status-indicato
 import { KnowledgeBasePanel } from '~/components/claude-chat/knowledge-base-panel';
 import { PermissionBadge, type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
+import { ContextBadges } from '~/components/claude-chat/context-badges';
+import { SessionFilesPanel } from '~/components/claude-chat/session-files-panel';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useDraftAutoSave, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
-import { fetchArtifactRegistry, readWorkspaceFile } from '~/lib/artifacts/artifact-registry';
+import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
+import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
+import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
 import { getPermissionInfo } from '~/server/permissions.server';
 // Use WebSocket adapter for more reliable real-time communication
 import {
@@ -73,12 +77,14 @@ import {
 
 // Context for sharing file/URL click handlers across message components
 type FileHandlersContextType = {
-  onFileClick: (path: string) => void;
+  onFileClick: (path: string) => void; // For workspace files (artifact preview)
+  onSessionFileClick: (path: string) => void; // P12: For session root files (SessionFilesPanel)
   onUrlClick: (url: string) => void;
 };
 
 const FileHandlersContext = createContext<FileHandlersContextType>({
   onFileClick: () => {},
+  onSessionFileClick: () => {},
   onUrlClick: () => {},
 });
 
@@ -434,6 +440,8 @@ function RouteComponent() {
 type UploadedWorkspaceFile = {
   name: string;
   path: string;
+  mimeType?: string;
+  fileSize?: number;
   status: 'uploaded' | 'error';
   error?: string;
 };
@@ -473,13 +481,29 @@ async function hydrateArtifactsFromRegistry(sessionId: string) {
   } = useArtifactsStore.getState();
 
   for (const entry of registry) {
-    const content = await readWorkspaceFile(sessionId, entry.filePath);
+    // P15 fix: Use binary reading for images to avoid corruption
+    let content: string | null = null;
+    let mimeType: string | undefined;
+
+    if (entry.type === 'image') {
+      mimeType = getMimeType(entry.filePath);
+      content = await readWorkspaceBinaryFile(sessionId, entry.filePath, mimeType);
+    } else {
+      content = await readWorkspaceFile(sessionId, entry.filePath);
+    }
+
     if (!content) {
       continue;
     }
 
     const existing = getArtifactByFilePath(sessionId, entry.filePath);
     const fileName = entry.fileName || entry.filePath.split('/').pop() || entry.filePath;
+
+    // P14: Include lineage info from registry
+    const lineageData = {
+      toolCallId: entry.toolCallId,
+      toolName: entry.toolName,
+    };
 
     if (existing) {
       updateArtifact(existing.id, {
@@ -492,6 +516,8 @@ async function hydrateArtifactsFromRegistry(sessionId: string) {
         sourceFilePath: entry.filePath,
         sessionId,
         isTemporary: false,
+        mimeType, // P15: Include mimeType for images
+        ...lineageData, // P14: Restore lineage
       });
     } else {
       createArtifact({
@@ -504,6 +530,8 @@ async function hydrateArtifactsFromRegistry(sessionId: string) {
         fileName,
         content,
         isTemporary: false,
+        mimeType, // P15: Include mimeType for images
+        ...lineageData, // P14: Restore lineage
       });
     }
   }
@@ -520,7 +548,12 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
 
   // Workspace panel state (session-level, persists across messages)
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [showSessionFiles, setShowSessionFiles] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+  const { loadSessionAttachments } = useMessageAttachments();
+  const [attachmentsByMessage, setAttachmentsByMessage] = useState<Map<string, MessageAttachment[]>>(
+    new Map()
+  );
 
   // Global file preview state
   const [filePreview, setFilePreview] = useState<{
@@ -530,6 +563,25 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
     error?: string;
     isLoading: boolean;
   }>({ isOpen: false, content: '', filePath: '', isLoading: false });
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!currentSessionId) {
+      setAttachmentsByMessage(new Map());
+      return;
+    }
+
+    loadSessionAttachments(currentSessionId).then((result) => {
+      if (!isCancelled) {
+        setAttachmentsByMessage(result);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentSessionId, loadSessionAttachments]);
 
   // Handler for file path clicks - fetches file content and opens overlay
   const handleFileClick = useCallback(async (path: string) => {
@@ -584,6 +636,56 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
     }
   }, [currentSessionId]);
 
+  // Handler for session file clicks - uses session API (for files in session root, not just workspace/)
+  // P12 fix: Session files panel uses this for browsing entire session directory
+  const handleSessionFileClick = useCallback(async (path: string) => {
+    if (!currentSessionId) {
+      console.warn('[Route] No session ID, cannot read file:', path);
+      setFilePreview({
+        isOpen: true,
+        content: '',
+        filePath: path,
+        error: '请先创建会话后再查看文件',
+        isLoading: false,
+      });
+      return;
+    }
+
+    // Show loading state
+    setFilePreview({
+      isOpen: true,
+      content: '',
+      filePath: path,
+      isLoading: true,
+    });
+
+    try {
+      console.log('[Route] Reading session file:', path);
+      // Use session API - handles both text and binary files correctly
+      const encodedPath = path.split('/').map(s => encodeURIComponent(s)).join('/');
+      const response = await fetch(`/api/session/${currentSessionId}/file/${encodedPath}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setFilePreview({
+        isOpen: true,
+        content: data.content || '',
+        filePath: path,
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('[Route] Failed to read session file:', path, error);
+      setFilePreview({
+        isOpen: true,
+        content: '',
+        filePath: path,
+        error: error instanceof Error ? error.message : '读取文件失败',
+        isLoading: false,
+      });
+    }
+  }, [currentSessionId]);
+
   // Handler for URL clicks
   const handleUrlClick = useCallback((url: string) => {
     console.log('[Route] URL clicked:', url);
@@ -593,10 +695,19 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
   // Session protection: warn before closing page during active query
   useBeforeUnloadProtection();
 
+  // Esc interrupt state
+  const [escPressedOnce, setEscPressedOnce] = useState(false);
+  const escTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   return (
-    <FileHandlersContext.Provider value={{ onFileClick: handleFileClick, onUrlClick: handleUrlClick }}>
+    <FileHandlersContext.Provider value={{ onFileClick: handleFileClick, onSessionFileClick: handleSessionFileClick, onUrlClick: handleUrlClick }}>
       <div className="flex h-full flex-col">
         <AssistantRuntimeProvider runtime={runtime}>
+          <EscapeInterruptHandler
+            escPressedOnce={escPressedOnce}
+            setEscPressedOnce={setEscPressedOnce}
+            escTimeoutRef={escTimeoutRef}
+          />
           <ThreadPrimitive.Root className="flex h-full flex-col items-stretch bg-background p-4 pt-16 font-sans">
             <ThreadPrimitive.Viewport className="flex-1 min-h-0 overflow-y-auto">
               {/* Show empty state only when no historical messages */}
@@ -616,7 +727,12 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
 
               {/* Render historical messages from store */}
               {historicalMessages.map((msg) => (
-                <HistoricalMessage key={msg.id} message={msg} />
+                <HistoricalMessage
+                  key={msg.id}
+                  message={msg}
+                  attachments={attachmentsByMessage.get(msg.id)}
+                  sessionId={currentSessionId}
+                />
               ))}
 
               {/* Render live messages from runtime */}
@@ -630,6 +746,8 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
               currentSessionId={currentSessionId}
               showWorkspace={showWorkspace}
               setShowWorkspace={setShowWorkspace}
+              showSessionFiles={showSessionFiles}
+              setShowSessionFiles={setShowSessionFiles}
               showSessionInfo={showSessionInfo}
               setShowSessionInfo={setShowSessionInfo}
               sessionMetadata={sessionMetadata}
@@ -645,10 +763,88 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
           filePath={filePreview.filePath}
           error={filePreview.error}
         />
+
+        {/* Esc interrupt overlay */}
+        {escPressedOnce && (
+          <div className="fixed inset-x-0 top-4 z-50 flex justify-center pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="rounded-lg bg-[#1a1a18] px-4 py-2 text-sm text-white shadow-lg">
+              再按一次 <kbd className="mx-1 rounded bg-white/20 px-1.5 py-0.5 font-mono text-xs">Esc</kbd> 停止
+            </div>
+          </div>
+        )}
       </div>
     </FileHandlersContext.Provider>
   );
 }
+
+/**
+ * Escape Interrupt Handler
+ * Handles Esc key press for two-step interrupt confirmation
+ * Must be used inside AssistantRuntimeProvider
+ */
+const EscapeInterruptHandler: FC<{
+  escPressedOnce: boolean;
+  setEscPressedOnce: (value: boolean) => void;
+  escTimeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
+}> = ({ escPressedOnce, setEscPressedOnce, escTimeoutRef }) => {
+  const isRunning = useThread((state) => state.isRunning);
+  const api = useAssistantApi();
+
+  useEffect(() => {
+    if (!isRunning) {
+      // Reset state when not running
+      setEscPressedOnce(false);
+      if (escTimeoutRef.current) {
+        clearTimeout(escTimeoutRef.current);
+        escTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore repeated key events and already prevented events
+      if (event.repeat || event.defaultPrevented) return;
+
+      // Only handle Escape key
+      if (event.key !== 'Escape') return;
+
+      // Prevent default behavior
+      event.preventDefault();
+
+      if (escPressedOnce) {
+        // Second Esc press - actually cancel
+        console.log('[EscapeInterrupt] Second Esc pressed, cancelling...');
+        setEscPressedOnce(false);
+        if (escTimeoutRef.current) {
+          clearTimeout(escTimeoutRef.current);
+          escTimeoutRef.current = null;
+        }
+        notifyUserAbort();
+        api.composer().cancel();
+      } else {
+        // First Esc press - show hint
+        console.log('[EscapeInterrupt] First Esc pressed, showing hint...');
+        setEscPressedOnce(true);
+
+        // Auto-dismiss after 2 seconds
+        if (escTimeoutRef.current) {
+          clearTimeout(escTimeoutRef.current);
+        }
+        escTimeoutRef.current = setTimeout(() => {
+          setEscPressedOnce(false);
+          escTimeoutRef.current = null;
+        }, 2000);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isRunning, escPressedOnce, setEscPressedOnce, escTimeoutRef, api]);
+
+  return null;
+};
 
 const ThreadArtifactCallout: FC = () => {
   const messages = useThread((state) => state.messages) as Array<{
@@ -699,6 +895,8 @@ type ChatComposerProps = {
   currentSessionId: string | null;
   showWorkspace: boolean;
   setShowWorkspace: (value: boolean) => void;
+  showSessionFiles: boolean;
+  setShowSessionFiles: (value: boolean) => void;
   showSessionInfo: boolean;
   setShowSessionInfo: (value: boolean) => void;
   sessionMetadata: SessionMetadata | null;
@@ -709,6 +907,8 @@ const ChatComposer: FC<ChatComposerProps> = ({
   currentSessionId,
   showWorkspace,
   setShowWorkspace,
+  showSessionFiles,
+  setShowSessionFiles,
   showSessionInfo,
   setShowSessionInfo,
   sessionMetadata,
@@ -719,10 +919,15 @@ const ChatComposer: FC<ChatComposerProps> = ({
   const composerIsEditing = useComposer((state) => state.isEditing);
   const composerIsEmpty = useComposer((state) => state.isEmpty);
   const isRunning = useThread((state) => state.isRunning);
+  const threadMessages = useThread((state) => state.messages) as Array<{ id: string; role: string }>;
+  const { onSessionFileClick } = useFileHandlers();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { persistAttachments } = useMessageAttachments();
+  const pendingAttachmentsRef = useRef<PendingAttachment[] | null>(null);
+  const lastPersistedMessageIdRef = useRef<string | null>(null);
 
   // Get agent status from store for ToolbarStatus
   const agentStatus = useChatSessionStore((state) => state.agentStatus);
@@ -755,6 +960,27 @@ const ChatComposer: FC<ChatComposerProps> = ({
     setUploadedFiles([]);
     setUploadError(null);
   }, [currentSessionId]);
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = null;
+    lastPersistedMessageIdRef.current = null;
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const pending = pendingAttachmentsRef.current;
+    if (!pending || pending.length === 0) return;
+
+    const lastUserMessage = [...threadMessages].reverse().find((msg) => msg.role === 'user');
+    if (!lastUserMessage || lastUserMessage.id === lastPersistedMessageIdRef.current) return;
+
+    persistAttachments(currentSessionId, lastUserMessage.id, pending).then(() => {
+      lastPersistedMessageIdRef.current = lastUserMessage.id;
+      pendingAttachmentsRef.current = null;
+      setUploadedFiles([]);
+      setUploadError(null);
+    });
+  }, [currentSessionId, threadMessages, persistAttachments]);
 
   // Note: thinkingMode toggle removed - SDK's claude_code preset handles this automatically
   // Use showThinking in session-info-panel to control UI display of reasoning content
@@ -798,6 +1024,8 @@ const ChatComposer: FC<ChatComposerProps> = ({
           {
             name: file.name,
             path: result.filePath,
+            mimeType: file.type,
+            fileSize: file.size,
             status: 'uploaded',
           },
         ]));
@@ -809,6 +1037,8 @@ const ChatComposer: FC<ChatComposerProps> = ({
           {
             name: file.name,
             path: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
             status: 'error',
             error: message,
           },
@@ -830,8 +1060,17 @@ const ChatComposer: FC<ChatComposerProps> = ({
       event.preventDefault();
     }
     if (!canSend || isRunning) return;
+    const pendingAttachments = uploadedFiles
+      .filter((file) => file.status === 'uploaded')
+      .map((file) => ({
+        originalName: file.name,
+        filePath: file.path,
+        mimeType: file.mimeType,
+        fileSize: file.fileSize,
+      }));
+    pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
     api.composer().send();
-  }, [api, canSend, isRunning]);
+  }, [api, canSend, isRunning, uploadedFiles]);
 
   return (
     <ComposerPrimitive.Root
@@ -839,6 +1078,10 @@ const ChatComposer: FC<ChatComposerProps> = ({
       onSubmit={handleSend}
     >
       <div className="m-3.5 flex flex-col gap-3.5">
+        {/* Context badges - show active Skills and MCP sources */}
+        {!isRunning && sessionMetadata && (
+          <ContextBadges sessionMetadata={sessionMetadata} maxVisible={5} />
+        )}
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
             <ComposerPrimitive.Input
@@ -921,6 +1164,33 @@ const ChatComposer: FC<ChatComposerProps> = ({
                     <div className="space-y-3 text-xs">
                       <KnowledgeBasePanel sessionId={currentSessionId} />
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Session Files Button - only show when not running */}
+            {!isRunning && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowSessionFiles(!showSessionFiles)}
+                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="会话文件"
+                  title="会话文件"
+                  disabled={!currentSessionId}
+                >
+                  <FolderTree width={16} height={16} />
+                </button>
+
+                {/* Session Files Panel */}
+                {showSessionFiles && currentSessionId && (
+                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 h-80 overflow-hidden rounded-lg border border-[#e5e4df] bg-white shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
+                    <SessionFilesPanel
+                      sessionId={currentSessionId}
+                      onClose={() => setShowSessionFiles(false)}
+                      onFileSelect={onSessionFileClick}
+                    />
                   </div>
                 )}
               </div>
@@ -1073,6 +1343,101 @@ function extractFileChanges(content: ContentPart[], messageId: string): FileChan
   return changes;
 }
 
+function getMessageTextContent(parts?: ContentPart[]): string {
+  if (!parts || parts.length === 0) return '';
+  return parts
+    .filter((part): part is TextContentPart => part.type === 'text' && Boolean(part.text))
+    .map((part) => part.text)
+    .join('\n');
+}
+
+const IMAGE_ATTACHMENT_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|ico)$/i;
+
+function encodeWorkspacePath(filePath: string): string {
+  return filePath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function buildWorkspaceRawUrl(sessionId: string, filePath: string): string {
+  return `/api/workspace/${sessionId}/file/${encodeWorkspacePath(filePath)}?raw=1`;
+}
+
+function isImageAttachment(attachment: MessageAttachment): boolean {
+  if (attachment.mimeType?.startsWith('image/')) return true;
+  return IMAGE_ATTACHMENT_EXTENSIONS.test(attachment.filePath);
+}
+
+function isTextAttachment(attachment: MessageAttachment): boolean {
+  if (!attachment.mimeType) return false;
+  return (
+    attachment.mimeType.startsWith('text/') ||
+    attachment.mimeType === 'application/json' ||
+    attachment.mimeType === 'application/xml'
+  );
+}
+
+const HistoricalAttachmentStrip: FC<{
+  attachments: MessageAttachment[];
+  sessionId: string;
+  onFileClick: (path: string) => void;
+}> = ({ attachments, sessionId, onFileClick }) => {
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="mb-2 flex flex-wrap gap-2">
+      {attachments.map((attachment) => {
+        const isImage = isImageAttachment(attachment);
+        const rawUrl = buildWorkspaceRawUrl(sessionId, attachment.filePath);
+        const displayName = attachment.originalName || attachment.filePath;
+        const handleClick = () => {
+          if (isImage) {
+            window.open(rawUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+          if (isTextAttachment(attachment)) {
+            onFileClick(attachment.filePath);
+            return;
+          }
+          window.open(rawUrl, '_blank', 'noopener,noreferrer');
+        };
+
+        if (isImage) {
+          return (
+            <button
+              key={attachment.id}
+              type="button"
+              onClick={handleClick}
+              className="overflow-hidden rounded-lg border bg-card shadow-sm transition hover:shadow-md"
+              title={displayName}
+            >
+              <img
+                src={rawUrl}
+                alt={displayName}
+                className="h-16 w-16 object-cover"
+              />
+            </button>
+          );
+        }
+
+        return (
+          <button
+            key={attachment.id}
+            type="button"
+            onClick={handleClick}
+            className="flex items-center gap-2 rounded-lg border bg-card/70 px-2.5 py-1 text-xs text-foreground shadow-sm transition hover:bg-card"
+            title={displayName}
+          >
+            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="max-w-[16rem] truncate">{displayName}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 /**
  * Assistant Message Component - with manual part rendering
  * Manually renders all content parts to support custom tool-call type
@@ -1089,6 +1454,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const messageContent = (message as any).content as ContentPart[] | undefined;
   const isRunning = messageStatus?.type === 'running';
   const hasContent = (messageContent?.length ?? 0) > 0;
+  const copyText = useMemo(() => getMessageTextContent(messageContent), [messageContent]);
 
   // State for showing usage card
   const [showUsageCard, setShowUsageCard] = useState(false);
@@ -1214,9 +1580,14 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
             className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
           >
             <div className="relative flex items-center text-muted-foreground">
-              <ActionBarPrimitive.Copy className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(copyText)}
+                className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                aria-label="复制"
+              >
                 <ClipboardIcon width={20} height={20} />
-              </ActionBarPrimitive.Copy>
+              </button>
               <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
                 <ThumbsUp width={16} height={16} />
               </ActionBarPrimitive.FeedbackPositive>
@@ -1266,6 +1637,7 @@ const ChatMessage: FC = () => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const isLast = message.isLast;
+  const hasUserAttachments = Boolean((message as any).attachments?.length);
 
   // Get file handlers from context for user messages
   const { onFileClick, onUrlClick } = useFileHandlers();
@@ -1293,6 +1665,11 @@ const ChatMessage: FC = () => {
             </div>
             <div className="flex-1">
               <div className="relative grid grid-cols-1 gap-2 py-0.5">
+                {hasUserAttachments && (
+                  <div className="flex flex-wrap gap-2">
+                    <MessagePrimitive.Attachments components={{ Attachment: ClaudeMessageAttachment }} />
+                  </div>
+                )}
                 <div className="wrap-break-word whitespace-normal">
                   <StreamingMarkdown
                     content={userTextContent}
@@ -1335,10 +1712,17 @@ const ChatMessage: FC = () => {
 /**
  * Historical Message Component
  * Renders messages loaded from JSONL history files
+ * Structure aligned with AssistantMessage/ChatMessage for consistency
  */
-const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
+const HistoricalMessage: FC<{
+  message: ThreadMessage;
+  attachments?: MessageAttachment[];
+  sessionId: string | null;
+}> = ({ message, attachments, sessionId }) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
+  const messageAttachments = attachments ?? [];
+  const showAttachments = Boolean(sessionId && messageAttachments.length > 0);
 
   // Get file handlers from context
   const { onFileClick, onUrlClick } = useFileHandlers();
@@ -1367,6 +1751,7 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
   const hasMultipleFileChanges = successfulChanges.length > 1;
 
   if (isUser) {
+    // User message - aligned with ChatMessage user structure
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
@@ -1378,6 +1763,13 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
             </div>
             <div className="flex-1">
               <div className="relative grid grid-cols-1 gap-2 py-0.5">
+                {showAttachments && sessionId && (
+                  <HistoricalAttachmentStrip
+                    attachments={messageAttachments}
+                    sessionId={sessionId}
+                    onFileClick={onFileClick}
+                  />
+                )}
                 <div className="wrap-break-word whitespace-normal">
                   <StreamingMarkdown
                     content={textContent}
@@ -1390,12 +1782,29 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
               </div>
             </div>
           </div>
+          {/* ActionBar for user messages - copy only (no edit/reload for historical) */}
+          <div className="pointer-events-none absolute right-2 bottom-0">
+            <div className="pointer-events-auto min-w-max translate-x-1 translate-y-4 rounded-lg border bg-card/80 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition group-hover/user:translate-x-0.5 group-hover/user:opacity-100">
+              <div className="flex items-center text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(textContent)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-accent active:scale-95"
+                  aria-label="复制"
+                >
+                  <ClipboardIcon width={20} height={20} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   if (isAssistant) {
+    // Assistant message - use plain div (not MessagePrimitive.Root)
+    // because HistoricalMessage renders outside ThreadPrimitive.Messages
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="relative mb-12 font-sans">
@@ -1469,6 +1878,41 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
               </div>
             </div>
           </div>
+          {/* ActionBar - aligned with AssistantMessage (copy/feedback only, no reload/stats for historical) */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0">
+            <div className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition">
+              <div className="relative flex items-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allText = message.content
+                      .filter((p): p is TextContentPart => p.type === 'text')
+                      .map((p) => p.text)
+                      .join('\n');
+                    navigator.clipboard.writeText(allText);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                  aria-label="复制"
+                >
+                  <ClipboardIcon width={20} height={20} />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                  aria-label="有帮助"
+                >
+                  <ThumbsUp width={16} height={16} />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                  aria-label="没帮助"
+                >
+                  <ThumbsDown width={16} height={16} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Multi-diff overlay */}
@@ -1482,6 +1926,17 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
   }
 
   return null;
+};
+
+const ClaudeMessageAttachment: FC = () => {
+  return (
+    <AttachmentPrimitive.Root className="flex items-center gap-2 rounded-lg border bg-card/70 px-2.5 py-1 text-xs text-foreground shadow-sm">
+      <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="max-w-[16rem] truncate">
+        <AttachmentPrimitive.Name />
+      </span>
+    </AttachmentPrimitive.Root>
+  );
 };
 
 const ClaudeAttachment: FC = () => {
