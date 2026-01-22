@@ -11,7 +11,58 @@ import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
 
 /**
+ * System files to exclude from workspace listings
+ * These are internal SDK/session files that users shouldn't see
+ */
+const EXCLUDED_FILES = new Set([
+  '.artifacts.json',
+  'session.jsonl',
+  '.DS_Store',
+  'Thumbs.db',
+]);
+
+/**
+ * Patterns for hidden/system directories to skip
+ */
+const EXCLUDED_DIR_PATTERNS = [
+  /^\./, // Hidden directories (start with .)
+  /^node_modules$/, // node_modules
+  /^__pycache__$/, // Python cache
+];
+
+/**
+ * Check if a file/directory should be excluded
+ */
+function shouldExclude(name: string, isDirectory: boolean): boolean {
+  // Check exact matches for files
+  if (!isDirectory && EXCLUDED_FILES.has(name)) {
+    return true;
+  }
+
+  // Check patterns for directories
+  if (isDirectory) {
+    for (const pattern of EXCLUDED_DIR_PATTERNS) {
+      if (pattern.test(name)) {
+        return true;
+      }
+    }
+  }
+
+  // Exclude hidden files (start with .) except for common config files
+  if (name.startsWith('.') && !isDirectory) {
+    // Allow certain config files
+    const allowedDotFiles = ['.gitignore', '.env.example', '.editorconfig'];
+    if (!allowedDotFiles.includes(name)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Recursively list all files in a directory
+ * Filters out system/hidden files for cleaner user experience
  */
 async function listFilesRecursive(dirPath: string, basePath: string = ''): Promise<string[]> {
   const files: string[] = [];
@@ -20,6 +71,11 @@ async function listFilesRecursive(dirPath: string, basePath: string = ''): Promi
     const entries = await readdir(dirPath, { withFileTypes: true });
 
     for (const entry of entries) {
+      // Skip excluded files and directories
+      if (shouldExclude(entry.name, entry.isDirectory())) {
+        continue;
+      }
+
       const relativePath = path.join(basePath, entry.name);
       const fullPath = path.join(dirPath, entry.name);
 

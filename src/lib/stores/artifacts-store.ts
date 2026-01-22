@@ -12,12 +12,16 @@ export interface Artifact {
   sessionId: string
   messageId?: string
   sourceFilePath?: string
-  type: 'html' | 'svg' | 'markdown' | 'react'
+  type: 'html' | 'svg' | 'markdown' | 'react' | 'image' | 'json' | 'csv'
   title?: string
   description?: string // Description of what the artifact does
   fileName?: string // File name for React artifacts (e.g., "App.jsx")
   content: string // Complete HTML, SVG, Markdown, or React code
+  mimeType?: string // MIME type for images (e.g., "image/png")
   isTemporary?: boolean // True if created by heuristic detection, false if from Structured Outputs
+  // P14: Tool-to-Artifact Lineage
+  toolCallId?: string // ID of the tool call that produced this artifact
+  toolName?: string // Name of the tool (e.g., "Write", "Edit")
   createdAt: number
   updatedAt: number
 }

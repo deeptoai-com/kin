@@ -14,6 +14,8 @@ import { useChatSessionStore } from '~/lib/chat-session-store'
 import { validateArtifactMetadata, type ArtifactMetadata } from '~/lib/schemas/artifact-schema'
 import {
   readWorkspaceFile,
+  readWorkspaceBinaryFile,
+  getMimeType,
   saveArtifactRegistryEntry,
   writeWorkspaceFile,
   type ArtifactRegistryEntry,
@@ -26,7 +28,7 @@ import type { ContentPart } from '~/lib/chat-session-store'
  * Detect artifact from tool-call content
  * Looks for Write tool calls with .html, .svg, .md, .jsx, or .tsx files
  */
-type ArtifactType = 'html' | 'svg' | 'markdown' | 'react'
+type ArtifactType = 'html' | 'svg' | 'markdown' | 'react' | 'image' | 'json' | 'csv'
 
 type ArtifactTarget = {
   filePath: string
@@ -38,15 +40,31 @@ type ArtifactTarget = {
 }
 
 const ARTIFACT_EXTENSIONS: Array<{ ext: string; type: ArtifactType }> = [
+  // HTML
   { ext: '.html', type: 'html' },
   { ext: '.htm', type: 'html' },
+  // SVG
   { ext: '.svg', type: 'svg' },
+  // Markdown
   { ext: '.md', type: 'markdown' },
   { ext: '.markdown', type: 'markdown' },
+  // React/JS
   { ext: '.jsx', type: 'react' },
   { ext: '.tsx', type: 'react' },
   { ext: '.js', type: 'react' },
   { ext: '.ts', type: 'react' },
+  // P15: Image formats
+  { ext: '.png', type: 'image' },
+  { ext: '.jpg', type: 'image' },
+  { ext: '.jpeg', type: 'image' },
+  { ext: '.gif', type: 'image' },
+  { ext: '.webp', type: 'image' },
+  { ext: '.bmp', type: 'image' },
+  { ext: '.ico', type: 'image' },
+  // P15: JSON
+  { ext: '.json', type: 'json' },
+  // P15: CSV
+  { ext: '.csv', type: 'csv' },
 ]
 
 function resolveArtifactTarget(
@@ -144,9 +162,15 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
         for (const target of pending) {
           processingToolCallsRef.current.add(target.toolCallId)
           try {
-            const fileContent = sessionId
-              ? await readWorkspaceFile(sessionId, target.filePath)
-              : null
+            // P15: Use binary reading for images to avoid UTF-8 corruption
+            let fileContent: string | null = null
+            if (sessionId) {
+              if (target.type === 'image') {
+                fileContent = await readWorkspaceBinaryFile(sessionId, target.filePath, getMimeType(target.filePath))
+              } else {
+                fileContent = await readWorkspaceFile(sessionId, target.filePath)
+              }
+            }
 
             const contentToUse = fileContent ?? target.content
             if (!contentToUse) {
@@ -162,6 +186,9 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
 
             let artifactId: string
 
+            // P15: Add mimeType for images
+            const mimeType = target.type === 'image' ? getMimeType(target.filePath) : undefined
+
             if (existing) {
               updateArtifact(existing.id, {
                 content: contentToUse,
@@ -169,6 +196,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 fileName: target.fileName,
                 messageId,
                 isTemporary: false,
+                mimeType,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
               })
               artifactId = existing.id
             } else {
@@ -180,6 +211,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 content: contentToUse,
                 fileName: target.fileName,
                 isTemporary: false,
+                mimeType,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
               })
             }
 
@@ -194,8 +229,12 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 fileName: target.fileName,
                 messageId,
                 updatedAt: Date.now(),
+                // P14: Persist lineage to registry
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
               }
-              await saveArtifactRegistryEntry(sessionId, registryEntry)
+              // P16: Pass content for version tracking
+              await saveArtifactRegistryEntry(sessionId, registryEntry, contentToUse)
             }
           } catch (error) {
             console.error('[Artifact Detection] Failed to update artifact:', error)
@@ -224,15 +263,26 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
               updateArtifact(existing.id, {
                 messageId,
                 fileName: existing.fileName || target.fileName,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
               })
             }
             continue
           }
 
-          const fileContent = await readWorkspaceFile(sessionId, target.filePath)
+          // P15: Use binary reading for images
+          let fileContent: string | null = null
+          if (target.type === 'image') {
+            fileContent = await readWorkspaceBinaryFile(sessionId, target.filePath, getMimeType(target.filePath))
+          } else {
+            fileContent = await readWorkspaceFile(sessionId, target.filePath)
+          }
           if (!fileContent || isCancelled) {
             continue
           }
+
+          const mimeType = target.type === 'image' ? getMimeType(target.filePath) : undefined
 
           createArtifact({
             sessionId,
@@ -242,6 +292,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             content: fileContent,
             fileName: target.fileName,
             isTemporary: false,
+            mimeType,
+            // P14: Tool-to-Artifact Lineage
+            toolCallId: target.toolCallId,
+            toolName: target.toolName,
           })
 
           await saveArtifactRegistryEntry(sessionId, {
@@ -250,7 +304,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             fileName: target.fileName,
             messageId,
             updatedAt: Date.now(),
-          })
+            // P14: Persist lineage to registry
+            toolCallId: target.toolCallId,
+            toolName: target.toolName,
+          }, fileContent) // P16: Pass content for version tracking
         }
       }
 
@@ -390,7 +447,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
           fileName,
           messageId,
           updatedAt: Date.now(),
-        })
+        }, primaryContent) // P16: Pass content for version tracking
       } catch (error) {
         console.error('[Artifact Detection] Failed to process structured output:', error)
       }

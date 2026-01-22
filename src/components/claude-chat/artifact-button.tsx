@@ -5,13 +5,13 @@
  * Shows in assistant messages when an artifact is detected.
  */
 
-import { Eye, FileCode, FileImage, FileText } from 'lucide-react'
+import { Eye, FileCode, FileImage, FileText, Braces, Table } from 'lucide-react'
 import type { FC } from 'react'
 import { Button } from '~/components/ui/button'
 
 export interface ArtifactButtonProps {
   onClick: () => void
-  type: 'html' | 'svg' | 'markdown' | 'react'
+  type: 'html' | 'svg' | 'markdown' | 'react' | 'image' | 'json' | 'csv'
   title?: string
   fileName?: string
   filePath?: string
@@ -23,6 +23,9 @@ const labelMap = {
   svg: 'SVG',
   markdown: 'Markdown',
   react: 'React',
+  image: 'Image',
+  json: 'JSON',
+  csv: 'CSV',
 } as const
 
 const iconMap = {
@@ -30,6 +33,9 @@ const iconMap = {
   svg: FileImage,
   markdown: FileText,
   react: FileCode,
+  image: FileImage,
+  json: Braces,
+  csv: Table,
 } as const
 
 export const ArtifactButton: FC<ArtifactButtonProps> = ({

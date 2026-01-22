@@ -5,7 +5,7 @@
  */
 
 import JSZip from 'jszip'
-import { Download, Package, Upload, X } from 'lucide-react'
+import { Download, Package, Upload, X, Wrench, Clock } from 'lucide-react'
 import { useMemo, useState, type FC } from 'react'
 import { useServerFn } from '@tanstack/react-start'
 import { toast } from 'sonner'
@@ -24,6 +24,9 @@ import { HTMLArtifact } from './artifact-html'
 import { SVGArtifact } from './artifact-svg'
 import { MarkdownArtifact } from './artifact-markdown'
 import { ReactArtifact } from './artifact-react'
+import { ImageArtifact } from './artifact-image'
+import { JSONArtifact } from './artifact-json'
+import { CSVArtifact } from './artifact-csv'
 
 export interface ArtifactsPanelProps {
   artifactId: string | null
@@ -205,6 +208,9 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
       svg: 'image/svg+xml;charset=utf-8',
       markdown: 'text/markdown;charset=utf-8',
       react: 'text/javascript;charset=utf-8',
+      image: artifact.mimeType || 'image/png',
+      json: 'application/json;charset=utf-8',
+      csv: 'text/csv;charset=utf-8',
     } as const
 
     const extensionMap = {
@@ -212,6 +218,9 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
       svg: 'svg',
       markdown: 'md',
       react: artifact.fileName?.split('.').pop() || 'jsx',
+      image: artifact.mimeType?.split('/')[1] || 'png',
+      json: 'json',
+      csv: 'csv',
     } as const
 
     const blob = new Blob([artifact.content], {
@@ -307,6 +316,29 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
             <p className="text-sm text-muted-foreground">{artifact.description}</p>
           </div>
         )}
+
+        {/* P14: Lineage info - source tool and update time */}
+        {(artifact.toolName || artifact.updatedAt) && (
+          <div className="px-4 pb-3 flex items-center gap-4 text-xs text-muted-foreground border-t">
+            {artifact.toolName && (
+              <div className="flex items-center gap-1.5">
+                <Wrench className="h-3 w-3" />
+                <span>来源: {artifact.toolName}</span>
+              </div>
+            )}
+            {artifact.updatedAt && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3" />
+                <span>更新: {new Date(artifact.updatedAt).toLocaleTimeString('zh-CN')}</span>
+              </div>
+            )}
+            {artifact.fileName && (
+              <div className="truncate" title={artifact.fileName}>
+                文件: {artifact.fileName}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -326,6 +358,19 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
             title={artifact.title}
             fileName={artifact.fileName}
           />
+        )}
+        {artifact.type === 'image' && (
+          <ImageArtifact
+            content={artifact.content}
+            title={artifact.title}
+            mimeType={artifact.mimeType}
+          />
+        )}
+        {artifact.type === 'json' && (
+          <JSONArtifact content={artifact.content} title={artifact.title} />
+        )}
+        {artifact.type === 'csv' && (
+          <CSVArtifact content={artifact.content} title={artifact.title} />
         )}
       </div>
     </div>

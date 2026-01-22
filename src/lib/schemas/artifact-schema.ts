@@ -14,7 +14,7 @@ export const ArtifactFileSchema = z.object({
   path: z.string().describe('File path (e.g., "App.jsx", "styles.css")'),
   content: z.string().describe('Complete file content'),
   language: z
-    .enum(['html', 'css', 'javascript', 'typescript', 'jsx', 'tsx', 'svg', 'markdown', 'json'])
+    .enum(['html', 'css', 'javascript', 'typescript', 'jsx', 'tsx', 'svg', 'markdown', 'json', 'csv'])
     .describe('Programming language or file type'),
 })
 
@@ -30,8 +30,8 @@ export const ArtifactMetadataSchema = z.object({
     .optional()
     .describe('Detailed description of what the artifact does and how it works'),
   type: z
-    .enum(['html', 'svg', 'markdown', 'react'])
-    .describe('Type of artifact: html, svg, markdown, or react component'),
+    .enum(['html', 'svg', 'markdown', 'react', 'image', 'json', 'csv'])
+    .describe('Type of artifact: html, svg, markdown, react component, image, json, or csv'),
   files: z
     .array(ArtifactFileSchema)
     .min(1)
