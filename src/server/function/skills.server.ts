@@ -20,9 +20,16 @@ import {
   enableUserUploadedSkill,
   disableUserUploadedSkill,
   getUserSkillFiles,
+  checkSkillCompatibility,
+  formatCompatibilityWarnings,
+  installSkillFromGitHub,
+  deleteGitHubSkill,
+  getExtendedSkillInfo,
   type SkillInfo,
   type SkillDetail,
+  type CompatibilityCheckResult,
 } from '~/claude/skills';
+import { validateGitHubUrl } from '~/claude/skills/command-parser';
 
 /**
  * Require authenticated user
@@ -38,6 +45,66 @@ const requireUser = async () => {
 
   return session.user;
 };
+
+/**
+ * Require system admin
+ * Throws error if not admin
+ */
+const requireAdmin = async () => {
+  const { headers } = getRequest();
+  const session = await auth.api.getSession({ headers });
+
+  if (!session?.user) {
+    throw new Error('UNAUTHORIZED');
+  }
+
+  // Check system role from database
+  const { db } = await import('~/db/db-config');
+  const { user: userTable } = await import('~/db/schema');
+  const { eq } = await import('drizzle-orm');
+
+  const userData = await db.query.user.findFirst({
+    where: eq(userTable.id, session.user.id),
+    columns: {
+      systemRole: true,
+    },
+  });
+
+  if (userData?.systemRole !== 'admin') {
+    throw new Error('FORBIDDEN: Admin access required');
+  }
+
+  return session.user;
+};
+
+/**
+ * Check if current user is system admin
+ * Returns true/false without throwing error
+ */
+export const isAdminUser = createServerFn({ method: 'GET' }).handler(async () => {
+  const { headers } = getRequest();
+  const session = await auth.api.getSession({ headers });
+
+  if (!session?.user) {
+    return { isAdmin: false };
+  }
+
+  // Check system role from database
+  const { db } = await import('~/db/db-config');
+  const { user: userTable } = await import('~/db/schema');
+  const { eq } = await import('drizzle-orm');
+
+  const userData = await db.query.user.findFirst({
+    where: eq(userTable.id, session.user.id),
+    columns: {
+      systemRole: true,
+    },
+  });
+
+  return {
+    isAdmin: userData?.systemRole === 'admin',
+  };
+});
 
 // Input validation schemas
 const enableSkillSchema = z.object({
@@ -141,6 +208,189 @@ export const getSkillDetailFn = createServerFn({ method: 'GET' })
 // ============================================================================
 
 /**
+ * Check skill compatibility before installation
+ * Returns warnings about potential issues (browser/CDP, MCP dependencies)
+ *
+ * Only accepts files array (not tempDir) for security.
+ * Path traversal protection prevents writing outside temp directory.
+ */
+export const checkSkillCompatibilityFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      files: z.array(z.object({
+        path: z.string(),
+        content: z.string(),
+      })),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const os = await import('node:os');
+
+    // Create a secure temporary directory
+    const tempDir = path.join(os.tmpdir(), `skill-check-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await fs.mkdir(tempDir, { recursive: true });
+
+    try {
+      // Validate each file path and write securely
+      for (const file of data.files) {
+        // Normalize the file path to prevent directory traversal
+        const normalizedPath = path.normalize(file.path);
+
+        // Check for path traversal attempts by examining path segments
+        // This avoids false positives on legitimate file names like "file..txt"
+        const pathSegments = normalizedPath.split(path.sep);
+        if (pathSegments.includes('..')) {
+          throw new Error(`Invalid file path: contains path traversal component: ${file.path}`);
+        }
+
+        // Ensure the path is relative (not absolute)
+        if (path.isAbsolute(normalizedPath)) {
+          throw new Error(`Invalid file path: absolute paths not allowed: ${file.path}`);
+        }
+
+        // Construct the full target path
+        const filePath = path.join(tempDir, normalizedPath);
+
+        // Verify the resolved path is within the temp directory
+        const resolvedTarget = path.resolve(filePath);
+        const resolvedTemp = path.resolve(tempDir);
+        if (!resolvedTarget.startsWith(resolvedTemp + path.sep) && resolvedTarget !== resolvedTemp) {
+          throw new Error(`Invalid file path: would write outside temp directory: ${file.path}`);
+        }
+
+        // Create parent directory and write file
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, file.content, 'utf-8');
+      }
+
+      // Check compatibility
+      const result: CompatibilityCheckResult = await checkSkillCompatibility(tempDir);
+      const warnings = formatCompatibilityWarnings(result);
+
+      return {
+        compatible: result.compatible,
+        rawWarnings: result.warnings,
+        formattedWarnings: warnings,
+      };
+    } finally {
+      // Always clean up temporary directory
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  });
+
+/**
+ * Check GitHub skill compatibility before installation
+ * Uses Archive downloader (not git clone) and validates GitHub URL strictly
+ */
+export const checkGitHubSkillCompatibilityFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      repoUrl: z.string(),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+
+    // Validate GitHub URL strictly (only https://github.com/owner/repo or owner/repo)
+    const urlValidation = validateGitHubUrl(data.repoUrl);
+    if (!urlValidation.valid) {
+      throw new Error(`Invalid GitHub URL: ${urlValidation.error}`);
+    }
+
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const os = await import('node:os');
+
+    // Import the downloadFromGitHub function from github-installer
+    const { downloadFromGitHub, getExtractedRootDir } = await import('~/claude/skills/github-installer');
+
+    let tempDir: string | null = null;
+
+    try {
+      // Download archive from GitHub (no git required)
+      const downloadResult = await downloadFromGitHub(urlValidation.owner!, urlValidation.repo!);
+      tempDir = downloadResult.tempDir;
+
+      // Get the extracted root directory
+      const extractedRoot = await getExtractedRootDir(tempDir);
+
+      // Check compatibility
+      const result = await checkSkillCompatibility(extractedRoot);
+      const warnings = formatCompatibilityWarnings(result);
+
+      return {
+        compatible: result.compatible,
+        rawWarnings: result.warnings,
+        formattedWarnings: warnings,
+      };
+    } finally {
+      // Clean up temp directory
+      if (tempDir) {
+        try {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    }
+  });
+
+/**
+ * Install a skill from GitHub (admin only)
+ * Downloads archive from GitHub and installs to skills-store
+ */
+export const installGitHubSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      repoUrl: z.string(),
+      skillName: z.string().min(1).max(100),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const adminUser = await requireAdmin();
+
+    // Validate GitHub URL strictly
+    const urlValidation = validateGitHubUrl(data.repoUrl);
+    if (!urlValidation.valid) {
+      throw new Error(`Invalid GitHub URL: ${urlValidation.error}`);
+    }
+
+    // Install the skill with correct signature
+    const result = await installSkillFromGitHub({
+      owner: urlValidation.owner!,
+      repo: urlValidation.repo!,
+      skillName: data.skillName,
+      installedBy: adminUser.id,
+    });
+
+    // Note: Compatibility warnings are shown to user before installation
+    // via checkGitHubSkillCompatibilityFn, so we don't block installation here
+
+    return result;
+  });
+
+/**
  * Upload a user-created skill
  * Authentication required
  */
@@ -196,20 +446,29 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
     const allOfficialSkills = await getSkillsStore();
     const enabledOfficialSlugs = await getUserEnabledSkills(user.id);
 
-    const officialSkills = allOfficialSkills.map(skill => ({
-      ...skill,
-      store: 'official' as const,
-      enabled: enabledOfficialSlugs.includes(skill.slug),
-    }));
+    // Check which skills are GitHub-installed (deletable by admin)
+    // Use static imports (not dynamic) to avoid runtime issues
+    const officialSkillsWithDeletable = await Promise.all(
+      allOfficialSkills.map(async (skill) => {
+        const extendedInfo = await getExtendedSkillInfo(skill.slug);
+        return {
+          ...skill,
+          store: 'official' as const,
+          enabled: enabledOfficialSlugs.includes(skill.slug),
+          deletable: extendedInfo.isGitHubInstalled,
+        };
+      })
+    );
 
     // Get user-uploaded skills
     const userSkills = await getUserUploadedSkills(user.id);
 
     return {
-      official: officialSkills,
+      official: officialSkillsWithDeletable,
       user: userSkills.map(skill => ({
         ...skill,
         store: 'user' as const,
+        deletable: true, // User skills are always deletable
       })),
     };
   });
@@ -295,4 +554,33 @@ export const getUserSkillFilesFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const user = await requireUser();
     return await getUserSkillFiles(user.id, data.skillName);
+  });
+
+/**
+ * Delete a GitHub-installed skill from the global Skills Store
+ * Admin only - requires systemRole='admin'
+ */
+export const deleteGitHubSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillName: z.string().min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    // Require admin access
+    const adminUser = await requireAdmin();
+
+    // Call delete function (using static import)
+    await deleteGitHubSkill(data.skillName);
+
+    return {
+      success: true,
+      skillName: data.skillName,
+      deletedBy: adminUser.id,
+    };
   });

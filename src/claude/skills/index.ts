@@ -25,6 +25,10 @@ export {
   enableUserUploadedSkill,
   disableUserUploadedSkill,
   getUserSkillFiles,
+  // GitHub-installed skills management
+  isGitHubInstalledSkill,
+  getExtendedSkillInfo,
+  deleteGitHubSkill,
 } from './manager';
 
 // Metadata functions
@@ -33,9 +37,16 @@ export { fileExists, parseSkillMetadata } from './metadata';
 // Detail functions
 export { getSkillDetail } from './detail';
 
+// Compatibility check
+export {
+  checkSkillCompatibility,
+  formatCompatibilityWarnings,
+} from './compatibility';
+export type { CompatibilityCheckResult } from './compatibility';
+
 // Installer utilities
 export { parseSkillsCommand, validateGitHubUrl } from './command-parser';
-export { installSkillFromGitHub } from './github-installer';
+export { installSkillFromGitHub, downloadFromGitHub } from './github-installer';
 
 // Note: getSkillDetail now accepts an optional second parameter `userId`
 // to support retrieving user-uploaded skills

@@ -243,7 +243,7 @@ async function matchByMetadata(candidates: string[], skillName: string): Promise
   return null
 }
 
-async function downloadFromGitHub(
+export async function downloadFromGitHub(
   owner: string,
   repo: string
 ): Promise<{ tempDir: string; commitSha: string | null }> {

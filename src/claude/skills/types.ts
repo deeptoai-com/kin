@@ -17,6 +17,7 @@ export interface SkillInfo {
 export interface ExtendedSkillInfo extends SkillInfo {
   store: 'official' | 'user'  // 技能来源
   enabled?: boolean           // 启用状态（仅用户技能）
+  deletable?: boolean         // 是否可删除（管理员可删除 GitHub 安装的技能）
   author?: string             // 作者 ID（仅用户技能）
   createdAt?: string          // 创建时间（仅用户技能）
   fileCount?: number          // 文件数量（仅用户技能）

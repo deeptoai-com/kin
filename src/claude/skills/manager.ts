@@ -387,3 +387,80 @@ export async function getUserSkillFiles(
 
   return files
 }
+
+// ============================================================================
+// GitHub-Installed Skills Management (Admin Only)
+// ============================================================================
+
+/**
+ * Check if a skill is GitHub-installed (has .source.json)
+ */
+export async function isGitHubInstalledSkill(skillName: string): Promise<boolean> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(getSkillsStoreDir(), normalizedName)
+  const sourceJsonPath = path.join(skillDir, '.source.json')
+  return await fileExists(sourceJsonPath)
+}
+
+/**
+ * Get extended skill info including deletable flag
+ * Returns info with additional properties for UI decisions
+ */
+export async function getExtendedSkillInfo(skillName: string): Promise<{
+  isGitHubInstalled: boolean
+  sourceInfo?: {
+    type: 'github' | 'upload' | 'builtin'
+    owner?: string
+    repo?: string
+    commitSha: string | null
+    installedAt: string
+    installedBy: string
+  }
+}> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(getSkillsStoreDir(), normalizedName)
+  const sourceJsonPath = path.join(skillDir, '.source.json')
+
+  const isGitHubInstalled = await fileExists(sourceJsonPath)
+
+  if (isGitHubInstalled) {
+    try {
+      const content = await fs.readFile(sourceJsonPath, 'utf-8')
+      const sourceInfo = JSON.parse(content)
+      return {
+        isGitHubInstalled: true,
+        sourceInfo,
+      }
+    } catch {
+      // .source.json exists but couldn't be read
+      return { isGitHubInstalled: true }
+    }
+  }
+
+  return { isGitHubInstalled: false }
+}
+
+/**
+ * Delete a GitHub-installed skill from the global Skills Store
+ * Admin only - used for managing GitHub-installed skills
+ */
+export async function deleteGitHubSkill(skillName: string): Promise<void> {
+  const normalizedName = normalizeSkillName(skillName)
+  const skillDir = path.join(getSkillsStoreDir(), normalizedName)
+
+  // Verify skill exists
+  if (!await fileExists(skillDir)) {
+    throw new Error(`Skill not found: ${normalizedName}`)
+  }
+
+  // Verify it's a GitHub-installed skill (has .source.json)
+  const isGitHubInstalled = await isGitHubInstalledSkill(skillName)
+  if (!isGitHubInstalled) {
+    throw new Error(`Cannot delete built-in skill: ${normalizedName}. Only GitHub-installed skills can be deleted.`)
+  }
+
+  // Delete entire skill directory
+  await fs.rm(skillDir, { recursive: true, force: true })
+
+  console.log(`[Skills] Deleted GitHub-installed skill: ${normalizedName}`)
+}
