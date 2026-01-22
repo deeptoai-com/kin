@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { SkillFile, SkillDetail } from './detail-types'
 import { parseSkillMetadata } from './metadata'
-import { getUserClaudeHome } from './manager'
+import { getSkillsStoreDir, getUserClaudeHome } from './manager'
 
 // Re-export types for frontend use
 export type { SkillFile, SkillDetail } from './detail-types'
@@ -119,12 +119,12 @@ async function buildFileTree(
  * Get full Skill detail including all files
  *
  * This function tries to find the skill in the following order:
- * 1. Official skills store (src/skills-store/)
+ * 1. Official skills store (SKILLS_STORE_DIR or src/skills-store/)
  * 2. User-uploaded skills (.claude/skills/user/)
  */
 export async function getSkillDetail(skillSlug: string, userId?: string): Promise<SkillDetail> {
   // Try official skills first
-  const officialSkillDir = path.join(process.cwd(), 'src', 'skills-store', skillSlug)
+  const officialSkillDir = path.join(getSkillsStoreDir(), skillSlug)
   const officialInfo = await parseSkillMetadata(officialSkillDir, skillSlug)
 
   if (officialInfo) {

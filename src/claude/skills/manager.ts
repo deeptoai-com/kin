@@ -17,6 +17,18 @@ export function normalizeSkillName(skillName: string): string {
 }
 
 /**
+ * Get Skills Store directory
+ * - Production: uses SKILLS_STORE_DIR env var (data volume)
+ * - Development: falls back to src/skills-store (source directory)
+ */
+export function getSkillsStoreDir(): string {
+  if (process.env.SKILLS_STORE_DIR) {
+    return process.env.SKILLS_STORE_DIR
+  }
+  return path.join(process.cwd(), 'src', 'skills-store')
+}
+
+/**
  * Get user's CLAUDE_HOME directory
  * Uses CLAUDE_SESSIONS_ROOT to be consistent with ws-server.mjs
  */
@@ -34,7 +46,7 @@ export function getUserClaudeHome(userId: string): string {
  * Get all available Skills from the Skills Store
  */
 export async function getSkillsStore(): Promise<SkillInfo[]> {
-  const storeDir = path.join(process.cwd(), 'src', 'skills-store')
+  const storeDir = getSkillsStoreDir()
 
   try {
     const entries = await fs.readdir(storeDir, { withFileTypes: true })
@@ -82,7 +94,7 @@ export async function getUserEnabledSkills(userId: string): Promise<string[]> {
  */
 export async function enableSkill(userId: string, skillName: string): Promise<void> {
   const normalizedName = normalizeSkillName(skillName)
-  const sourceDir = path.join(process.cwd(), 'src', 'skills-store', normalizedName)
+  const sourceDir = path.join(getSkillsStoreDir(), normalizedName)
   const userHome = getUserClaudeHome(userId)
   const targetDir = path.join(userHome, '.claude', 'skills', normalizedName)
 

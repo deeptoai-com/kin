@@ -33,6 +33,10 @@ export { fileExists, parseSkillMetadata } from './metadata';
 // Detail functions
 export { getSkillDetail } from './detail';
 
+// Installer utilities
+export { parseSkillsCommand, validateGitHubUrl } from './command-parser';
+export { installSkillFromGitHub } from './github-installer';
+
 // Note: getSkillDetail now accepts an optional second parameter `userId`
 // to support retrieving user-uploaded skills
 // Usage: await getSkillDetail(skillSlug, userId?)

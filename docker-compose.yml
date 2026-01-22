@@ -219,8 +219,11 @@ services:
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-true}
+      # Skills Store (production data volume)
+      SKILLS_STORE_DIR: /data/skills-store
     volumes:
       - claude-sessions:/data/users
+      - skills-store:/data/skills-store
     ports:
       - '5050:5000'
       - '3051:3001'
@@ -232,3 +235,4 @@ volumes:
   ex0-redis-data:
   ex0-meili-data:
   claude-sessions:  # Claude Agent session storage (persists across container restarts)
+  skills-store:     # Global Skills Store (persists across image upgrades)
