@@ -157,6 +157,22 @@ function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
+function normalizeToolResultContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && (item as { type?: string }).type === 'text') {
+          return (item as { text?: string }).text || '';
+        }
+        return JSON.stringify(item);
+      })
+      .join('\n');
+  }
+  return JSON.stringify(content, null, 2);
+}
+
 /**
  * Convert SDK message to ThreadMessage format
  */
@@ -230,9 +246,10 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
         const existingTool = toolCalls.get(block.tool_use_id);
         if (existingTool) {
           const isError = Boolean(block.is_error ?? (block as { isError?: boolean }).isError);
+          const resultContent = normalizeToolResultContent(block.content);
           const updatedPart: ToolCallContentPart = {
             ...existingTool,
-            result: block.content,
+            result: resultContent,
             isError,
           };
           toolCalls.set(block.tool_use_id, updatedPart);
@@ -346,10 +363,35 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     const converted: ThreadMessage[] = [];
     let lastUsageData: UsageData | null = null;
 
+    // Track tool_use positions for cross-message tool_result backfill
+    // Map: tool_use_id -> { messageIndex, partIndex, toolName, args }
+    const toolUseRegistry = new Map<string, {
+      messageIndex: number;
+      partIndex: number;
+      toolName: string;
+      args: Record<string, unknown>;
+    }>();
+
+    // First pass: convert messages and register tool_use positions
     for (const sdkMsg of sdkMessages) {
       const msg = convertSDKMessage(sdkMsg);
       if (msg) {
+        const messageIndex = converted.length;
         converted.push(msg);
+
+        // Register tool_use positions for assistant messages
+        if (msg.role === 'assistant') {
+          msg.content.forEach((part, partIndex) => {
+            if (part.type === 'tool-call' && part.toolCallId) {
+              toolUseRegistry.set(part.toolCallId, {
+                messageIndex,
+                partIndex,
+                toolName: part.toolName,
+                args: part.args,
+              });
+            }
+          });
+        }
       }
 
       // Extract usage data from result events
@@ -364,7 +406,95 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
       }
     }
 
-    console.log('[ChatSessionStore] Loaded', converted.length, 'historical messages from', sdkMessages.length, 'SDK messages');
+    // Second pass: backfill tool_result from user messages
+    // SDK sends tool_result as user messages with tool_result content blocks
+    for (const sdkMsg of sdkMessages) {
+      if (sdkMsg.type !== 'user' || !sdkMsg.message?.content) continue;
+
+      const content = sdkMsg.message.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        if (block.type !== 'tool_result' || !block.tool_use_id) continue;
+
+        const registration = toolUseRegistry.get(block.tool_use_id);
+        if (!registration) continue;
+
+        const { messageIndex, partIndex, toolName, args } = registration;
+        const targetMessage = converted[messageIndex];
+        if (!targetMessage || targetMessage.role !== 'assistant') continue;
+
+        const targetPart = targetMessage.content[partIndex];
+        if (!targetPart || targetPart.type !== 'tool-call') continue;
+
+        // Determine result content and error status
+        const resultContent = normalizeToolResultContent(block.content);
+        const isError = Boolean(block.is_error ?? (block as { isError?: boolean }).isError);
+
+        // Detect backgrounded status (same logic as ws-adapter.ts)
+        let toolStatus: ToolStatus = isError ? 'error' : 'completed';
+        let backgroundTaskId: string | undefined;
+        let backgroundShellId: string | undefined;
+        let intent: string | undefined;
+        let command: string | undefined;
+
+        if (!isError && resultContent) {
+          // Task tool: detect agentId in result
+          if (toolName.toLowerCase() === 'task') {
+            const agentIdMatch = resultContent.match(/agentId:\s*([a-zA-Z0-9_-]+)/);
+            if (agentIdMatch?.[1]) {
+              toolStatus = 'backgrounded';
+              backgroundTaskId = agentIdMatch[1];
+              // Extract intent from args
+              if (typeof args.description === 'string') {
+                intent = args.description;
+              } else if (typeof args._intent === 'string') {
+                intent = args._intent;
+              }
+            }
+          }
+
+          // Bash tool: detect shell_id or backgroundTaskId in result
+          if (toolName.toLowerCase() === 'bash') {
+            const shellIdMatch = resultContent.match(/shell_id:\s*([a-zA-Z0-9_-]+)/)
+              || resultContent.match(/"backgroundTaskId":\s*"([a-zA-Z0-9_-]+)"/);
+            if (shellIdMatch?.[1]) {
+              toolStatus = 'backgrounded';
+              backgroundShellId = shellIdMatch[1];
+              // Extract command and intent from args
+              if (typeof args.command === 'string') {
+                command = args.command;
+              }
+              if (typeof args.description === 'string') {
+                intent = args.description;
+              }
+            }
+          }
+        }
+
+        // Update the tool-call part with result and status
+        const updatedPart: ToolCallContentPart = {
+          ...targetPart,
+          result: resultContent,
+          isError,
+          toolStatus,
+          ...(backgroundTaskId && { backgroundTaskId }),
+          ...(backgroundShellId && { backgroundShellId }),
+          ...(intent && { intent }),
+          ...(command && { command }),
+        };
+
+        // Replace the part in the message (need to create new array for immutability)
+        const updatedContent = [...targetMessage.content];
+        updatedContent[partIndex] = updatedPart;
+        converted[messageIndex] = {
+          ...targetMessage,
+          content: updatedContent,
+        };
+      }
+    }
+
+    console.log('[ChatSessionStore] Loaded', converted.length, 'historical messages from', sdkMessages.length, 'SDK messages, with', toolUseRegistry.size, 'tool calls registered');
     set({ messages: converted, usageData: lastUsageData });
   },
 }));
