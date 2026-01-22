@@ -13,7 +13,7 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { mkdir, readFile, readdir, access, symlink, unlink, lstat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, access, symlink, unlink, lstat, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -1118,11 +1118,71 @@ wss.on('close', () => {
   return { httpServer, wss };
 }
 
+// ============================================================================
+// Skills Store Seeder (inline implementation for .mjs compatibility)
+// ============================================================================
+
+/**
+ * Seed Skills Store from built-in skills directory
+ * Only runs in production when SKILLS_STORE_DIR is set
+ */
+async function seedSkillsStore() {
+  const storeDir = process.env.SKILLS_STORE_DIR;
+
+  // Only seed in production (when SKILLS_STORE_DIR is set)
+  if (!storeDir) {
+    console.log('[Skills] Development mode, skipping seed');
+    return;
+  }
+
+  const builtInDir = path.join(process.cwd(), 'src', 'skills-store');
+
+  // Check if built-in directory exists
+  try {
+    await access(builtInDir);
+  } catch {
+    console.warn('[Skills] Built-in skills directory not found:', builtInDir);
+    return;
+  }
+
+  // Ensure store directory exists
+  await mkdir(storeDir, { recursive: true });
+
+  // Check if store is empty (exclude hidden files)
+  const entries = await readdir(storeDir);
+  const visibleEntries = entries.filter(name => !name.startsWith('.'));
+
+  if (visibleEntries.length === 0) {
+    // Copy from built-in directory
+    console.log('[Skills] Seeding skills store from built-in directory...');
+    console.log(`[Skills]   Source: ${builtInDir}`);
+    console.log(`[Skills]   Target: ${storeDir}`);
+
+    await cp(builtInDir, storeDir, { recursive: true });
+
+    // Count copied skills
+    const copiedEntries = await readdir(storeDir, { withFileTypes: true });
+    const copiedSkills = copiedEntries.filter(e => e.isDirectory());
+    console.log(`[Skills] Seeded ${copiedSkills.length} skills successfully`);
+  } else {
+    console.log(`[Skills] Skills store already initialized (${visibleEntries.length} skills), skipping seed`);
+  }
+}
+
 // Run as standalone script when executed directly
 if (import.meta.url.startsWith('file:')) {
   const modulePath = fileURLToPath(import.meta.url);
   if (process.argv[1] === modulePath) {
     console.log('[WS Server] Starting standalone WebSocket server...');
-    startWebSocketServer();
+    // Seed Skills Store before starting server (production only)
+    seedSkillsStore()
+      .then(() => {
+        startWebSocketServer();
+      })
+      .catch((err) => {
+        console.error('[Skills] Seed error:', err);
+        // Continue starting server even if seed fails
+        startWebSocketServer();
+      });
   }
 }

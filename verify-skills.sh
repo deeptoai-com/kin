@@ -9,15 +9,8 @@ for dir in src/skills-store/*/; do
   if [ -d "$dir" ] && [ "$(basename "$dir")" != "README.md" ]; then
     skill_name=$(basename "$dir")
 
-    # 检查是否有 SKILL.md 或 skill.yaml
-    has_md=false
-    has_yaml=false
-
-    [ -f "$dir/SKILL.md" ] && has_md=true
-    [ -f "$dir/skill.yaml" ] && has_yaml=true
-    [ -f "$dir/skill.yml" ] && has_yaml=true
-
-    if $has_md; then
+    # 检查是否有 SKILL.md
+    if [ -f "$dir/SKILL.md" ]; then
       echo "  ✅ $skill_name"
 
       # Extract name and description from YAML frontmatter

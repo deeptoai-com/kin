@@ -1,7 +1,7 @@
 /**
  * Skills Metadata Parser
  *
- * Extracts metadata from Skills packages (SKILL.md or skill.yaml)
+ * Extracts metadata from Skills packages (SKILL.md with YAML frontmatter)
  */
 
 import { promises as fs } from 'node:fs'
