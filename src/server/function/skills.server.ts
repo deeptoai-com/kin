@@ -25,9 +25,25 @@ import {
   installSkillFromGitHub,
   deleteGitHubSkill,
   getExtendedSkillInfo,
+  // Schema generator (independent SDK call chain)
+  generateSkillSchemaWithMeta,
+  schemaExists,
+  readExistingSchema,
+  validateSkillSchema,
+  atomicWriteSchema,
+  atomicWriteSchemaMeta,
+  readSchemaMeta,
+  readSkillMd,
+  hashSkillMd,
+  SCHEMA_GENERATOR_VERSION,
+  computeSchemaStatus,
+  updateSchemaMetaError,
   type SkillInfo,
   type SkillDetail,
   type CompatibilityCheckResult,
+  type SkillSchema,
+  type SchemaMeta,
+  type SchemaStatus,
 } from '~/claude/skills';
 import { validateGitHubUrl } from '~/claude/skills/command-parser';
 
@@ -582,5 +598,225 @@ export const deleteGitHubSkillFn = createServerFn({ method: 'POST' })
       success: true,
       skillName: data.skillName,
       deletedBy: adminUser.id,
+    };
+  });
+
+// ============================================================================
+// Schema Generation Server Functions (Independent SDK Call Chain)
+// ============================================================================
+
+/**
+ * Generate JSON Schema for a skill using Claude Agent SDK
+ *
+ * IMPORTANT: This uses a completely INDEPENDENT call chain from WS chat:
+ * - Direct SDK query() call (not through ws-server/ws-query-worker)
+ * - No WebSocket dependencies
+ * - No session state
+ * - No MCP tools / file operations
+ * - Pure text generation with Structured Outputs
+ *
+ * Admin only - uses API credits for each generation.
+ *
+ * Now writes both .schema.json and .schema.meta.json for status tracking.
+ *
+ * Caching:
+ * - If .schema.json exists, hash matches, and force=false, returns cached schema
+ * - If force=true, regenerates and overwrites existing schema
+ */
+export const generateSkillSchemaFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillSlug: z.string().min(1),
+      force: z.boolean().optional().default(false),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    // Require admin access (uses API credits)
+    const adminUser = await requireAdmin();
+
+    console.log(`[Schema Server] Admin ${adminUser.id} requested schema for: ${data.skillSlug}`);
+
+    try {
+      // Generate schema with meta (uses independent SDK call chain)
+      const result = await generateSkillSchemaWithMeta({
+        skillSlug: data.skillSlug,
+        userId: adminUser.id,
+        force: data.force,
+      });
+
+      console.log(`[Schema Server] Schema ${result.cached ? 'cached' : 'generated'} for: ${data.skillSlug}`);
+
+      return {
+        success: true,
+        skillSlug: data.skillSlug,
+        schema: result.schema,
+        meta: result.meta,
+        cached: result.cached,
+        generatedBy: adminUser.id,
+      };
+    } catch (error) {
+      // Log error and update meta with error info
+      console.error(`[Schema Server] Failed to generate schema for ${data.skillSlug}:`, error);
+
+      // Record the error in meta (non-blocking)
+      try {
+        await updateSchemaMetaError(
+          data.skillSlug,
+          error instanceof Error ? error.message : 'Unknown error',
+          adminUser.id,
+        );
+      } catch (metaError) {
+        console.error(`[Schema Server] Failed to update meta with error:`, metaError);
+      }
+
+      throw new Error(
+        error instanceof Error
+          ? `Schema generation failed: ${error.message}`
+          : 'Schema generation failed: Unknown error'
+      );
+    }
+  });
+
+/**
+ * Update a skill schema manually (admin only).
+ *
+ * Allows admins to adjust required fields or other schema details from UI.
+ * Writes .schema.json and updates .schema.meta.json with latest timestamps.
+ */
+export const updateSkillSchemaFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillSlug: z.string().min(1),
+      schema: z.unknown(),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const adminUser = await requireAdmin();
+
+    // Validate schema payload
+    const validatedSchema = validateSkillSchema(data.schema);
+
+    // Write schema atomically
+    await atomicWriteSchema(data.skillSlug, validatedSchema);
+
+    // Update meta to reflect manual edit
+    const now = new Date().toISOString();
+    const skillMd = await readSkillMd(data.skillSlug);
+    const skillMdHash = hashSkillMd(skillMd);
+    const existingMeta = await readSchemaMeta(data.skillSlug);
+
+    const meta: SchemaMeta = {
+      generatedAt: now,
+      lastAttemptAt: now,
+      generatedBy: adminUser.id,
+      model: existingMeta?.model ?? 'manual',
+      skillMdHash,
+      generatorVersion: existingMeta?.generatorVersion ?? SCHEMA_GENERATOR_VERSION,
+      lastError: undefined,
+      needsReview: false,
+    };
+
+    await atomicWriteSchemaMeta(data.skillSlug, meta);
+
+    return {
+      success: true,
+      skillSlug: data.skillSlug,
+      schema: validatedSchema,
+      meta,
+    };
+  });
+
+/**
+ * Check if schema exists for a skill
+ * Admin only - useful for UI to show generate/regenerate button
+ *
+ * @deprecated Use getSkillSchemaStatusFn for richer status information
+ *
+ * Returns:
+ * - exists: true if .schema.json file exists on disk
+ * - valid: true if schema exists AND can be parsed successfully
+ * - schema: the parsed schema (null if not exists or parse failed)
+ */
+export const checkSkillSchemaExistsFn = createServerFn({ method: 'GET' })
+  .inputValidator((input) => {
+    const searchParams = typeof input === 'string' ? new URLSearchParams(input) : null;
+    const skillSlug = searchParams?.get('skillSlug') ||
+      (typeof input === 'object' && input && 'skillSlug' in input
+        ? (input as { skillSlug?: string }).skillSlug
+        : null);
+
+    return z.object({
+      skillSlug: z.string().min(1),
+    }).parse({ skillSlug });
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+
+    // Try to read and parse the schema
+    const schema = await readExistingSchema(data.skillSlug);
+
+    // Determine status based on parse result
+    // - exists: file exists on disk (we check via schemaExists for accuracy)
+    // - valid: schema was successfully parsed
+    const exists = await schemaExists(data.skillSlug);
+
+    return {
+      exists,
+      valid: schema !== null,  // P1 fix: explicit valid flag
+      schema,
+      skillSlug: data.skillSlug,
+    };
+  });
+
+/**
+ * Get comprehensive schema status for a skill
+ *
+ * Admin only - provides full status information for UI management.
+ *
+ * Status values:
+ * - 'missing': .schema.json does not exist
+ * - 'valid': exists and parses successfully, hash matches SKILL.md
+ * - 'invalid': exists but parse failed
+ * - 'stale': skillMdHash mismatch with current SKILL.md
+ * - 'failed': last generation failed (meta.lastError present)
+ *
+ * Returns:
+ * - status: SchemaStatus value
+ * - schema: parsed schema (null if missing/invalid)
+ * - meta: SchemaMeta (null if no meta file)
+ * - skillSlug: normalized skill slug
+ */
+export const getSkillSchemaStatusFn = createServerFn({ method: 'GET' })
+  .inputValidator((input) => {
+    const searchParams = typeof input === 'string' ? new URLSearchParams(input) : null;
+    const skillSlug = searchParams?.get('skillSlug') ||
+      (typeof input === 'object' && input && 'skillSlug' in input
+        ? (input as { skillSlug?: string }).skillSlug
+        : null);
+
+    return z.object({
+      skillSlug: z.string().min(1),
+    }).parse({ skillSlug });
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+
+    const statusInfo = await computeSchemaStatus(data.skillSlug);
+
+    return {
+      status: statusInfo.status,
+      schema: statusInfo.schema,
+      meta: statusInfo.meta,
+      skillSlug: statusInfo.skillSlug,
     };
   });

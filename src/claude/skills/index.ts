@@ -48,6 +48,42 @@ export type { CompatibilityCheckResult } from './compatibility';
 export { parseSkillsCommand, validateGitHubUrl } from './command-parser';
 export { installSkillFromGitHub, downloadFromGitHub } from './github-installer';
 
+// Schema generator (independent SDK call chain, not WS-based)
+export {
+  // Core generation
+  generateSkillSchema,
+  generateSchemaFromContent,
+  // Enhanced generation with meta
+  generateSkillSchemaWithMeta,
+  // File operations
+  readSkillMd,
+  schemaExists,
+  readExistingSchema,
+  validateSkillSchema,
+  atomicWriteSchema,
+  // Meta operations
+  hashSkillMd,
+  readSchemaMeta,
+  atomicWriteSchemaMeta,
+  updateSchemaMetaError,
+  // Status computation
+  computeSchemaStatus,
+  // Version
+  SCHEMA_GENERATOR_VERSION,
+} from './schema-generator';
+export type {
+  SkillSchema,
+  SkillInputField,
+  GenerateSchemaOptions,
+  GenerateSchemaResult,
+  // Meta types
+  SchemaMeta,
+  SchemaStatus,
+  SchemaStatusInfo,
+  GenerateSchemaWithMetaOptions,
+  GenerateSchemaWithMetaResult,
+} from './schema-generator';
+
 // Note: getSkillDetail now accepts an optional second parameter `userId`
 // to support retrieving user-uploaded skills
 // Usage: await getSkillDetail(skillSlug, userId?)

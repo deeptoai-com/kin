@@ -219,6 +219,10 @@ services:
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-true}
+      # Schema generation debug logging (default: enabled)
+      SCHEMA_GENERATION_DEBUG: ${SCHEMA_GENERATION_DEBUG:-true}
+      # Schema generation trace logging (off|true|full)
+      SCHEMA_GENERATION_TRACE: ${SCHEMA_GENERATION_TRACE:-full}
       # Skills Store (production data volume)
       SKILLS_STORE_DIR: /data/skills-store
     volumes:
