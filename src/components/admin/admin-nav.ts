@@ -2,8 +2,9 @@ import type { ComponentType, SVGProps } from 'react';
 import RiDashboardLine from '~icons/ri/dashboard-line';
 import RiUserSettingsLine from '~icons/ri/user-settings-line';
 import RiBuilding4Line from '~icons/ri/building-4-line';
+import RiFileEditLine from '~icons/ri/file-edit-line';
 
-export type AdminSection = 'dashboard' | 'users' | 'organizations';
+export type AdminSection = 'dashboard' | 'users' | 'organizations' | 'a2composer';
 
 export interface AdminNavItem {
   section: AdminSection;
@@ -34,6 +35,13 @@ export const adminNavItems: AdminNavItem[] = [
     description: 'Manage organizations',
     icon: RiBuilding4Line,
     path: '/admin/organizations',
+  },
+  {
+    section: 'a2composer',
+    label: 'A2Composer',
+    description: 'Manage templates and categories',
+    icon: RiFileEditLine,
+    path: '/admin/a2composer',
   },
 ];
 
