@@ -59,6 +59,7 @@ export {
   readSkillMd,
   schemaExists,
   readExistingSchema,
+  readUserSkillSchema,
   validateSkillSchema,
   atomicWriteSchema,
   // Meta operations
@@ -76,6 +77,7 @@ export type {
   SkillInputField,
   GenerateSchemaOptions,
   GenerateSchemaResult,
+  GenerateSchemaFromContentResult,
   // Meta types
   SchemaMeta,
   SchemaStatus,
@@ -83,6 +85,13 @@ export type {
   GenerateSchemaWithMetaOptions,
   GenerateSchemaWithMetaResult,
 } from './schema-generator';
+
+// Template generator (uses existing schema inputs only)
+export { generateTemplateFromSchema } from './template-generator';
+export type {
+  GeneratedTemplateResult,
+  GeneratedTemplateLocale,
+} from './template-generator';
 
 // Note: getSkillDetail now accepts an optional second parameter `userId`
 // to support retrieving user-uploaded skills

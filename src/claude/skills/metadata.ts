@@ -4,7 +4,7 @@
  * Extracts metadata from Skills packages (SKILL.md with YAML frontmatter)
  */
 
-import { promises as fs } from 'node:fs'
+import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import type { SkillInfo } from './types'

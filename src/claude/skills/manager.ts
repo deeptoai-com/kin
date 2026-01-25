@@ -4,7 +4,8 @@
  * Manages Skills enable/disable operations
  */
 
-import { promises as fs } from 'node:fs'
+import { existsSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { SkillInfo } from './types'
 import { parseSkillMetadata, fileExists } from './metadata'
@@ -21,11 +22,26 @@ export function normalizeSkillName(skillName: string): string {
  * - Production: uses SKILLS_STORE_DIR env var (data volume)
  * - Development: falls back to src/skills-store (source directory)
  */
+let hasLoggedSkillsStoreDir = false
 export function getSkillsStoreDir(): string {
-  if (process.env.SKILLS_STORE_DIR) {
-    return process.env.SKILLS_STORE_DIR
+  const envDir = process.env.SKILLS_STORE_DIR
+  let resolvedDir = envDir ? envDir : path.join(process.cwd(), 'src', 'skills-store')
+  if (!envDir) {
+    const dataDir = path.join(path.sep, 'data', 'skills-store')
+    if (existsSync(dataDir)) {
+      resolvedDir = dataDir
+    }
   }
-  return path.join(process.cwd(), 'src', 'skills-store')
+
+  if (!hasLoggedSkillsStoreDir) {
+    hasLoggedSkillsStoreDir = true
+    console.info('[Skills] getSkillsStoreDir resolved:', {
+      env: envDir || null,
+      resolved: resolvedDir,
+    })
+  }
+
+  return resolvedDir
 }
 
 /**
@@ -49,7 +65,7 @@ export async function getSkillsStore(): Promise<SkillInfo[]> {
   const storeDir = getSkillsStoreDir()
 
   try {
-    const entries = await fs.readdir(storeDir, { withFileTypes: true })
+    const entries = await fsp.readdir(storeDir, { withFileTypes: true })
 
     const skills = await Promise.all(
       entries
@@ -78,7 +94,7 @@ export async function getUserEnabledSkills(userId: string): Promise<string[]> {
   const skillsDir = path.join(getUserClaudeHome(userId), '.claude', 'skills')
 
   try {
-    const entries = await fs.readdir(skillsDir, { withFileTypes: true })
+    const entries = await fsp.readdir(skillsDir, { withFileTypes: true })
     return entries.filter(e => e.isDirectory()).map(e => e.name)
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
@@ -104,13 +120,20 @@ export async function enableSkill(userId: string, skillName: string): Promise<vo
   }
 
   // 2. Delete old version if exists (auto-update strategy)
-  await fs.rm(targetDir, { recursive: true, force: true })
+  await fsp.rm(targetDir, { recursive: true, force: true })
 
   // 3. Create parent directory
-  await fs.mkdir(path.dirname(targetDir), { recursive: true })
+  await fsp.mkdir(path.dirname(targetDir), { recursive: true })
 
   // 4. Copy Skill directory
-  await fs.cp(sourceDir, targetDir, { recursive: true })
+  await fsp.cp(sourceDir, targetDir, { recursive: true })
+
+  // 5. Verify runtime sync
+  try {
+    await fsp.access(targetDir)
+  } catch {
+    throw new Error(`SKILL_NOT_SYNCED: ${normalizedName}`)
+  }
 
   console.log(`[Skills] Enabled skill: ${normalizedName} for user: ${userId}`)
 }
@@ -123,7 +146,7 @@ export async function disableSkill(userId: string, skillName: string): Promise<v
   const targetDir = path.join(getUserClaudeHome(userId), '.claude', 'skills', normalizedName)
 
   // 1. Delete directory
-  await fs.rm(targetDir, { recursive: true, force: true })
+  await fsp.rm(targetDir, { recursive: true, force: true })
 
   // 2. Verify deletion succeeded
   const stillExists = await fileExists(targetDir)
@@ -156,7 +179,7 @@ export async function uploadUserSkill(
   )
 
   // 1. Create directory
-  await fs.mkdir(userSkillsDir, { recursive: true })
+  await fsp.mkdir(userSkillsDir, { recursive: true })
 
   // 2. Detect zip structure (with or without root directory)
   // Collect all first-level directory names
@@ -204,13 +227,13 @@ export async function uploadUserSkill(
     }
 
     const filePath = path.join(userSkillsDir, finalPath)
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, file.content, 'utf-8')
+    await fsp.mkdir(path.dirname(filePath), { recursive: true })
+    await fsp.writeFile(filePath, file.content, 'utf-8')
   }
 
   // 4. Auto-enable: create .enabled flag
   const enabledFlag = path.join(userSkillsDir, '.enabled')
-  await fs.writeFile(enabledFlag, new Date().toISOString())
+  await fsp.writeFile(enabledFlag, new Date().toISOString())
 
   console.log(`[Skills] Uploaded user skill: ${normalizedName} for user: ${userId}`)
 }
@@ -227,7 +250,7 @@ export async function getUserUploadedSkills(userId: string): Promise<Array<Skill
   )
 
   try {
-    const entries = await fs.readdir(userSkillsDir, { withFileTypes: true })
+    const entries = await fsp.readdir(userSkillsDir, { withFileTypes: true })
 
     const skills = await Promise.all(
       entries
@@ -288,7 +311,7 @@ export async function deleteUserSkill(userId: string, skillName: string): Promis
   )
 
   // Delete entire skill directory
-  await fs.rm(skillDir, { recursive: true, force: true })
+  await fsp.rm(skillDir, { recursive: true, force: true })
 
   console.log(`[Skills] Deleted user skill: ${normalizedName} for user: ${userId}`)
 }
@@ -311,9 +334,17 @@ export async function enableUserUploadedSkill(userId: string, skillName: string)
     throw new Error(`User skill not found: ${normalizedName}`)
   }
 
+  // Ensure runtime directory exists; otherwise enabling won't take effect
+  const runtimeDir = path.join(getUserClaudeHome(userId), '.claude', 'skills', normalizedName)
+  try {
+    await fsp.access(runtimeDir)
+  } catch {
+    throw new Error(`SKILL_NOT_SYNCED: ${normalizedName}`)
+  }
+
   // Create .enabled flag
   const enabledFlag = path.join(skillDir, '.enabled')
-  await fs.writeFile(enabledFlag, new Date().toISOString())
+  await fsp.writeFile(enabledFlag, new Date().toISOString())
 
   console.log(`[Skills] Enabled user skill: ${normalizedName} for user: ${userId}`)
 }
@@ -333,7 +364,7 @@ export async function disableUserUploadedSkill(userId: string, skillName: string
 
   // Remove .enabled flag
   const enabledFlag = path.join(skillDir, '.enabled')
-  await fs.rm(enabledFlag, { force: true })
+  await fsp.rm(enabledFlag, { force: true })
 
   console.log(`[Skills] Disabled user skill: ${normalizedName} for user: ${userId}`)
 }
@@ -363,7 +394,7 @@ export async function getUserSkillFiles(
   const files: Array<{ path: string; content: string }> = []
 
   async function readDirectory(dirPath: string, relativePath: string = '') {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    const entries = await fsp.readdir(dirPath, { withFileTypes: true })
 
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
@@ -374,7 +405,7 @@ export async function getUserSkillFiles(
         if (entry.name === '.enabled') continue
         await readDirectory(fullPath, relativeFilePath)
       } else if (entry.isFile()) {
-        const content = await fs.readFile(fullPath, 'utf-8')
+        const content = await fsp.readFile(fullPath, 'utf-8')
         files.push({
           path: relativeFilePath,
           content,
@@ -425,7 +456,7 @@ export async function getExtendedSkillInfo(skillName: string): Promise<{
 
   if (isGitHubInstalled) {
     try {
-      const content = await fs.readFile(sourceJsonPath, 'utf-8')
+      const content = await fsp.readFile(sourceJsonPath, 'utf-8')
       const sourceInfo = JSON.parse(content)
       return {
         isGitHubInstalled: true,
@@ -460,7 +491,7 @@ export async function deleteGitHubSkill(skillName: string): Promise<void> {
   }
 
   // Delete entire skill directory
-  await fs.rm(skillDir, { recursive: true, force: true })
+  await fsp.rm(skillDir, { recursive: true, force: true })
 
   console.log(`[Skills] Deleted GitHub-installed skill: ${normalizedName}`)
 }

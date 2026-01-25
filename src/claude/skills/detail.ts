@@ -4,7 +4,7 @@
  * Provides functions to retrieve full Skill details including all files
  */
 
-import { promises as fs } from 'node:fs'
+import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import type { SkillFile, SkillDetail } from './detail-types'
 import { parseSkillMetadata } from './metadata'
