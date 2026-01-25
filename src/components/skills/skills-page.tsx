@@ -1,6 +1,7 @@
 import { FC, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Zap, Code, Palette, Plug, CheckCircle, Circle, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Input } from '~/components/ui/input';
 import { useServerFn } from '@tanstack/react-start';
 import {
@@ -111,7 +112,13 @@ export const SkillsPageComponent: FC<{
       );
     } catch (error) {
       console.error('Failed to toggle skill:', error);
-      // TODO: Show error toast to user
+      const message = error instanceof Error ? error.message : '启用技能失败';
+      if (message.startsWith('SKILL_NOT_SYNCED:')) {
+        const slug = message.split(':')[1]?.trim() ?? skillSlug;
+        toast.error(`技能未同步到运行时目录：${slug}。当前启用不会生效。`);
+      } else {
+        toast.error(message);
+      }
     }
   };
 

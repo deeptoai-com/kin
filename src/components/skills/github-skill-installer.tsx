@@ -161,7 +161,10 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
       setIsChecking(true);
       try {
         const checkResult = await checkCompatibility({
-          data: { repoUrl: parseResult.url },
+          data: {
+            repoUrl: parseResult.url,
+            skillName: parseResult.skillName || 'skill',
+          },
         });
         setCompatibilityWarning(checkResult);
         setHasCheckedCompatibility(true);
