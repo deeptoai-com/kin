@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { auth } from '~/server/auth.server';
 import {
   getSkillsStore,
+  normalizeSkillName,
   getUserEnabledSkills,
   enableSkill,
   disableSkill,
@@ -29,6 +30,7 @@ import {
   generateSkillSchemaWithMeta,
   schemaExists,
   readExistingSchema,
+  readUserSkillSchema,
   validateSkillSchema,
   atomicWriteSchema,
   atomicWriteSchemaMeta,
@@ -135,6 +137,10 @@ const getSkillDetailSchema = z.object({
   skillSlug: z.string().min(1),
 });
 
+const getSkillSchemaSchema = z.object({
+  skillSlug: z.string().min(1).nullable().optional(),
+});
+
 export type EnableSkillInput = z.infer<typeof enableSkillSchema>;
 export type DisableSkillInput = z.infer<typeof disableSkillSchema>;
 
@@ -145,6 +151,60 @@ export type DisableSkillInput = z.infer<typeof disableSkillSchema>;
 export const listSkillsStore = createServerFn({ method: 'GET' }).handler(async () => {
   return await getSkillsStore();
 });
+
+/**
+ * Get schema for a skill (if exists)
+ * Authenticated users can read schema for composer hints.
+ *
+ * Reading order:
+ * 1. Skills store (src/skills-store / SKILLS_STORE_DIR)
+ * 2. User skills directory (~/.claude/skills/user/<skill-slug>/.schema.json)
+ */
+export const getSkillSchemaFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    // P1 fix: Use POST method for reliable serialization with useServerFn
+    // GET method via useServerFn sends undefined input
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    const skillSlug = data && typeof data === 'object' && 'skillSlug' in data
+      ? (data as { skillSlug?: string }).skillSlug
+      : null;
+
+    console.info('[Skills] getSkillSchemaFn input:', { skillSlug });
+
+    return getSkillSchemaSchema.parse({ skillSlug });
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    if (!data.skillSlug) {
+      return { skillSlug: null, schema: null };
+    }
+
+    console.info('[Skills] getSkillSchema request', {
+      skillSlug: data.skillSlug,
+      userId: user.id,
+    });
+
+    // Try reading from skills store first
+    let schema = await readExistingSchema(data.skillSlug);
+    let source: 'store' | 'user' | null = schema ? 'store' : null;
+
+    // Fallback to user skills directory
+    if (!schema) {
+      schema = await readUserSkillSchema(user.id, data.skillSlug);
+      if (schema) source = 'user';
+    }
+
+    console.info('[Skills] getSkillSchema result', {
+      skillSlug: data.skillSlug,
+      source,
+      hasSchema: Boolean(schema),
+    });
+
+    return { skillSlug: data.skillSlug, schema };
+  });
 
 /**
  * Get user's enabled skills
@@ -308,6 +368,7 @@ export const checkSkillCompatibilityFn = createServerFn({ method: 'POST' })
 /**
  * Check GitHub skill compatibility before installation
  * Uses Archive downloader (not git clone) and validates GitHub URL strictly
+ * Only scans the target skill directory, not the entire repository
  */
 export const checkGitHubSkillCompatibilityFn = createServerFn({ method: 'POST' })
   .inputValidator((input) => {
@@ -318,6 +379,7 @@ export const checkGitHubSkillCompatibilityFn = createServerFn({ method: 'POST' }
 
     return z.object({
       repoUrl: z.string(),
+      skillName: z.string().min(1),
     }).parse(data);
   })
   .handler(async ({ data }) => {
@@ -331,10 +393,10 @@ export const checkGitHubSkillCompatibilityFn = createServerFn({ method: 'POST' }
 
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const os = await import('node:os');
 
-    // Import the downloadFromGitHub function from github-installer
-    const { downloadFromGitHub, getExtractedRootDir } = await import('~/claude/skills/github-installer');
+    // Import functions from github-installer
+    const { downloadFromGitHub, getExtractedRootDir, findSkillDirectory } = await import('~/claude/skills/github-installer');
+    const { normalizeSkillName } = await import('~/claude/skills');
 
     let tempDir: string | null = null;
 
@@ -346,8 +408,24 @@ export const checkGitHubSkillCompatibilityFn = createServerFn({ method: 'POST' }
       // Get the extracted root directory
       const extractedRoot = await getExtractedRootDir(tempDir);
 
-      // Check compatibility
-      const result = await checkSkillCompatibility(extractedRoot);
+      // Find the target skill directory first
+      const normalizedSkillName = normalizeSkillName(data.skillName);
+      let skillDir: string;
+
+      try {
+        skillDir = await findSkillDirectory(extractedRoot, normalizedSkillName);
+      } catch (findError) {
+        // Skill not found - this is OK, just return no warnings
+        // The actual installation will fail with a clearer error message
+        return {
+          compatible: true,
+          rawWarnings: [],
+          formattedWarnings: [],
+        };
+      }
+
+      // Check compatibility ONLY for the target skill directory
+      const result = await checkSkillCompatibility(skillDir);
       const warnings = formatCompatibilityWarnings(result);
 
       return {

@@ -167,13 +167,18 @@ export const getSessionAttachments = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     await requireUser();
 
-    const attachments = await db
-      .select()
-      .from(messageAttachment)
-      .where(eq(messageAttachment.sessionId, data.sessionId))
-      .orderBy(messageAttachment.createdAt);
+    try {
+      const attachments = await db
+        .select()
+        .from(messageAttachment)
+        .where(eq(messageAttachment.sessionId, data.sessionId))
+        .orderBy(messageAttachment.createdAt);
 
-    return attachments;
+      return attachments;
+    } catch (error) {
+      console.warn('[MessageAttachment] Failed to load session attachments', error);
+      return [];
+    }
   });
 
 /**
@@ -198,17 +203,22 @@ export const getMessageAttachments = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     await requireUser();
 
-    const attachments = await db
-      .select()
-      .from(messageAttachment)
-      .where(
-        and(
-          eq(messageAttachment.sessionId, data.sessionId),
-          eq(messageAttachment.messageId, data.messageId)
-        )
-      );
+    try {
+      const attachments = await db
+        .select()
+        .from(messageAttachment)
+        .where(
+          and(
+            eq(messageAttachment.sessionId, data.sessionId),
+            eq(messageAttachment.messageId, data.messageId)
+          )
+        );
 
-    return attachments;
+      return attachments;
+    } catch (error) {
+      console.warn('[MessageAttachment] Failed to load message attachments', error);
+      return [];
+    }
   });
 
 /**
