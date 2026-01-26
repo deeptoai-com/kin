@@ -12,6 +12,7 @@ import {
   deleteUserSkillFn,
   deleteGitHubSkillFn,
   getSkillDetailFn,
+  setGlobalSkillEnabledFn,
 } from '~/server/function/skills.server';
 import type { ExtendedSkillInfo, SkillDetail } from '~/claude/skills';
 import { SkillsSidebar } from './skills-sidebar';
@@ -57,6 +58,7 @@ export const SkillsPageComponent: FC<{
   const disableUserSkillServer = useServerFn(disableUserUploadedSkillFn);
   const deleteUserSkill = useServerFn(deleteUserSkillFn);
   const deleteGitHubSkill = useServerFn(deleteGitHubSkillFn);
+  const setGlobalSkill = useServerFn(setGlobalSkillEnabledFn);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,6 +66,9 @@ export const SkillsPageComponent: FC<{
   const [selectedSkillSlug, setSelectedSkillSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [enabledSkills, setEnabledSkills] = useState<string[]>(() => initialEnabledSkills);
+  const [globalSkills, setGlobalSkills] = useState<string[]>(() =>
+    skills.filter((skill) => skill.globalEnabled).map((skill) => skill.slug)
+  );
   const [schemaManageSlug, setSchemaManageSlug] = useState<string | null>(null);
   const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
 
@@ -83,6 +88,11 @@ export const SkillsPageComponent: FC<{
     const skill = skills.find(s => s.slug === skillSlug);
     if (!skill) {
       console.error('Skill not found:', skillSlug);
+      return;
+    }
+
+    if (globalSkills.includes(skillSlug)) {
+      toast.error('该技能已被管理员全局启用，无法关闭。');
       return;
     }
 
@@ -116,9 +126,28 @@ export const SkillsPageComponent: FC<{
       if (message.startsWith('SKILL_NOT_SYNCED:')) {
         const slug = message.split(':')[1]?.trim() ?? skillSlug;
         toast.error(`技能未同步到运行时目录：${slug}。当前启用不会生效。`);
+      } else if (message.includes('SKILL_GLOBAL_ENABLED')) {
+        toast.error('该技能已被管理员全局启用，无法关闭。');
       } else {
         toast.error(message);
       }
+    }
+  };
+
+  const handleToggleGlobal = async (skillSlug: string) => {
+    if (!isAdmin) return;
+    const isGlobalEnabled = globalSkills.includes(skillSlug);
+    try {
+      const result = await setGlobalSkill({ data: { skillName: skillSlug, enabled: !isGlobalEnabled } });
+      const updated = result?.skills ?? [];
+      setGlobalSkills(updated);
+      if (!isGlobalEnabled) {
+        setEnabledSkills((prev) => (prev.includes(skillSlug) ? prev : [...prev, skillSlug]));
+      }
+    } catch (error) {
+      console.error('Failed to toggle global skill:', error);
+      const message = error instanceof Error ? error.message : '全局启用失败';
+      toast.error(message);
     }
   };
 
@@ -275,8 +304,10 @@ export const SkillsPageComponent: FC<{
             <SkillsGrid
               skills={filteredSkills}
               enabledSkills={enabledSkills}
+              globalSkills={globalSkills}
               isAdmin={isAdmin}
               onToggleSkill={handleToggleSkill}
+              onToggleGlobal={handleToggleGlobal}
               onViewDetails={handleViewDetails}
               onDeleteSkill={handleDeleteSkill}
               onManageSchema={handleManageSchema}

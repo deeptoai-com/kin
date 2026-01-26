@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Circle, Eye, Trash2, FileJson, RefreshCw } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
+import { Switch } from '~/components/ui/switch';
 import { useServerFn } from '@tanstack/react-start';
 import { getSkillSchemaStatusFn } from '~/server/function/skills.server';
 import type { ExtendedSkillInfo, SchemaStatus } from '~/claude/skills';
@@ -10,8 +11,10 @@ import type { ExtendedSkillInfo, SchemaStatus } from '~/claude/skills';
 interface SkillCardProps {
   skill: ExtendedSkillInfo;
   isEnabled: boolean;
+  isGlobalEnabled: boolean;
   isAdmin: boolean;
   onToggle: () => void;
+  onToggleGlobal: () => void;
   onViewDetails: () => void;
   onDeleteSkill?: (skillSlug: string) => void;
   onManageSchema?: (skillSlug: string) => void;
@@ -20,8 +23,10 @@ interface SkillCardProps {
 export const SkillCard: FC<SkillCardProps> = ({
   skill,
   isEnabled,
+  isGlobalEnabled,
   isAdmin,
   onToggle,
+  onToggleGlobal,
   onViewDetails,
   onDeleteSkill,
   onManageSchema,
@@ -94,6 +99,14 @@ export const SkillCard: FC<SkillCardProps> = ({
             )}
             {/* Schema Status Badge - Admin Only */}
             {isAdmin && getSchemaBadge()}
+            {isGlobalEnabled && (
+              <Badge
+                variant="secondary"
+                className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              >
+                全局启用中
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground capitalize">
             {skill.category}
@@ -125,9 +138,17 @@ export const SkillCard: FC<SkillCardProps> = ({
           size="sm"
           onClick={onToggle}
           className="flex-1"
+          disabled={isGlobalEnabled}
+          title={isGlobalEnabled ? '已全局启用，无法关闭' : undefined}
         >
           {isEnabled ? '禁用' : '启用'}
         </Button>
+        {isAdmin && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">全局</span>
+            <Switch checked={isGlobalEnabled} onCheckedChange={onToggleGlobal} />
+          </div>
+        )}
         {/* Schema Manage Button - Admin Only */}
         {isAdmin && onManageSchema && (
           <Button

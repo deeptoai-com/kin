@@ -27,9 +27,9 @@ interface InstallResult {
     category?: string;
     source?: {
       type: string;
-      owner: string;
-      repo: string;
-      commitSha: string | null;
+      owner?: string;
+      repo?: string;
+      commitSha?: string | null;
     };
   };
   error?: string;
@@ -168,7 +168,23 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
           },
         });
 
-        setInstallResult({ success: true, skill: result });
+        setInstallResult({
+          success: true,
+          skill: {
+            slug: result.skillName,
+            name: result.metadata?.name ?? result.skillName,
+            description: result.metadata?.description ?? null,
+            category: result.metadata?.category,
+            source: result.source
+              ? {
+                  type: result.source.type,
+                  owner: result.source.owner,
+                  repo: result.source.repo,
+                  commitSha: result.source.commitSha ?? null,
+                }
+              : undefined,
+          },
+        });
 
         // Auto-close on success after short delay
         setTimeout(() => {
@@ -200,7 +216,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
         setHasCheckedCompatibility(true);
 
         // If no warnings, proceed immediately to installation to avoid double-click confusion.
-        if (checkResult.compatible && checkResult.formattedWarnings.length === 0) {
+        if (checkResult.compatible && (checkResult.formattedWarnings?.length ?? 0) === 0) {
           return await runInstall();
         }
         return;

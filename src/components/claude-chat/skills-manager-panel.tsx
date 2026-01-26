@@ -59,6 +59,8 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
       if (message.startsWith('SKILL_NOT_SYNCED:')) {
         const slug = message.split(':')[1]?.trim() ?? skillSlug
         toast.error(`技能未同步到运行时目录：${slug}。当前启用不会生效。`)
+      } else if (message.includes('SKILL_GLOBAL_ENABLED')) {
+        toast.error('该技能已被管理员全局启用，无法关闭。')
       } else {
         toast.error(message)
       }
