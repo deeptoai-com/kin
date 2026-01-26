@@ -557,10 +557,65 @@ function sendMessage(ws, msg) {
 }
 
 /**
+ * Create a new empty session without requiring a user message
+ * This is called when user explicitly clicks "New Session" button
+ */
+async function handleCreateSession(ws) {
+  console.log('[WS Server] Creating new empty session');
+
+  try {
+    // Generate new workspace session ID
+    const workspaceSessionId = generateSessionId();
+
+    // Get user-specific CLAUDE_HOME
+    const claudeHome = getClaudeHome(ws.userId);
+    await ensureDirExists(claudeHome);
+
+    // Get session-specific workspace
+    const workspacePath = getSessionWorkspace(ws.userId, workspaceSessionId);
+    await ensureDirExists(workspacePath);
+
+    // Create .claude symlink in workspace
+    await ensureClaudeSymlink(workspacePath, claudeHome);
+
+    // Verify skills are accessible
+    await verifySkillsAccess(workspacePath, claudeHome);
+
+    console.log(`[WS Server] Created empty session ${workspaceSessionId} for user ${ws.userId}`);
+    console.log(`[WS Server]   CLAUDE_HOME: ${claudeHome}`);
+    console.log(`[WS Server]   Workspace: ${workspacePath}`);
+
+    // Store session ID for future chat messages
+    ws.workspaceSessionId = workspaceSessionId;
+
+    // Persist empty session to DB immediately so it appears in history list
+    // Title will be updated when first message is sent
+    await persistSession(ws.cookie, workspaceSessionId, null, claudeHome, '未命名');
+
+    // Send session_init immediately (session is ready but empty)
+    sendMessage(ws, {
+      type: 'session_init',
+      sessionId: workspaceSessionId,
+      sdkSessionId: null,  // Will be set when first message is sent
+      userId: ws.userId,
+    });
+  } catch (error) {
+    console.error('[WS Server] Error creating session:', error);
+    sendMessage(ws, {
+      type: 'error',
+      code: 'server_error',
+      message: error instanceof Error ? error.message : String(error),
+      retriable: true,
+    });
+  }
+}
+
+/**
  * Handle chat message using child process for user and session isolation
  * Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
  */
-async function handleChat(ws, prompt, resumeSessionId) {
+async function handleChat(ws, prompt, resumeSessionId, options = {}) {
+  const { silentInit = false } = options;
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -578,8 +633,33 @@ async function handleChat(ws, prompt, resumeSessionId) {
     // Look up SDK session ID for resume (if this is a continuation)
     const sdkResumeId = resumeSessionId ? sessionMapping.get(resumeSessionId) : null;
 
+    // Check if this is a resume of an existing session
+    // For sessions created via create_session, we need to update title on first message
+    let existingSession = null;
+    if (resumeSessionId && ws.cookie) {
+      existingSession = await loadSessionFromDb(ws.cookie, resumeSessionId);
+    }
+
+    // Determine title: only set for first message of sessions without a meaningful title
+    // - New sessions (no resumeSessionId): use prompt
+    // - Resumed sessions with default/placeholder title: use prompt
+    // - Resumed sessions with existing title: don't override
+    const defaultTitles = ['未命名', '新会话', 'New Session', 'Untitled'];
+    const hasPlaceholderTitle = existingSession && (
+      !existingSession.title ||
+      defaultTitles.includes(existingSession.title)
+    );
+    const sessionTitle = silentInit
+      ? null
+      : ((!resumeSessionId || hasPlaceholderTitle) ? prompt.slice(0, 50).trim() : null);
+
+    if (hasPlaceholderTitle) {
+      console.log(`[WS Server] Updating placeholder title to: "${sessionTitle}"`);
+    }
+
     // Get user-specific CLAUDE_HOME (for SDK session storage)
-    const claudeHome = getClaudeHome(ws.userId);
+    // Use existing session's claudeHome if available, otherwise generate new
+    const claudeHome = existingSession?.claudeHomePath || getClaudeHome(ws.userId);
     await ensureDirExists(claudeHome);
 
     // Get session-specific workspace (for Agent file operations)
@@ -657,10 +737,8 @@ async function handleChat(ws, prompt, resumeSessionId) {
     worker.stdin.write(request);
     worker.stdin.end();
 
-    // Track our workspace session ID and first prompt (for title generation)
+    // Track our workspace session ID for mapping/persistence
     ws.workspaceSessionId = workspaceSessionId;
-    // Only set sessionTitle for new sessions (not resume)
-    const sessionTitle = resumeSessionId ? null : prompt.slice(0, 50).trim();
 
     // Read responses line by line
     const rl = createInterface({ input: worker.stdout });
@@ -691,17 +769,39 @@ async function handleChat(ws, prompt, resumeSessionId) {
             // Pass sessionTitle only for new sessions (extracted from first user message)
             persistSession(ws.cookie, ws.workspaceSessionId, event.session_id, claudeHome, sessionTitle);
 
-            // Send our workspace sessionId to client (they'll use this for resume)
-            sendMessage(ws, {
-              type: 'session_init',
-              sessionId: ws.workspaceSessionId,
-              sdkSessionId: event.session_id,
-              userId: ws.userId,  // Include userId for Skills isolation
-            });
+            if (silentInit) {
+              sendMessage(ws, {
+                type: 'session_metadata',
+                sessionId: ws.workspaceSessionId,
+                metadata: {
+                  session_id: event.session_id || ws.workspaceSessionId,
+                  user_id: ws.userId || '',
+                  model: event.model || 'unknown',
+                  skills: event.skills || [],
+                  mcp_servers: event.mcp_servers || [],
+                  agents: event.agents || [],
+                  tools: event.tools || [],
+                  slash_commands: event.slash_commands || [],
+                  cwd: event.cwd || '',
+                },
+              });
+            } else {
+              // Send our workspace sessionId to client (they'll use this for resume)
+              sendMessage(ws, {
+                type: 'session_init',
+                sessionId: ws.workspaceSessionId,
+                sdkSessionId: event.session_id,
+                userId: ws.userId,  // Include userId for Skills isolation
+              });
+            }
           }
-          sendMessage(ws, { type: 'message', event });
+          if (!silentInit) {
+            sendMessage(ws, { type: 'message', event });
+          }
         } else if (msg.type === 'done') {
-          sendMessage(ws, { type: 'done' });
+          if (!silentInit) {
+            sendMessage(ws, { type: 'done' });
+          }
         } else if (msg.type === 'error') {
           sendMessage(ws, {
             type: 'error',
@@ -803,6 +903,24 @@ async function handleMessage(ws, msg) {
     console.log(`[WS Server] Parsed message type: ${message.type}`);
 
   switch (message.type) {
+    case 'create_session':
+      // Explicitly create a new empty session (without user message)
+      await handleCreateSession(ws);
+      break;
+
+    case 'init_session':
+      if (!message.sessionId) {
+        sendMessage(ws, {
+          type: 'error',
+          code: 'invalid_message',
+          message: 'Missing sessionId for init_session',
+          retriable: false,
+        });
+        return;
+      }
+      await handleChat(ws, ' ', message.sessionId, { silentInit: true });
+      break;
+
     case 'chat':
       console.log(`[WS Server] Processing chat from ${ws.userId}, content length: ${message.content?.length || 0}`);
       if (!message.content) {
