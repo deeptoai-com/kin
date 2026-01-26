@@ -15,10 +15,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem"
-      ],
-      "env": {
-        "ALLOWED_DIRECTORIES": "/Users/peng/Dev/Projects/ClaudeAgentChat/docs"
-      }
+      ]
     }
   }
 }

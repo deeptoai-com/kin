@@ -75,3 +75,5 @@ if (dsn) {
 } else if (import.meta.env.DEV) {
   console.warn('[sentry] VITE_SENTRY_DSN missing; client telemetry disabled')
 }
+
+export { Sentry }

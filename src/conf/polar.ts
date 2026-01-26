@@ -28,11 +28,11 @@ export const polarEnv = createEnv({
   },
   clientPrefix: 'VITE_',
   client: {
-    ENTERPRISE_DEMO_URL: z.string().url().optional(),
-    POLAR_PRODUCT_CREDITS_50: z.string().optional(),
-    POLAR_PRODUCT_CREDITS_100: z.string().optional(),
-    POLAR_PRODUCT_PRO_MONTHLY: z.string().optional(),
-    POLAR_PRODUCT_BUSINESS_MONTHLY: z.string().optional(),
+    VITE_ENTERPRISE_DEMO_URL: z.string().url().optional(),
+    VITE_POLAR_PRODUCT_CREDITS_50: z.string().optional(),
+    VITE_POLAR_PRODUCT_CREDITS_100: z.string().optional(),
+    VITE_POLAR_PRODUCT_PRO_MONTHLY: z.string().optional(),
+    VITE_POLAR_PRODUCT_BUSINESS_MONTHLY: z.string().optional(),
   },
   runtimeEnv: {
     POLAR_SERVER: metaEnv.POLAR_SERVER ?? processEnv.POLAR_SERVER,
