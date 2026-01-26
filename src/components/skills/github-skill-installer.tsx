@@ -156,6 +156,36 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
       return;
     }
 
+    const runInstall = async () => {
+      setIsInstalling(true);
+      setInstallResult(null);
+
+      try {
+        const result = await installSkill({
+          data: {
+            repoUrl: parseResult.url,
+            skillName: parseResult.skillName || 'skill',
+          },
+        });
+
+        setInstallResult({ success: true, skill: result });
+
+        // Auto-close on success after short delay
+        setTimeout(() => {
+          onOpenChange(false);
+          onSuccess?.();
+          handleReset();
+        }, 1500);
+      } catch (err) {
+        setInstallResult({
+          success: false,
+          error: err instanceof Error ? err.message : '安装失败',
+        });
+      } finally {
+        setIsInstalling(false);
+      }
+    };
+
     // Step 1: Check compatibility first
     if (!hasCheckedCompatibility) {
       setIsChecking(true);
@@ -168,6 +198,11 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
         });
         setCompatibilityWarning(checkResult);
         setHasCheckedCompatibility(true);
+
+        // If no warnings, proceed immediately to installation to avoid double-click confusion.
+        if (checkResult.compatible && checkResult.formattedWarnings.length === 0) {
+          return await runInstall();
+        }
         return;
       } catch (err) {
         setCompatibilityWarning(null);
@@ -182,33 +217,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
     }
 
     // Step 2: Proceed with installation
-    setIsInstalling(true);
-    setInstallResult(null);
-
-    try {
-      const result = await installSkill({
-        data: {
-          repoUrl: parseResult.url,
-          skillName: parseResult.skillName || 'skill',
-        },
-      });
-
-      setInstallResult({ success: true, skill: result });
-
-      // Auto-close on success after short delay
-      setTimeout(() => {
-        onOpenChange(false);
-        onSuccess?.();
-        handleReset();
-      }, 1500);
-    } catch (err) {
-      setInstallResult({
-        success: false,
-        error: err instanceof Error ? err.message : '安装失败',
-      });
-    } finally {
-      setIsInstalling(false);
-    }
+    await runInstall();
   };
 
   // Reset to check compatibility again (e.g., after command change)
