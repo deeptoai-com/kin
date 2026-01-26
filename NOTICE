@@ -1,0 +1,14 @@
+constructa-starter
+Copyright 2026 Peng GAO (熊布朗)
+
+This product includes software developed by Peng GAO (熊布朗).
+
+---
+
+This project uses the Claude Agent SDK, which is subject to Anthropic's
+Commercial Terms of Service: https://www.anthropic.com/legal/commercial-terms
+
+---
+
+Third-party dependencies are listed in package.json files and are subject
+to their respective licenses.
