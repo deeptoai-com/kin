@@ -73,6 +73,11 @@ const SkillInputFieldSchema = z.object({
   }).optional().describe('Validation rules'),
 });
 
+const SkillExampleSchema = z.object({
+  title: z.string().optional().describe('Short label for the example'),
+  prompt: z.string().describe('A complete example prompt a user can send'),
+});
+
 /**
  * Complete Skill Schema for form generation
  */
@@ -81,6 +86,7 @@ const SkillSchemaZod = z.object({
   name: z.string().describe('Skill display name'),
   description: z.string().describe('Brief description of what this skill does'),
   inputs: z.array(SkillInputFieldSchema).optional().describe('Input fields for the skill form'),
+  examples: z.array(SkillExampleSchema).optional().describe('Example prompts for this skill'),
   outputs: z.array(z.object({
     name: z.string(),
     type: z.string(),
@@ -129,6 +135,9 @@ const SkillSchemaOutputZod = z.object({
     }).passthrough()),
     z.string(),  // Allow string (will be JSON.parsed in normalize)
   ]).optional().describe('Array of input field objects or JSON string'),
+  // Examples can be array or JSON string (will be normalized)
+  examples: z.union([z.array(z.unknown()), z.string()]).optional(),
+  example_prompts: z.union([z.array(z.unknown()), z.string()]).optional(),
   // Variant field names (normalize to inputs)
   input_fields: z.union([z.array(z.unknown()), z.string()]).optional(),
   fields: z.union([z.array(z.unknown()), z.string()]).optional(),
@@ -157,6 +166,7 @@ const SkillSchemaDraftZod = z.object({
   name: z.string(),
   description: z.string(),
   inputs: z.array(SkillInputFieldSchema).optional(),
+  examples: z.array(SkillExampleSchema).optional(),
   outputs: z.array(z.object({
     name: z.string(),
     type: z.string(),
@@ -173,6 +183,7 @@ type SkillSchemaDraft = z.infer<typeof SkillSchemaDraftZod>;
 // Timeout for schema generation (2 minutes)
 const SCHEMA_GENERATION_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_SCHEMA_INPUTS = 6;
+const MAX_SCHEMA_EXAMPLES = 3;
 const SCHEMA_GENERATION_DEBUG = process.env.SCHEMA_GENERATION_DEBUG === 'true';
 const SCHEMA_GENERATION_TRACE = process.env.SCHEMA_GENERATION_TRACE ?? 'off';
 const TRACE_ENABLED = SCHEMA_GENERATION_TRACE === 'true' || SCHEMA_GENERATION_TRACE === 'full';
@@ -251,6 +262,7 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
    - "name": skill display name (string, use Chinese if possible)
    - "description": brief description (string, use Chinese if possible)
    - "inputs": array of input field objects (MUST be an array, even if empty)
+   - "examples": array of example prompts (optional)
 
 4. Input field rules:
    - MAX 6 input fields. It is OK to output 0 fields.
@@ -261,6 +273,11 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
    - "type": one of "text", "textarea", "number", "select", "multiselect", "boolean", "file"
    - "required": boolean
    - Optional: "label", "description", "placeholder", "defaultValue", "options", "validation"
+
+6. Examples rules:
+   - Provide 1-3 concrete example prompts.
+   - Do NOT use placeholders like {topic} or <topic>.
+   - Each prompt must be usable as-is.
 
 ## MINIMAL EXAMPLE
 
@@ -275,6 +292,12 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
       "required": true,
       "description": "主题"
     }
+  ],
+  "examples": [
+    {
+      "title": "基础示例",
+      "prompt": "请根据 Claude 上手指南，写一段 100 字的中文简介。"
+    }
   ]
 }
 
@@ -284,6 +307,7 @@ Before outputting, verify:
 - version is "1.0" (not 1.0 as number, not "1" or "v1.0")
 - inputs is an array (not a string, not null)
 - inputs.length <= 6
+- examples.length <= 3
 - All field names are exactly as specified above`;
 
 /**
@@ -297,6 +321,7 @@ function buildSchemaPrompt(skillMdContent: string): string {
 - If there are no clear user inputs, output inputs: [].
 - Prefer consolidating optional details into one field (e.g., "additional_context").
 - Only use select/multiselect when the SKILL.md explicitly lists choices.
+- Provide 1-3 concrete example prompts in examples (no placeholders; usable as-is).
 
 ## SKILL.md Content
 
@@ -647,6 +672,34 @@ function normalizeStructuredOutput(raw: unknown, skillMdContent: string): Normal
       obj.inputs = [];
     }
 
+    // Step 12: Normalize examples
+    if (obj.examples === undefined && obj.example_prompts !== undefined) {
+      obj.examples = obj.example_prompts;
+    }
+
+    if (typeof obj.examples === 'string') {
+      debugLog('normalizeStructuredOutput: parsing examples string');
+      try {
+        obj.examples = JSON.parse(obj.examples);
+      } catch (e) {
+        debugLog('normalizeStructuredOutput: failed to parse examples string', e);
+        parseFailed = true;
+        parseErrors.push(`examples parse failed: ${e instanceof Error ? e.message : String(e)}`);
+        obj.examples = [];
+      }
+    }
+
+    if (Array.isArray(obj.examples)) {
+      const normalizedExamples = obj.examples
+        .map((item) => coerceExample(item))
+        .filter(Boolean)
+        .slice(0, MAX_SCHEMA_EXAMPLES);
+      obj.examples = normalizedExamples;
+    } else if (obj.examples && typeof obj.examples === 'object') {
+      const single = coerceExample(obj.examples);
+      obj.examples = single ? [single] : [];
+    }
+
     debugLog('normalizeStructuredOutput: final inputs count', Array.isArray(obj.inputs) ? obj.inputs.length : 'not-array');
     debugLog('normalizeStructuredOutput: parseFailed', parseFailed, 'parseErrors', parseErrors);
   }
@@ -730,6 +783,32 @@ function coerceInputField(raw: Record<string, unknown>): Record<string, unknown>
   return output;
 }
 
+function coerceExample(raw: unknown): { title?: string; prompt: string } | null {
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed ? { prompt: trimmed } : null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+
+  const obj = raw as Record<string, unknown>;
+  const title = typeof obj.title === 'string' ? obj.title : undefined;
+  const prompt =
+    (typeof obj.prompt === 'string' && obj.prompt) ||
+    (typeof obj.text === 'string' && obj.text) ||
+    (typeof obj.example === 'string' && obj.example) ||
+    (typeof obj.template === 'string' && obj.template) ||
+    (typeof obj.content === 'string' && obj.content) ||
+    '';
+
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) return null;
+
+  return {
+    ...(title ? { title } : {}),
+    prompt: trimmedPrompt,
+  };
+}
+
 function truncateInputsIfNeeded(obj: Record<string, unknown>): string | null {
   if (Array.isArray(obj.inputs) && obj.inputs.length > MAX_SCHEMA_INPUTS) {
     obj.inputs = obj.inputs.slice(0, MAX_SCHEMA_INPUTS);
@@ -771,11 +850,35 @@ function buildDraftSchema(normalizedData: unknown, skillMdContent: string): Skil
     }
   }
 
+  let examples: Array<{ title?: string; prompt: string }> | undefined;
+  let examplesRaw: unknown = obj.examples ?? obj.example_prompts;
+  if (typeof examplesRaw === 'string') {
+    try {
+      examplesRaw = JSON.parse(examplesRaw);
+    } catch {
+      examplesRaw = undefined;
+    }
+  }
+  if (Array.isArray(examplesRaw)) {
+    const coerced = examplesRaw
+      .map((item) => coerceExample(item))
+      .filter(Boolean) as Array<{ title?: string; prompt: string }>;
+    if (coerced.length > 0) {
+      examples = coerced.slice(0, MAX_SCHEMA_EXAMPLES);
+    }
+  } else if (examplesRaw && typeof examplesRaw === 'object') {
+    const single = coerceExample(examplesRaw);
+    if (single) {
+      examples = [single];
+    }
+  }
+
   return SkillSchemaDraftZod.parse({
     version: '1.0',
     name,
     description,
     inputs,
+    examples,
   });
 }
 
