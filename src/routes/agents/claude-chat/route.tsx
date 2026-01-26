@@ -821,6 +821,8 @@ function ClaudeChatSurface({
   const escTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerRef = useRef<ChatComposerRef | null>(null);
   const [composerText, setComposerText] = useState('');
+  const [isA2ComposerOpen, setIsA2ComposerOpen] = useState(false);
+  const [isSkillsPanelOpen, setIsSkillsPanelOpen] = useState(false);
 
   // A2ComposerPanel reset handler
   const [a2ComposerKey, setA2ComposerKey] = useState(0);
@@ -839,6 +841,17 @@ function ClaudeChatSurface({
     // Reset panel to minimized state after send
     handleA2ComposerReset();
   }, [handleA2ComposerReset]);
+
+  const handleA2ComposerOpenChange = useCallback((open: boolean) => {
+    setIsA2ComposerOpen(open);
+    if (open) {
+      setIsSkillsPanelOpen(false);
+    }
+  }, []);
+
+  const handleSkillsOpenChange = useCallback((open: boolean) => {
+    setIsSkillsPanelOpen(open);
+  }, []);
 
 
   return (
@@ -918,12 +931,13 @@ function ClaudeChatSurface({
             {/* Only show Composer when session exists */}
             {hasSession && !isInitializingSession && (
               <>
-                <div className="mb-3">
+                <div className={`mb-3 ${isSkillsPanelOpen ? 'hidden' : ''}`}>
                   <A2ComposerPanel
                     key={a2ComposerKey}
                     composerText={composerText}
                     onSetComposerText={handleSetComposerText}
                     onReset={handleA2ComposerReset}
+                    onOpenChange={handleA2ComposerOpenChange}
                   />
                 </div>
 
@@ -942,6 +956,8 @@ function ClaudeChatSurface({
                   onAbort={notifyUserAbort}
                   onTextChange={setComposerText}
                   onSend={handleComposerSend}
+                  hideSkillsTrigger={isA2ComposerOpen}
+                  onSkillsOpenChange={handleSkillsOpenChange}
                 />
               </>
             )}
