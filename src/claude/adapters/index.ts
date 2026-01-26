@@ -8,6 +8,8 @@ export {
   ClaudeAgentWSAdapter,
   abort,
   resumeSession,
+  createSession,
+  initSession,
   newSession,
   disconnect,
   getSessionId,

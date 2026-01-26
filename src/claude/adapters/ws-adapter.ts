@@ -94,13 +94,16 @@ type StreamEvent = {
 
 // WebSocket message types (matching ws-server.ts)
 type InboundMessage =
+  | { type: 'create_session' }
+  | { type: 'init_session'; sessionId: string }
   | { type: 'chat'; content: string; sessionId?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'ping' };
 
 type OutboundMessage =
-  | { type: 'session_init'; sessionId: string; userId?: string }
+  | { type: 'session_init'; sessionId: string; sdkSessionId: string | null; userId?: string }
+  | { type: 'session_metadata'; sessionId: string; metadata: SessionMetadata }
   | { type: 'message'; event: SDKMessage }
   | { type: 'messages_loaded'; messages: StorageSDKMessage[] }
   | { type: 'error'; code: string; message: string; retriable: boolean }
@@ -375,6 +378,83 @@ export async function resumeSession(sessionId: string): Promise<void> {
   console.log('[WS Adapter] Resuming session:', sessionId);
   currentSessionId = sessionId;
   await send({ type: 'resume', sessionId });
+}
+
+/**
+ * Create a new empty session explicitly
+ * Sends create_session message to server, which creates session without user message
+ * Returns a promise that resolves when session_init is received
+ */
+export async function createSession(): Promise<string> {
+  console.log('[WS Adapter] Creating new session explicitly');
+  return new Promise((resolve, reject) => {
+    // Set up one-time listener for session_init
+    const onInit = (msg: OutboundMessage) => {
+      if (msg.type === 'session_init') {
+        cleanup();
+        resolve(msg.sessionId);
+      } else if (msg.type === 'error') {
+        cleanup();
+        reject(new Error(msg.message));
+      }
+    };
+
+    // Temporary handler for this session creation
+    const originalHandler = messageHandler;
+    messageHandler = (msg: OutboundMessage) => {
+      // Forward to original handler
+      if (originalHandler) originalHandler(msg);
+      // Also check for our session_init
+      onInit(msg);
+    };
+
+    const cleanup = () => {
+      messageHandler = originalHandler;
+    };
+
+    // Send create_session message
+    send({ type: 'create_session' })
+      .catch((err) => {
+        cleanup();
+        reject(err);
+      });
+  });
+}
+
+/**
+ * Initialize a session to fetch system metadata before showing composer
+ * Sends init_session message and resolves when session_metadata is received
+ */
+export async function initSession(sessionId: string): Promise<SessionMetadata> {
+  console.log('[WS Adapter] Initializing session metadata:', sessionId);
+  return new Promise((resolve, reject) => {
+    const onInit = (msg: OutboundMessage) => {
+      if (msg.type === 'session_metadata' && msg.sessionId === sessionId) {
+        cleanup();
+        useChatSessionStore.getState().setSessionMetadata(msg.metadata);
+        resolve(msg.metadata);
+      } else if (msg.type === 'error') {
+        cleanup();
+        reject(new Error(msg.message));
+      }
+    };
+
+    const originalHandler = messageHandler;
+    messageHandler = (msg: OutboundMessage) => {
+      if (originalHandler) originalHandler(msg);
+      onInit(msg);
+    };
+
+    const cleanup = () => {
+      messageHandler = originalHandler;
+    };
+
+    send({ type: 'init_session', sessionId })
+      .catch((err) => {
+        cleanup();
+        reject(err);
+      });
+  });
 }
 
 /**

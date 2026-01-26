@@ -131,6 +131,9 @@ interface ChatSessionState {
   // Queue count: number of pending runs waiting to be processed
   queueCount: number;
 
+  // Skills auto-enabled for current session (from templates)
+  temporarySkills: string[];
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -145,6 +148,8 @@ interface ChatSessionState {
   setShowThinking: (show: boolean) => void;
   setQueueCount: (count: number) => void;
   clearMessages: () => void;
+  addTemporarySkill: (skillSlug: string) => void;
+  clearTemporarySkills: () => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -289,6 +294,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
+  temporarySkills: [],
 
   setSessionId: (sessionId) => {
     set({ currentSessionId: sessionId });
@@ -357,6 +363,17 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   clearMessages: () => {
     set({ messages: [], usageData: null, sessionMetadata: null, lastStructuredOutput: null });
+  },
+
+  addTemporarySkill: (skillSlug) => {
+    set((state) => {
+      if (state.temporarySkills.includes(skillSlug)) return state;
+      return { temporarySkills: [...state.temporarySkills, skillSlug] };
+    });
+  },
+
+  clearTemporarySkills: () => {
+    set({ temporarySkills: [] });
   },
 
   loadHistoricalMessages: (sdkMessages) => {
