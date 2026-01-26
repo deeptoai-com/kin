@@ -27,9 +27,11 @@ interface A2ComposerPanelProps {
   onSetComposerText: (text: string) => void;
   /** Reset panel to minimized state (call after user sends message) */
   onReset?: () => void;
+  /** Notify parent when panel open state changes (expanded vs minimized) */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function A2ComposerPanel({ composerText, onSetComposerText, onReset }: A2ComposerPanelProps) {
+export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOpenChange }: A2ComposerPanelProps) {
   // Panel state
   const [isMinimized, setIsMinimized] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<string>('');
@@ -110,6 +112,11 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset }: A2
       setActiveCategoryId(categories[0]?.id ?? '');
     }
   }, [activeCategoryId, categories]);
+
+  // Notify parent when open state changes
+  useEffect(() => {
+    onOpenChange?.(!isMinimized);
+  }, [isMinimized, onOpenChange]);
 
   const variables = useMemo(() => {
     if (!selectedTemplate) return [];

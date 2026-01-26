@@ -71,6 +71,10 @@ export interface ChatComposerProps {
   currentSessionId: string | null;
   /** Session metadata (for context badges display) */
   sessionMetadata: SessionMetadata | null;
+  /** Hide Skills trigger (when A2Composer is expanded) */
+  hideSkillsTrigger?: boolean;
+  /** Notify parent when Skills panel open state changes */
+  onSkillsOpenChange?: (open: boolean) => void;
   /** Workspace panel visibility state */
   showWorkspace: boolean;
   /** Workspace panel visibility setter */
@@ -151,6 +155,8 @@ export function ChatComposer({
   onAbort,
   onTextChange,
   onSend,
+  hideSkillsTrigger,
+  onSkillsOpenChange,
 }: ChatComposerProps) {
   const api = useAssistantApi();
   const composerText = useAssistantState(({ composer }) => composer.text);
@@ -230,6 +236,18 @@ export function ChatComposer({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  }, [api]);
+
+  const handleExampleSelect = useCallback((prompt: string) => {
+    if (!prompt) return;
+    api.composer().setText(prompt);
+    const composerRoot = document.querySelector('[data-composer-root] [contenteditable=\"true\"]') as HTMLElement;
+    if (composerRoot) {
+      composerRoot.focus();
+      return;
+    }
+    const input = document.querySelector('[contenteditable=\"true\"]') as HTMLElement;
+    input?.focus();
   }, [api]);
 
   const handleUploadClick = useCallback(() => {
@@ -321,7 +339,12 @@ export function ChatComposer({
       <div className="m-3.5 flex flex-col gap-3.5">
         {/* Context badges - show active Skills and MCP sources */}
         {!isRunning && sessionMetadata && (
-          <ContextBadges sessionMetadata={sessionMetadata} maxVisible={5} />
+          <ContextBadges
+            sessionMetadata={sessionMetadata}
+            onExampleSelect={handleExampleSelect}
+            onSkillsOpenChange={onSkillsOpenChange}
+            hideSkillsTrigger={hideSkillsTrigger}
+          />
         )}
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
