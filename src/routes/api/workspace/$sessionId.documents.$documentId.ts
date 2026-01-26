@@ -22,7 +22,10 @@ export const Route = createFileRoute('/api/workspace/$sessionId/documents/$docum
       // DELETE /api/workspace/:sessionId/documents/:documentId
       DELETE: async ({ request, params }) => {
         const user = await requireUser(request);
-        const { sessionId, documentId } = params;
+        const { sessionId, documentId } = params as {
+          sessionId: string;
+          documentId: string;
+        };
 
         // Verify session ownership (sessionId is sdk_session_id from frontend)
         const [session] = await db
@@ -92,7 +95,10 @@ export const Route = createFileRoute('/api/workspace/$sessionId/documents/$docum
       // POST /api/workspace/:sessionId/documents/:documentId/sync
       POST: async ({ request, params }) => {
         const user = await requireUser(request);
-        const { sessionId, documentId } = params;
+        const { sessionId, documentId } = params as {
+          sessionId: string;
+          documentId: string;
+        };
 
         console.log('[SYNC] Starting sync for document:', documentId);
 

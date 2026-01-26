@@ -43,7 +43,8 @@ export const requireSystemAdmin = createServerFn({ method: 'GET' })
 
     if (!session?.user) {
       throw redirect({
-        to: '/auth/sign-in',
+        to: '/auth/$pathname',
+        params: { pathname: 'sign-in' },
       });
     }
 
@@ -54,7 +55,8 @@ export const requireSystemAdmin = createServerFn({ method: 'GET' })
 
     if (!userData) {
       throw redirect({
-        to: '/auth/sign-in',
+        to: '/auth/$pathname',
+        params: { pathname: 'sign-in' },
       });
     }
 

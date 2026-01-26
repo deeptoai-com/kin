@@ -35,7 +35,7 @@ import {
   deleteSystemMcp,
   systemMcpExists,
 } from '~/claude/mcp';
-import type { AddCustomMcpInput, McpConfig } from '~/claude/mcp';
+import type { AddCustomMcpInput, ExtendedMcpInfo, McpConfig, McpInfo, McpStoreResult } from '~/claude/mcp';
 import { runPython } from '~/claude/python/runner.js';
 
 const requireUser = async () => {
@@ -49,6 +49,11 @@ const requireUser = async () => {
   return session.user;
 };
 
+const loadMcpStore = async (): Promise<McpInfo[]> => (await getMcpStore()) as McpInfo[];
+const loadSystemMcps = async (): Promise<McpInfo[]> => (await getSystemMcps()) as McpInfo[];
+const loadUserCustomMcps = async (userId: string): Promise<McpInfo[]> =>
+  (await getUserCustomMcps(userId)) as McpInfo[];
+
 const toggleSchema = z.object({
   slug: z.string().min(1),
 });
@@ -61,7 +66,7 @@ const detailSchema = z.object({
  * List all MCP servers from the store
  */
 export const listMcpStore = createServerFn({ method: 'GET' }).handler(async () => {
-  return await getMcpStore();
+  return await loadMcpStore();
 });
 
 /**
@@ -70,7 +75,7 @@ export const listMcpStore = createServerFn({ method: 'GET' }).handler(async () =
 export const listUserMcps = createServerFn({ method: 'GET' }).handler(async () => {
   const user = await requireUser();
   const enabled = await getUserEnabledMcpServers(user.id);
-  const store = await getMcpStore();
+  const store = await loadMcpStore();
   return store.filter((entry) => enabled.includes(entry.slug));
 });
 
@@ -123,7 +128,7 @@ export const getMcpDetailFn = createServerFn({ method: 'GET' })
     const normalized = normalizeMcpName(data.slug);
 
     // Get full MCP store to find store type and config
-    const store = await getMcpStore();
+    const store = await loadMcpStore();
     const entry = store.find((e) => e && e.slug === normalized);
 
     if (!entry) {
@@ -141,8 +146,8 @@ export const getMcpDetailFn = createServerFn({ method: 'GET' })
     // Determine store type
     let storeType: 'official' | 'system' | 'user' = 'official';
     // Check if it's a system or user MCP by looking at the store list
-    const systemMcps = await getSystemMcps();
-    const userMcps = await getUserCustomMcps(user.id);
+    const systemMcps = await loadSystemMcps();
+    const userMcps = await loadUserCustomMcps(user.id);
     if (systemMcps.some((m) => m && m.slug === normalized)) {
       storeType = 'system';
     } else if (userMcps.some((m) => m && m.slug === normalized)) {
@@ -186,7 +191,7 @@ export const verifyMcpServerFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser();
     const slug = normalizeMcpName(data.slug);
-    const store = await getMcpStore();
+    const store = await loadMcpStore();
     const entry = store.find((item) => item.slug === slug);
 
     if (!entry) {
@@ -229,7 +234,7 @@ export const verifyMcpServerFn = createServerFn({ method: 'POST' })
       }
 
       const allOk = parsed
-        ? Object.values(parsed).every((entry) => entry && entry.ok === true)
+        ? Object.values(parsed as Record<string, { ok?: boolean }>).every((entry) => entry?.ok === true)
         : false;
 
       return {
@@ -278,7 +283,7 @@ export const verifyMcpServerFn = createServerFn({ method: 'POST' })
     };
   });
 
-async function resolveCommandPath(command: string): Promise<string | null> {
+async function resolveCommandPath(command?: string): Promise<string | null> {
   if (!command || typeof command !== 'string') {
     return null;
   }
@@ -360,26 +365,26 @@ async function checkRemoteEndpoint(url: string, headers?: Record<string, string>
  * Returns three categories with store labels for UI differentiation
  */
 export const listAllMcpsFn = createServerFn({ method: 'GET' })
-  .handler(async () => {
+  .handler(async (): Promise<McpStoreResult> => {
     const user = await requireUser();
-    const store = await getMcpStore();
-    const systemMcps = await getSystemMcps();
-    const customMcps = await getUserCustomMcps(user.id);
+    const store = await loadMcpStore();
+    const systemMcps = await loadSystemMcps();
+    const customMcps = await loadUserCustomMcps(user.id);
     const enabled = await getUserEnabledMcpServers(user.id);
 
-    const official = store.map((entry) => ({
+    const official: ExtendedMcpInfo[] = store.map((entry) => ({
       ...entry,
       store: 'official' as const,
       enabled: enabled.includes(entry.slug),
     }));
 
-    const system = systemMcps.map((entry) => ({
+    const system: ExtendedMcpInfo[] = systemMcps.map((entry) => ({
       ...entry,
       store: 'system' as const,
       enabled: enabled.includes(entry.slug),
     }));
 
-    const userMcps = customMcps.map((entry) => ({
+    const userMcps: ExtendedMcpInfo[] = customMcps.map((entry) => ({
       ...entry,
       store: 'user' as const,
       enabled: enabled.includes(entry.slug),
@@ -407,9 +412,9 @@ const addCustomMcpSchema = z.object({
     name: z.string().optional(),
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     url: z.string().optional(),
-    headers: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   }),
   allowedTools: z.array(z.string()).optional().nullable(),
   credentials: z.array(z.object({
@@ -439,7 +444,7 @@ export const addCustomMcpFn = createServerFn({ method: 'POST' })
     const scope = data.scope || 'personal';
 
     // Check if slug conflicts with official store
-    const store = await getMcpStore();
+    const store = await loadMcpStore();
     if (store.find((entry) => entry.slug === slug)) {
       return {
         ok: false,
@@ -513,7 +518,7 @@ export const deleteCustomMcpFn = createServerFn({ method: 'POST' })
     const scope = data.scope;
 
     // Ensure it's not an official MCP
-    const store = await getMcpStore();
+    const store = await loadMcpStore();
     if (store.find((entry) => entry.slug === slug)) {
       return {
         ok: false,
@@ -540,7 +545,7 @@ export const deleteCustomMcpFn = createServerFn({ method: 'POST' })
     // Handle system MCP deletion - requires admin
     if (targetScope === 'system') {
       // Check if user is admin
-      const isAdmin = user.role === 'admin';
+      const isAdmin = (user as { role?: string }).role === 'admin';
       if (!isAdmin) {
         return {
           ok: false,
@@ -690,7 +695,7 @@ export const parseNpmPackageFn = createServerFn({ method: 'POST' })
 
 const credentialsSchema = z.object({
   slug: z.string().min(1),
-  credentials: z.record(z.string()),
+  credentials: z.record(z.string(), z.string()),
 });
 
 /**
@@ -793,7 +798,7 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
     const slug = normalizeMcpName(data.slug);
 
     // Get MCP config from store
-    const store = await getMcpStore();
+    const store = await loadMcpStore();
     const entry = store.find((e) => e.slug === slug);
 
     if (!entry || !entry.mcp) {
@@ -860,22 +865,22 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
       let transport;
 
       if (mcpConfig.type === 'stdio') {
-        const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio');
+        const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
         transport = new StdioClientTransport({
-          command: mcpConfig.command,
+          command: mcpConfig.command as string,
           args: mcpConfig.args || [],
-          env: { ...process.env, ...resolvedEnv },
+          env: { ...process.env, ...resolvedEnv } as Record<string, string>,
         });
       } else if (mcpConfig.type === 'http' || mcpConfig.type === 'sse') {
         // Try Streamable HTTP first (newer protocol), fall back to SSE
         try {
-          const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp');
+          const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
           transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url!), {
             requestInit: { headers: resolvedHeaders },
           });
         } catch {
           // Fall back to SSE transport
-          const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse');
+          const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
           transport = new SSEClientTransport(new URL(mcpConfig.url!), {
             requestInit: { headers: resolvedHeaders },
           });
@@ -965,7 +970,8 @@ async function readUserCredentials(userHome: string) {
     const raw = await fsPromises.default.readFile(credPath, 'utf-8');
     return JSON.parse(raw);
   } catch (error) {
-    if (error?.code === 'ENOENT') {
+    const err = error as { code?: string };
+    if (err?.code === 'ENOENT') {
       return {};
     }
     return {};

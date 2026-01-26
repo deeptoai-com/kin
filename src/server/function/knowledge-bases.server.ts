@@ -85,7 +85,7 @@ const updateKbSchema = z.object({
   description: z.string().optional(),
 });
 
-export const updateKnowledgeBase = createServerFn({ method: 'PUT' })
+export const updateKnowledgeBase = createServerFn({ method: 'POST' })
   .inputValidator((input: any) => updateKbSchema.parse(input.data || input))
   .handler(async ({ data }) => {
     const user = await requireUser();
@@ -121,7 +121,7 @@ const deleteKbSchema = z.object({
   id: z.string().uuid(),
 });
 
-export const deleteKnowledgeBase = createServerFn({ method: 'DELETE' })
+export const deleteKnowledgeBase = createServerFn({ method: 'POST' })
   .inputValidator((input: any) => deleteKbSchema.parse(input.data || input))
   .handler(async ({ data }) => {
     const user = await requireUser();
@@ -279,7 +279,7 @@ const removeKbDocumentSchema = z.object({
   documentId: z.string().uuid(),
 });
 
-export const removeKbDocument = createServerFn({ method: 'DELETE' })
+export const removeKbDocument = createServerFn({ method: 'POST' })
   .inputValidator((input: any) => removeKbDocumentSchema.parse(input.data || input))
   .handler(async ({ data }) => {
     const user = await requireUser();

@@ -233,7 +233,7 @@ export const listDocuments = createServerFn({ method: 'GET' }).handler(async () 
 
 export const initDocumentUpload = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalizeInput(input, initUploadSchema))
-  .handler(async (input) => {
+  .handler(async ({ data: input }) => {
     const user = await requireUser();
 
     const originalName = input.originalName?.trim() || `file-${Date.now()}`;
@@ -290,7 +290,7 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
 
 export const completeDocumentUpload = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalizeInput(input, completeUploadSchema))
-  .handler(async (payload) => {
+  .handler(async ({ data: payload }) => {
     const data = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>))
       ? ((payload as Record<string, unknown>).data as CompleteDocumentUploadInput)
       : (payload as CompleteDocumentUploadInput);
@@ -343,7 +343,7 @@ export const completeDocumentUpload = createServerFn({ method: 'POST' })
 
 export const directDocumentUpload = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalizeInput(input, directUploadSchema))
-  .handler(async (payload) => {
+  .handler(async ({ data: payload }) => {
     const data = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>))
       ? ((payload as Record<string, unknown>).data as DirectDocumentUploadInput)
       : (payload as DirectDocumentUploadInput);
@@ -458,7 +458,7 @@ const preprocessDeletePayload = (payload: unknown) => {
 };
 
 export const deleteDocuments = createServerFn({ method: 'POST' })
-  .handler(async (payload) => {
+  .handler(async ({ data: payload }) => {
     const user = await requireUser();
 
     const { ids, items } = normalizeInput(payload, deleteDocumentsSchema, preprocessDeletePayload);

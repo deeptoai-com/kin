@@ -15,10 +15,13 @@ export const Route = createFileRoute('/api/invoices/$orderId/generate')({
         }
 
         const invoice = await ensureOrderInvoice(params.orderId);
+        if (!invoice) {
+          return new Response('Invoice not available', { status: 503 });
+        }
 
         return Response.json({
-          pdfUrl: invoice.invoice_pdf ?? null,
-          hostedUrl: invoice.hosted_invoice_url ?? null,
+          pdfUrl: null,
+          hostedUrl: invoice.url ?? null,
         });
       },
     },

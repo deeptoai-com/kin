@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { meili } from '../../../search/meilisearch.ts'
+import { meili } from '~/search/meilisearch'
 
 export const Route = createFileRoute('/api/search/')({
   validateSearch: (s) => ({

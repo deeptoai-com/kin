@@ -42,7 +42,7 @@ export const Route = createFileRoute('/api/auth/permission-info')({
           }
 
           const user = session.user;
-          const activeOrganizationId = session.activeOrganizationId;
+          const activeOrganizationId = session.session?.activeOrganizationId;
 
           // Default response structure
           const response = {

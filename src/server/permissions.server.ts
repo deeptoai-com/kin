@@ -61,7 +61,7 @@ export const getPermissionInfo = createServerFn({ method: 'GET' })
     const user = session.user;
 
     // Check if user has an active organization
-    const activeOrganizationId = session.activeOrganizationId;
+    const activeOrganizationId = session.session?.activeOrganizationId;
 
     if (!activeOrganizationId) {
       // No organization - use environment variables as fallback

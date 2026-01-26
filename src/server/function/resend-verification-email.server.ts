@@ -13,7 +13,7 @@ const inputSchema = z
 
 export const resendVerificationEmail = createServerFn({ method: 'POST' })
   .inputValidator((input) => inputSchema.parse(input))
-  .handler(async (input) => {
+  .handler(async ({ data: input }) => {
     const emailVerificationEnabled = process.env.ENABLE_EMAIL_VERIFICATION === 'true';
 
     if (!emailVerificationEnabled) {
