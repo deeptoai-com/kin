@@ -29,7 +29,7 @@ import { getSkillsStoreDir, getUserClaudeHome, normalizeSkillName } from './mana
 /**
  * Schema generator version - increment when generation logic changes
  */
-export const SCHEMA_GENERATOR_VERSION = '1.0.0';
+export const SCHEMA_GENERATOR_VERSION = '1.1.0';
 
 // ============================================================================
 // Schema Definition (inputs/fields focused)
