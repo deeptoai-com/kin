@@ -52,6 +52,61 @@ pnpm install
 
 ## Quick Start
 
+**The fastest way to run OxyGenie is with Docker Compose.** The project provides `docker-compose.yml` and `.env.docker` for one-command setup.
+
+### Option A: Docker Compose (recommended)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   cd OxyGenie
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` and set the **minimum required** variables. [.env.docker](.env.docker) provides `POSTGRES_*` and Docker overrides; migrate/app/worker build `DATABASE_URL` from `POSTGRES_*` with host `db`, so you only need to add secrets and optional keys in `.env`:
+
+   ```bash
+   # MinIO (S3-compatible storage)
+   MINIO_ROOT_USER="minioadmin"
+   MINIO_ROOT_PASSWORD="minioadmin"
+   MINIO_BUCKET="oxygenie-files"
+
+   # Meilisearch
+   MEILI_MASTER_KEY="changeme-master-key"
+
+   # Auth (use http://localhost:5050 when using Docker; app is on 5050)
+   BETTER_AUTH_SECRET="your-secret-key-here"
+   BETTER_AUTH_URL="http://localhost:5050"
+
+   # AI (required for Claude Chat and Mastra)
+   ANTHROPIC_API_KEY="sk-ant-..."
+   ZHIPU_API_KEY="your-zhipu-api-key"   # Optional for Mastra/GLM models
+   ```
+
+   See [.env.example](.env.example) for all options. [.env.docker](.env.docker) overrides `.env` with Docker-specific values (`POSTGRES_*`, container hostnames, `VITE_WS_URL`, etc.). Docker builds `DATABASE_URL` from `POSTGRES_*` with host `db` — **do not** set `DATABASE_URL` in `.env` when using Docker, or migrate will try to connect to localhost and fail. **Never commit `.env`.**
+
+   **Troubleshooting:** If you see `database "oxygenie" does not exist`, the stack runs a `create-db` step that creates it when missing (e.g. old volumes from ex0/constructa). If it still fails, run `docker compose --profile selfhost down -v` then `up -d --build` again to reset volumes.
+
+   **Keeping existing database data:** If you already have data in `ex0` or `constructa`, **do not** run `down -v`. In `.env`, set **only** `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` to match your **existing** DB (e.g. `POSTGRES_DB=ex0` — same user/pass as when the volume was created). **Do not** set `DATABASE_URL` in `.env` for Docker; it is built from `POSTGRES_*` with host `db`. Use the env order below so `.env` overrides `.env.docker`. The `create-db` step will see the DB exists and skip; migrations run against your existing DB and your data is preserved.
+
+3. **Start with Docker Compose:**
+   ```bash
+   docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
+   ```
+   `.env` is loaded **last** and overrides `.env.docker` (use this to keep an existing DB). This starts PostgreSQL, MinIO, Redis, Meilisearch, runs migrations, then the app and worker. The app is served on **port 5050**, WebSocket on **3051**.
+
+4. **Open the app:**
+   - **App:** http://localhost:5050  
+   - **Claude Agent Chat:** http://localhost:5050/agents/claude-chat  
+
+   **Verify:** `curl -s http://localhost:5050/health` → `{"status":"ok"}`  
+   **Logs:** `docker compose --profile selfhost logs -f app`
+
+### Option B: Local development (without Docker)
+
 1. **Clone and install:**
    ```bash
    git clone https://github.com/Deeptoai-com/OxyGenie.git
@@ -63,21 +118,14 @@ pnpm install
    ```bash
    cp .env.example .env
    ```
-   
-   **Minimum required environment variables:**
+   Set at least:
    ```bash
-   # Database
    DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
-   
-   # Claude Agent SDK (required for main chat feature)
    ANTHROPIC_API_KEY="sk-ant-..."
-   
-   # Better Auth (required for authentication)
    BETTER_AUTH_SECRET="your-secret-key-here"
    BETTER_AUTH_URL="http://localhost:3000"
    ```
-   
-   See [.env.example](.env.example) for all available configuration options.
+   See [.env.example](.env.example) for all options.
 
 3. **Set up the database:**
    ```bash
@@ -86,15 +134,15 @@ pnpm install
 
 4. **Start the application:**
    ```bash
-   # Terminal 1: Start the main app
+   # Terminal 1: main app
    pnpm dev
-   
-   # Terminal 2: Start the WebSocket server (required for Claude Chat)
+
+   # Terminal 2: WebSocket server (required for Claude Chat)
    node ws-server.mjs
    ```
 
-5. **Open the app:**
-   Navigate to `http://localhost:3000/agents/claude-chat` for the main Claude Agent Chat interface.
+5. **Open the app:**  
+   http://localhost:3000/agents/claude-chat
 
 ## Why OxyGenie?
 
@@ -230,7 +278,7 @@ This project features **two independent chat systems**:
 
 ### Environment Variables
 
-**Required:**
+**Required (local dev):**
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
 ANTHROPIC_API_KEY="sk-ant-..."
@@ -238,23 +286,23 @@ BETTER_AUTH_SECRET="your-secret-key-here"
 BETTER_AUTH_URL="http://localhost:3000"
 ```
 
+**Required for Docker (see [Quick Start → Option A](#option-a-docker-compose-recommended)):**  
+Use `.env` plus [.env.docker](.env.docker). Set `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`, `MINIO_*`, `MEILI_MASTER_KEY`, `BETTER_AUTH_*`, `ANTHROPIC_API_KEY`, `ZHIPU_API_KEY`. Ensure they match [.env.docker](.env.docker) (e.g. DB `oxygenie`, bucket `oxygenie-files`).
+
 **Optional:**
 ```bash
-# WebSocket URL (for production with reverse proxy)
+# WebSocket URL — local dev: not needed; Docker: .env.docker sets ws://localhost:3051/ws/agent
 VITE_WS_URL="wss://your-domain.com/ws/agent"
 
-# Multi-Model Support (Cost-Effective Models)
-# GLM 4.7 and other models via Mastra
-ZHIPU_API_KEY="your-zhipu-api-key"  # For GLM 4.7, GLM 4.6, GLM 4.5
+# Multi-Model Support (GLM 4.7, etc. via Mastra)
+ZHIPU_API_KEY="your-zhipu-api-key"
 
 # OAuth Providers
-GITHUB_CLIENT_ID="your-github-client-id"
-GITHUB_CLIENT_SECRET="your-github-client-secret"
-GOOGLE_CLIENT_ID="your-google-client-id"
-GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GITHUB_CLIENT_ID="..." GITHUB_CLIENT_SECRET="..."
+GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..."
 ```
 
-See [.env.example](.env.example) for complete configuration options.
+See [.env.example](.env.example) for all options. **Never commit `.env`.** [.env.docker](.env.docker) is versioned and overrides Docker-specific values.
 
 ### Multi-Model Support
 
@@ -286,9 +334,9 @@ OxyGenie is designed for on-premises deployment, giving you full control over yo
 - ✅ **Customization**: Full control over Skills, MCP servers, and configurations
 
 **Deployment Options**:
-- Docker Compose (recommended for small teams)
-- Kubernetes (for larger deployments)
-- Traditional server deployment
+- **Docker Compose** (recommended): See [Quick Start → Option A: Docker Compose](#option-a-docker-compose-recommended) and [docker-compose.yml](docker-compose.yml). Use `.env` + [.env.docker](.env.docker) with `--profile selfhost`.
+- **Kubernetes**: For larger deployments (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+- **Traditional server**: Run `pnpm build`, `node .output/server/index.mjs`, and `node ws-server.mjs` behind a reverse proxy.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed deployment instructions.
 

@@ -15,7 +15,23 @@ Please be respectful and considerate of others when contributing to this project
 - **Docker** (optional, for local database and services)
 - **PostgreSQL** (or use Docker Compose)
 
-### Development Setup
+### Running with Docker (recommended for first-time setup)
+
+The fastest way to get the app running is with Docker Compose. See the [README Quick Start → Option A: Docker Compose](README.md#option-a-docker-compose-recommended) section.
+
+```bash
+cp .env.example .env
+# Edit .env: set POSTGRES_*, MINIO_*, MEILI_MASTER_KEY, BETTER_AUTH_*, ANTHROPIC_API_KEY, ZHIPU_API_KEY
+
+docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
+```
+
+- **App:** http://localhost:5050  
+- **Claude Chat:** http://localhost:5050/agents/claude-chat  
+
+Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `.env.docker`. To **keep existing DB data** (ex0/constructa), set **only** `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in `.env` to match your existing DB. Docker builds `DATABASE_URL` from these with host `db`; do not set `DATABASE_URL` in `.env` when using Docker.
+
+### Development Setup (local, without Docker)
 
 1. **Clone the repository:**
    ```bash

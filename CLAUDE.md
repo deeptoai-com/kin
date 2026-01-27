@@ -1,8 +1,8 @@
-# Constructa Starter - 开发规则
+# OxyGenie - 开发规则
 
 ## 项目背景
 
-本项目基于 [constructa-starter](https://github.com/instructa/constructa-starter) 脚手架创建，该脚手架基于 **TanStack Start** 构建，提供 SSR、路由、服务端函数等现代全栈能力。
+本项目基于 **TanStack Start** 构建，提供 SSR、路由、服务端函数等现代全栈能力。
 
 ### 双 SDK 架构
 
@@ -30,9 +30,9 @@
 
 ## 项目状态
 
-这是 Claude Agent Chat 的主项目仓库，基于 [constructa-starter](https://github.com/instructa/constructa-starter) fork 而来。
+本项目基于 **TanStack Start** 构建。
 
-**GitHub 仓库**: https://github.com/foreveryh/constructa-starter
+**GitHub 仓库**: https://github.com/Deeptoai-com/OxyGenie
 
 **已完成的功能 (Phase 1-4)**:
 - Phase 1: WebSocket 服务器 + Claude Agent SDK 集成
@@ -52,7 +52,7 @@
 ## 项目结构
 
 ```
-constructa-starter/
+OxyGenie/
 ├── src/
 │   ├── components/claude-chat/   # Claude Chat UI 组件
 │   ├── lib/                      # 工具库和适配器
@@ -89,7 +89,7 @@ docker-compose up -d
 ## Git 工作流
 
 - 主分支: `main`
-- 远程仓库: `origin` → https://github.com/foreveryh/constructa-starter
+- 远程仓库: `origin` → https://github.com/Deeptoai-com/OxyGenie
 - 直接在 `main` 分支开发，或创建 feature 分支后合并
 
 ---
