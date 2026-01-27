@@ -18,7 +18,7 @@
 version: '3.8'
 
 # Build configuration (use image from registry in production)
-x-app-image: &app_image ${APP_IMAGE:-claude-agent-chat}:${APP_TAG:-latest}
+x-app-image: &app_image ${APP_IMAGE:-oxygenie}:${APP_TAG:-latest}
 
 x-app-build: &app_build
   build:
@@ -35,7 +35,7 @@ services:
   # PostgreSQL database with pgvector extension
   db:
     image: pgvector/pgvector:0.8.0-pg17
-    container_name: ${APP_NAME:-claude-agent-chat}-db
+    container_name: ${APP_NAME:-OxyGenie}-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -57,7 +57,7 @@ services:
   # MinIO S3-compatible object storage
   minio:
     image: quay.io/minio/minio:latest
-    container_name: ${APP_NAME:-claude-agent-chat}-minio
+    container_name: ${APP_NAME:-OxyGenie}-minio
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
@@ -80,7 +80,7 @@ services:
   # One-time MinIO bucket and policy provisioning
   provision-minio:
     image: minio/mc:latest
-    container_name: ${APP_NAME:-claude-agent-chat}-provision-minio
+    container_name: ${APP_NAME:-OxyGenie}-provision-minio
     depends_on:
       minio:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
   # Redis for BullMQ jobs/queues
   redis:
     image: redis:7-alpine
-    container_name: ${APP_NAME:-claude-agent-chat}-redis
+    container_name: ${APP_NAME:-OxyGenie}-redis
     restart: unless-stopped
     command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
     volumes:
@@ -119,7 +119,7 @@ services:
   # Meilisearch for fast lexical/symbol search
   meilisearch:
     image: getmeili/meilisearch:latest
-    container_name: ${APP_NAME:-claude-agent-chat}-meili
+    container_name: ${APP_NAME:-OxyGenie}-meili
     restart: unless-stopped
     environment:
       MEILI_ENV: production
@@ -139,7 +139,7 @@ services:
   # Database migrations (runs before app starts)
   migrate:
     image: *app_image
-    container_name: ${APP_NAME:-claude-agent-chat}-migrate
+    container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
         condition: service_healthy
@@ -164,7 +164,7 @@ services:
   # Background workers for BullMQ (cron + indexing, etc.)
   worker:
     image: *app_image
-    container_name: ${APP_NAME:-claude-agent-chat}-worker
+    container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
         condition: service_healthy
@@ -206,7 +206,7 @@ services:
   app:
     image: *app_image
     <<: *app_build
-    container_name: ${APP_NAME:-claude-agent-chat}-app
+    container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
         condition: service_healthy
@@ -355,7 +355,7 @@ networks:
   private:
     driver: bridge
     # Network name must not contain spaces
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-network
+    name: ${APP_NAME_SANITIZED:-oxygenie}-network
   dokploy:
     external: true
     name: dokploy-network
@@ -366,14 +366,14 @@ networks:
 # Format: [a-zA-Z0-9][a-zA-Z0-9_.-] are allowed
 volumes:
   ex0-data:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-data
+    name: ${APP_NAME_SANITIZED:-oxygenie}-data
   ex0-minio-data:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-minio-data
+    name: ${APP_NAME_SANITIZED:-oxygenie}-minio-data
   ex0-redis-data:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-redis-data
+    name: ${APP_NAME_SANITIZED:-oxygenie}-redis-data
   ex0-meili-data:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-meili-data
+    name: ${APP_NAME_SANITIZED:-oxygenie}-meili-data
   claude-sessions:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-claude-sessions
+    name: ${APP_NAME_SANITIZED:-oxygenie}-claude-sessions
   skills-store:
-    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-skills-store
+    name: ${APP_NAME_SANITIZED:-oxygenie}-skills-store
