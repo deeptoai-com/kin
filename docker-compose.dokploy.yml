@@ -80,6 +80,7 @@ services:
   # One-time MinIO bucket and policy provisioning
   provision-minio:
     image: minio/mc:latest
+    container_name: ${APP_NAME:-claude-agent-chat}-provision-minio
     depends_on:
       minio:
         condition: service_healthy
@@ -138,6 +139,7 @@ services:
   # Database migrations (runs before app starts)
   migrate:
     image: *app_image
+    container_name: ${APP_NAME:-claude-agent-chat}-migrate
     depends_on:
       db:
         condition: service_healthy
