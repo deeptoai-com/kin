@@ -63,9 +63,7 @@ async function resolveClaudeCodeExecutable(): Promise<string | undefined> {
 }
 
 function resolveTemplateModelLabel(): string {
-  // Use dedicated env var for generators, fallback to Claude Sonnet
-  // Do NOT use ANTHROPIC_MODEL as it may be set to non-Claude models (e.g., GLM)
-  return process.env.SCHEMA_GENERATOR_MODEL ?? 'claude-sonnet-4-20250514';
+  return process.env.ANTHROPIC_MODEL ?? 'sdk-default';
 }
 
 const TemplateOutputZod = z.object({
@@ -252,6 +250,7 @@ export async function generateTemplateFromSchema(
   const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
   try {
+    console.log('[Template Generator] Creating query stream...');
     const stream = query({
       prompt,
       options: {
@@ -267,13 +266,20 @@ export async function generateTemplateFromSchema(
         // Production fix: Set permission mode to bypass (no tools used anyway)
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
+        // SDK may require a valid cwd even for pure text generation
+        cwd: process.cwd(),
       },
     });
 
+    console.log('[Template Generator] Query stream created, consuming events...');
     let resultData: unknown = null;
     let lastTextJson: unknown = null;
+    let eventCount = 0;
 
     for await (const event of stream) {
+      eventCount++;
+      console.log(`[Template Generator] Event #${eventCount}: ${event.type}${(event as { subtype?: string }).subtype ? '.' + (event as { subtype?: string }).subtype : ''}`);
+
       if (event.type === 'result') {
         const resultEvent = event as SDKResultMessage;
         traceLog('Result event raw', resultEvent);
@@ -297,6 +303,8 @@ export async function generateTemplateFromSchema(
         }
       }
     }
+
+    console.log(`[Template Generator] Finished processing ${eventCount} events`);
 
     if (!resultData && lastTextJson) {
       resultData = lastTextJson;
