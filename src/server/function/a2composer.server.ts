@@ -184,14 +184,18 @@ export const generateA2ComposerTemplateFn = createServerFn({ method: 'POST' })
 
     const generated = await generateTemplateFromSchema(schema);
 
-    // Phase 1: Auto-fill more fields from schema
+    // Phase 1 & 2: Auto-fill more fields from schema
     // - suggestedId: use skillId as template id
     // - suggestedTitle: use schema.name
     // - suggestedSummary: use schema.description
+    // - suggestedTags: use schema.tags (Phase 2)
+    // - suggestedHint: use schema.hint (Phase 2)
     const autoFillFields = {
       suggestedId: resolvedSkillId,
       suggestedTitle: schema.name,
       suggestedSummary: schema.description,
+      suggestedTags: schema.tags,
+      suggestedHint: schema.hint,
     };
 
     if (!template) {

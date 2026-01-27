@@ -399,9 +399,11 @@ function A2ComposerAdminPage() {
         suggestedId?: string;
         suggestedTitle?: string;
         suggestedSummary?: string;
+        suggestedTags?: string[];
+        suggestedHint?: string;
       } | undefined;
 
-      // Phase 1: Auto-fill more fields from schema
+      // Phase 1 & 2: Auto-fill more fields from schema
       // Only update id if it looks like a default/placeholder (contains timestamp pattern)
       const isDefaultId = /^(new-template|template|category)-\d+$/.test(activeTemplate.id);
       const newId = isDefaultId && autoFill?.suggestedId ? autoFill.suggestedId : nextTemplate.id;
@@ -409,6 +411,10 @@ function A2ComposerAdminPage() {
       // Auto-fill title and summary from schema if they are default values
       const isDefaultTitle = activeTemplate.title === '新模板' || activeTemplate.title === '';
       const isDefaultSummary = activeTemplate.summary === '请填写模板简介' || activeTemplate.summary === '';
+
+      // Phase 2: Auto-fill skillHint and skillTags if not set
+      const hasNoHint = !activeTemplate.skillHint;
+      const hasNoTags = !activeTemplate.skillTags || activeTemplate.skillTags.length === 0;
 
       updateTemplate(activeTemplate.id, {
         id: newId,
@@ -418,6 +424,9 @@ function A2ComposerAdminPage() {
         // Auto-fill title and summary if they are default values
         ...(isDefaultTitle && autoFill?.suggestedTitle ? { title: autoFill.suggestedTitle } : {}),
         ...(isDefaultSummary && autoFill?.suggestedSummary ? { summary: autoFill.suggestedSummary } : {}),
+        // Phase 2: Auto-fill skillHint and skillTags
+        ...(hasNoHint && autoFill?.suggestedHint ? { skillHint: autoFill.suggestedHint } : {}),
+        ...(hasNoTags && autoFill?.suggestedTags?.length ? { skillTags: autoFill.suggestedTags } : {}),
       });
 
       // If id changed, update the active template id

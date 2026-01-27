@@ -87,6 +87,9 @@ const SkillSchemaZod = z.object({
   description: z.string().describe('Brief description of what this skill does'),
   inputs: z.array(SkillInputFieldSchema).optional().describe('Input fields for the skill form'),
   examples: z.array(SkillExampleSchema).optional().describe('Example prompts for this skill'),
+  // Phase 2: New fields for A2Composer template auto-fill
+  tags: z.array(z.string()).optional().describe('Category tags for the skill (e.g., ["development", "productivity"])'),
+  hint: z.string().optional().describe('Usage hint or tip for the skill'),
   outputs: z.array(z.object({
     name: z.string(),
     type: z.string(),
@@ -138,6 +141,12 @@ const SkillSchemaOutputZod = z.object({
   // Examples can be array or JSON string (will be normalized)
   examples: z.union([z.array(z.unknown()), z.string()]).optional(),
   example_prompts: z.union([z.array(z.unknown()), z.string()]).optional(),
+  // Phase 2: New fields for A2Composer template auto-fill
+  tags: z.union([z.array(z.string()), z.string()]).optional().describe('Category tags'),
+  hint: z.string().optional().describe('Usage hint'),
+  skill_tags: z.union([z.array(z.string()), z.string()]).optional().describe('Variant: skill_tags'),
+  skill_hint: z.string().optional().describe('Variant: skill_hint'),
+  usage_hint: z.string().optional().describe('Variant: usage_hint'),
   // Variant field names (normalize to inputs)
   input_fields: z.union([z.array(z.unknown()), z.string()]).optional(),
   fields: z.union([z.array(z.unknown()), z.string()]).optional(),
@@ -167,6 +176,9 @@ const SkillSchemaDraftZod = z.object({
   description: z.string(),
   inputs: z.array(SkillInputFieldSchema).optional(),
   examples: z.array(SkillExampleSchema).optional(),
+  // Phase 2: New fields
+  tags: z.array(z.string()).optional(),
+  hint: z.string().optional(),
   outputs: z.array(z.object({
     name: z.string(),
     type: z.string(),
@@ -263,6 +275,8 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
    - "description": brief description (string, use Chinese if possible)
    - "inputs": array of input field objects (MUST be an array, even if empty)
    - "examples": array of example prompts (optional)
+   - "tags": array of category tags (optional, 1-3 tags)
+   - "hint": usage hint or tip (optional, one sentence)
 
 4. Input field rules:
    - MAX 6 input fields. It is OK to output 0 fields.
@@ -278,6 +292,15 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
    - Provide 1-3 concrete example prompts.
    - Do NOT use placeholders like {topic} or <topic>.
    - Each prompt must be usable as-is.
+
+7. Tags rules:
+   - Provide 1-3 category tags that describe this skill.
+   - Use lowercase English words (e.g., "development", "productivity", "design", "writing", "analysis").
+   - Common tags: "development", "productivity", "design", "writing", "analysis", "research", "automation", "code-review", "documentation", "testing".
+
+8. Hint rules:
+   - Provide a short usage hint (one sentence, in Chinese).
+   - Describe the best use case or a tip for using this skill effectively.
 
 ## MINIMAL EXAMPLE
 
@@ -298,7 +321,9 @@ const SCHEMA_GENERATION_SYSTEM_PROMPT = `You are a JSON schema generator. Your O
       "title": "基础示例",
       "prompt": "请根据 Claude 上手指南，写一段 100 字的中文简介。"
     }
-  ]
+  ],
+  "tags": ["writing", "productivity"],
+  "hint": "适合需要快速生成内容概要的场景。"
 }
 
 ## VALIDATION
@@ -308,6 +333,7 @@ Before outputting, verify:
 - inputs is an array (not a string, not null)
 - inputs.length <= 6
 - examples.length <= 3
+- tags is an array of strings, length <= 5
 - All field names are exactly as specified above`;
 
 /**
@@ -322,6 +348,8 @@ function buildSchemaPrompt(skillMdContent: string): string {
 - Prefer consolidating optional details into one field (e.g., "additional_context").
 - Only use select/multiselect when the SKILL.md explicitly lists choices.
 - Provide 1-3 concrete example prompts in examples (no placeholders; usable as-is).
+- Provide 1-3 category tags that describe this skill (lowercase English).
+- Provide a short usage hint (one sentence, in Chinese).
 
 ## SKILL.md Content
 
@@ -700,7 +728,49 @@ function normalizeStructuredOutput(raw: unknown, skillMdContent: string): Normal
       obj.examples = single ? [single] : [];
     }
 
+    // Step 13: Normalize tags (Phase 2)
+    // Accept: tags, skill_tags as array or comma-separated string
+    if (obj.tags === undefined && obj.skill_tags !== undefined) {
+      obj.tags = obj.skill_tags;
+    }
+    if (typeof obj.tags === 'string') {
+      // Parse comma-separated string or JSON array
+      const tagsStr = obj.tags.trim();
+      if (tagsStr.startsWith('[')) {
+        try {
+          obj.tags = JSON.parse(tagsStr);
+        } catch {
+          obj.tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
+        }
+      } else {
+        obj.tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
+      }
+    }
+    if (Array.isArray(obj.tags)) {
+      obj.tags = (obj.tags as unknown[]).filter((t: unknown) => typeof t === 'string' && t.trim()).slice(0, 5);
+      if ((obj.tags as unknown[]).length === 0) {
+        delete obj.tags;
+      }
+    }
+
+    // Step 14: Normalize hint (Phase 2)
+    // Accept: hint, skill_hint, usage_hint
+    if (obj.hint === undefined) {
+      if (typeof obj.skill_hint === 'string') {
+        obj.hint = obj.skill_hint;
+      } else if (typeof obj.usage_hint === 'string') {
+        obj.hint = obj.usage_hint;
+      }
+    }
+    if (typeof obj.hint === 'string') {
+      obj.hint = obj.hint.trim();
+      if (!obj.hint) {
+        delete obj.hint;
+      }
+    }
+
     debugLog('normalizeStructuredOutput: final inputs count', Array.isArray(obj.inputs) ? obj.inputs.length : 'not-array');
+    debugLog('normalizeStructuredOutput: tags', obj.tags, 'hint', obj.hint);
     debugLog('normalizeStructuredOutput: parseFailed', parseFailed, 'parseErrors', parseErrors);
   }
 
