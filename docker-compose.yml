@@ -2,6 +2,8 @@
 # Quick Start: see README "Quick Start → Option A: Docker Compose".
 # Usage: docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
 # .env loads last and overrides .env.docker. Use this to keep existing DB (ex0/constructa).
+# migrate/worker/app DATABASE_URL is built from POSTGRES_* with host "db" (not from .env) so
+# localhost in .env cannot break DB connectivity. Override POSTGRES_USER/PASSWORD/DB in .env only.
 # App: http://localhost:5050 | WebSocket: ws://localhost:3051/ws/agent
 
 # x-app-image for remote registry (CI/CD deployment)

@@ -270,6 +270,8 @@ services:
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
       CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}
       MCP_STORE_DIR: ${MCP_STORE_DIR:-src/mcp-store}
+      # Skills Store (must use persistent volume; otherwise installed skills are lost on redeploy)
+      SKILLS_STORE_DIR: /data/skills-store
       PYTHON_RUNNER_TIMEOUT_MS: ${PYTHON_RUNNER_TIMEOUT_MS:-10000}
       PYTHON_RUNNER_MAX_OUTPUT_BYTES: ${PYTHON_RUNNER_MAX_OUTPUT_BYTES:-512000}
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
@@ -299,6 +301,7 @@ services:
       VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0.1}
     volumes:
       - claude-sessions:/data/users
+      - skills-store:/data/skills-store
     # Expose ports internally (Traefik will proxy to these)
     expose:
       - '5000' # HTTP (Nitro server)
@@ -370,3 +373,5 @@ volumes:
     name: ${APP_NAME_SANITIZED:-claude-agent-chat}-meili-data
   claude-sessions:
     name: ${APP_NAME_SANITIZED:-claude-agent-chat}-claude-sessions
+  skills-store:
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-skills-store
