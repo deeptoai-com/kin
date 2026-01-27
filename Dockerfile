@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     ripgrep \
     python3 \
+    python3-pip \
     python3-numpy \
     python3-pandas \
     python3-matplotlib \
@@ -65,6 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-bs4 \
     python3-lxml \
   && rm -rf /var/lib/apt/lists/*
+RUN python3 -m pip install --no-cache-dir --break-system-packages markitdown-mcp
 RUN npm install -g pnpm@10.17.1
 
 WORKDIR /app
