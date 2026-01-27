@@ -244,7 +244,9 @@ async function resolveClaudeCodeExecutable(): Promise<string | undefined> {
 }
 
 function resolveSchemaModelLabel(): string {
-  return process.env.ANTHROPIC_MODEL ?? 'sdk-default';
+  // Use dedicated env var for generators, fallback to Claude Sonnet
+  // Do NOT use ANTHROPIC_MODEL as it may be set to non-Claude models (e.g., GLM)
+  return process.env.SCHEMA_GENERATOR_MODEL ?? 'claude-sonnet-4-20250514';
 }
 
 // ============================================================================
