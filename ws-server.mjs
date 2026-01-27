@@ -13,7 +13,7 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { mkdir, readFile, readdir, access, symlink, unlink, lstat, cp } from 'node:fs/promises';
+import { mkdir, readFile, readdir, access, symlink, unlink, lstat, cp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -1242,9 +1242,15 @@ wss.on('close', () => {
 
 /**
  * Seed Skills Store from built-in skills directory
- * Only runs in production when SKILLS_STORE_DIR is set
+ *
+ * Strategy: "Incremental sync with overwrite"
+ * - Syncs all built-in skills to store directory
+ * - Overwrites existing skills with same name (ensures updates)
+ * - Preserves user-installed skills not in built-in directory
+ *
+ * Only runs in production when SKILLS_STORE_DIR is set.
  */
-async function seedSkillsStore() {
+export async function seedSkillsStore() {
   const storeDir = process.env.SKILLS_STORE_DIR;
 
   // Only seed in production (when SKILLS_STORE_DIR is set)
@@ -1266,25 +1272,57 @@ async function seedSkillsStore() {
   // Ensure store directory exists
   await mkdir(storeDir, { recursive: true });
 
-  // Check if store is empty (exclude hidden files)
-  const entries = await readdir(storeDir);
-  const visibleEntries = entries.filter(name => !name.startsWith('.'));
+  // Get list of built-in skills
+  const builtInEntries = await readdir(builtInDir, { withFileTypes: true });
+  const builtInSkills = builtInEntries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
 
-  if (visibleEntries.length === 0) {
-    // Copy from built-in directory
-    console.log('[Skills] Seeding skills store from built-in directory...');
-    console.log(`[Skills]   Source: ${builtInDir}`);
-    console.log(`[Skills]   Target: ${storeDir}`);
-
-    await cp(builtInDir, storeDir, { recursive: true });
-
-    // Count copied skills
-    const copiedEntries = await readdir(storeDir, { withFileTypes: true });
-    const copiedSkills = copiedEntries.filter(e => e.isDirectory());
-    console.log(`[Skills] Seeded ${copiedSkills.length} skills successfully`);
-  } else {
-    console.log(`[Skills] Skills store already initialized (${visibleEntries.length} skills), skipping seed`);
+  if (builtInSkills.length === 0) {
+    console.log('[Skills] No built-in skills found, skipping seed');
+    return;
   }
+
+  console.log('[Skills] Syncing built-in skills to store...');
+  console.log(`[Skills]   Source: ${builtInDir}`);
+  console.log(`[Skills]   Target: ${storeDir}`);
+  console.log(`[Skills]   Skills to sync: ${builtInSkills.length}`);
+
+  let synced = 0;
+  let skipped = 0;
+
+  for (const skill of builtInSkills) {
+    const sourcePath = path.join(builtInDir, skill.name);
+    const targetPath = path.join(storeDir, skill.name);
+
+    try {
+      // Check if target exists
+      let targetExists = false;
+      try {
+        await access(targetPath);
+        targetExists = true;
+      } catch {
+        // Target doesn't exist, will be created
+      }
+
+      // Remove existing and copy fresh (overwrite strategy)
+      if (targetExists) {
+        await rm(targetPath, { recursive: true, force: true });
+      }
+
+      await cp(sourcePath, targetPath, { recursive: true });
+      synced++;
+
+      if (targetExists) {
+        console.log(`[Skills]   ✓ Updated: ${skill.name}`);
+      } else {
+        console.log(`[Skills]   ✓ Added: ${skill.name}`);
+      }
+    } catch (err) {
+      console.error(`[Skills]   ✗ Failed: ${skill.name}`, err.message);
+      skipped++;
+    }
+  }
+
+  console.log(`[Skills] Sync complete: ${synced} synced, ${skipped} failed`);
 }
 
 // Run as standalone script when executed directly

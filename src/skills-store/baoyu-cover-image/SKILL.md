@@ -1,45 +1,38 @@
 ---
 name: baoyu-cover-image
-description: Generate elegant cover images for articles. Analyzes content and creates eye-catching hand-drawn style cover images with multiple style options. Use when user asks to "generate cover image", "create article cover", or "make a cover for article".
+description: Generates article cover images with 5 dimensions (type, palette, rendering, text, mood) combining 9 color palettes and 6 rendering styles. Supports cinematic (2.35:1), widescreen (16:9), and square (1:1) aspects. Use when user asks to "generate cover image", "create article cover", "make cover", or mentions "封面图".
 ---
 
 # Cover Image Generator
 
-Generate hand-drawn style cover images for articles with multiple style options.
-
-## Workspace Rules
-
-**IMPORTANT**: All file operations MUST use the session workspace directory.
-
-- **Use relative paths only** (e.g., `article/cover-image/cover.png`, NOT absolute paths)
-- **NEVER write to `.claude/skills/`** - this is read-only
-- **All output files** must be created in the workspace using relative paths
-- When user provides a file path like `article.md`, create output in `article/cover-image/` (relative to workspace)
-- When user pastes content, create output in `cover-image/<topic-slug>/` (relative to workspace)
+Generate elegant cover images for articles with 5-dimensional customization.
 
 ## Usage
 
 ```bash
-# From markdown file (auto-select style based on content)
+# Auto-select all dimensions based on content
 /baoyu-cover-image path/to/article.md
 
-# Specify a style
-/baoyu-cover-image path/to/article.md --style tech
-/baoyu-cover-image path/to/article.md --style warm
-/baoyu-cover-image path/to/article.md --style bold
+# Quick mode: skip confirmation, use auto-selection
+/baoyu-cover-image article.md --quick
 
-# Without title text
-/baoyu-cover-image path/to/article.md --no-title
+# Specify dimensions (new 5D system)
+/baoyu-cover-image article.md --type conceptual --palette warm --rendering flat-vector
+/baoyu-cover-image article.md --text title-subtitle --mood bold
 
-# Combine options
-/baoyu-cover-image path/to/article.md --style minimal --no-title
+# Style presets (backward-compatible shorthand for palette + rendering)
+/baoyu-cover-image article.md --style blueprint
+/baoyu-cover-image article.md --style blueprint --rendering hand-drawn  # override rendering
 
-# From direct text input
+# Visual only (no title text)
+/baoyu-cover-image article.md --no-title
+
+# Direct content input
 /baoyu-cover-image
-[paste content or describe the topic]
+[paste content]
 
-# Direct input with style
-/baoyu-cover-image --style playful
+# Direct input with options
+/baoyu-cover-image --palette mono --rendering digital --aspect 1:1 --quick
 [paste content]
 ```
 
@@ -47,252 +40,249 @@ Generate hand-drawn style cover images for articles with multiple style options.
 
 | Option | Description |
 |--------|-------------|
-| `--style <name>` | Specify cover style (see Style Gallery below) |
-| `--aspect <ratio>` | Aspect ratio: 2.35:1 (cinematic, default), 16:9 (widescreen), 1:1 (social) |
-| `--lang <code>` | Output language for title text (en, zh, ja, etc.) |
-| `--no-title` | Generate cover without title text (visual only) |
+| `--type <name>` | Cover type: hero, conceptual, typography, metaphor, scene, minimal |
+| `--palette <name>` | Color palette: warm, elegant, cool, dark, earth, vivid, pastel, mono, retro |
+| `--rendering <name>` | Rendering style: flat-vector, hand-drawn, painterly, digital, pixel, chalk |
+| `--style <name>` | Preset shorthand (expands to palette + rendering, see [Style Presets](references/style-presets.md)) |
+| `--text <level>` | Text density: none, title-only, title-subtitle, text-rich |
+| `--mood <level>` | Emotional intensity: subtle, balanced, bold |
+| `--aspect <ratio>` | 16:9 (default), 2.35:1, 4:3, 3:2, 1:1, 3:4 |
+| `--lang <code>` | Title language (en, zh, ja, etc.) |
+| `--no-title` | Alias for `--text none` |
+| `--quick` | Skip confirmation, use auto-selection for missing dimensions |
 
-## Style Gallery
+## Five Dimensions
 
-| Style | Description |
-|-------|-------------|
-| `elegant` (Default) | Refined, sophisticated, understated |
-| `tech` | Modern, clean, futuristic |
-| `warm` | Friendly, approachable, human-centered |
-| `bold` | High contrast, attention-grabbing, energetic |
-| `minimal` | Ultra-clean, zen-like, focused |
-| `playful` | Fun, creative, whimsical |
-| `nature` | Organic, calm, earthy |
-| `retro` | Vintage, nostalgic, classic |
+| Dimension | Controls | Values | Default |
+|-----------|----------|--------|---------|
+| **Type** | Visual composition, information structure | hero, conceptual, typography, metaphor, scene, minimal | auto |
+| **Palette** | Colors, color scheme, decorative hints | warm, elegant, cool, dark, earth, vivid, pastel, mono, retro | auto |
+| **Rendering** | Line quality, texture, depth, element style | flat-vector, hand-drawn, painterly, digital, pixel, chalk | auto |
+| **Text** | Text density, information hierarchy | none, title-only, title-subtitle, text-rich | title-only |
+| **Mood** | Emotional intensity, visual weight | subtle, balanced, bold | balanced |
 
-Detailed style definitions: `references/styles/<style>.md`
+Dimensions can be freely combined. Auto-selection rules: [references/auto-selection.md](references/auto-selection.md)
 
-## Auto Style Selection
+## Type Gallery
 
-When no `--style` is specified, the system analyzes content to select the best style:
+| Type | Description | Best For |
+|------|-------------|----------|
+| `hero` | Large visual impact, title overlay | Product launch, brand promotion, major announcements |
+| `conceptual` | Concept visualization, abstract core ideas | Technical articles, methodology, architecture design |
+| `typography` | Text-focused layout, prominent title | Opinion pieces, quotes, insights |
+| `metaphor` | Visual metaphor, concrete expressing abstract | Philosophy, growth, personal development |
+| `scene` | Atmospheric scene, narrative feel | Stories, travel, lifestyle |
+| `minimal` | Minimalist composition, generous whitespace | Zen, focus, core concepts |
 
-| Content Signals | Selected Style |
-|----------------|----------------|
-| AI, coding, tech, digital, algorithm | `tech` |
-| Personal story, emotion, growth, life | `warm` |
-| Controversial, urgent, must-read, warning | `bold` |
-| Simple, zen, focus, essential | `minimal` |
-| Fun, easy, beginner, casual, tutorial | `playful` |
-| Nature, eco, wellness, health, organic | `nature` |
-| History, classic, vintage, old, traditional | `retro` |
-| Business, professional, strategy, analysis | `elegant` |
+Type composition details: [references/types.md](references/types.md)
 
-## File Management
+## Palette Gallery
 
-### With Article Path
+| Palette | Vibe | Primary Colors |
+|---------|------|----------------|
+| `warm` | Friendly, approachable | Orange, golden yellow, terracotta |
+| `elegant` | Sophisticated, refined | Soft coral, muted teal, dusty rose |
+| `cool` | Technical, professional | Engineering blue, navy, cyan |
+| `dark` | Cinematic, premium | Electric purple, cyan, magenta |
+| `earth` | Natural, organic | Forest green, sage, earth brown |
+| `vivid` | Energetic, bold | Bright red, neon green, electric blue |
+| `pastel` | Gentle, whimsical | Soft pink, mint, lavender |
+| `mono` | Clean, focused | Black, near-black, white |
+| `retro` | Nostalgic, vintage | Muted orange, dusty pink, maroon |
 
-Save to `[source-name-no-ext]/cover-image/` subdirectory in the same folder as the article:
+Palette definitions: [references/palettes/](references/palettes/)
+
+## Rendering Gallery
+
+| Rendering | Description | Key Characteristics |
+|-----------|-------------|---------------------|
+| `flat-vector` | Clean modern vector | Uniform outlines, flat fills, geometric icons |
+| `hand-drawn` | Sketchy organic illustration | Imperfect strokes, paper texture, doodles |
+| `painterly` | Soft watercolor/paint | Brush strokes, color bleeds, soft edges |
+| `digital` | Polished modern digital | Precise edges, subtle gradients, UI components |
+| `pixel` | Retro 8-bit pixel art | Pixel grid, dithering, chunky shapes |
+| `chalk` | Chalk on blackboard | Chalk strokes, dust effects, board texture |
+
+Rendering definitions: [references/renderings/](references/renderings/)
+
+## Text & Mood
+
+| Text Level | Title | Subtitle | Tags | Use Case |
+|------------|:-----:|:--------:|:----:|----------|
+| `none` | - | - | - | Pure visual, no text |
+| `title-only` | ✓ (≤8 字) | - | - | Simple headline (default) |
+| `title-subtitle` | ✓ | ✓ (≤15 字) | - | Title + supporting context |
+| `text-rich` | ✓ | ✓ | ✓ (2-4) | Information-dense |
+
+| Mood | Contrast | Saturation | Weight | Use Case |
+|------|:--------:|:----------:|:------:|----------|
+| `subtle` | Low | Muted | Light | Corporate, thought leadership |
+| `balanced` | Medium | Normal | Medium | General articles (default) |
+| `bold` | High | Vivid | Heavy | Announcements, promotions |
+
+Full guides: [references/dimensions/text.md](references/dimensions/text.md) | [references/dimensions/mood.md](references/dimensions/mood.md)
+
+## Style Presets & Compatibility
+
+- **Style Presets**: `--style X` expands to palette + rendering. See [references/style-presets.md](references/style-presets.md)
+- **Compatibility Matrices**: Palette×Rendering, Type×Rendering, Type×Text, Type×Mood. See [references/compatibility.md](references/compatibility.md)
+  - ✓✓ = highly recommended | ✓ = compatible | ✗ = not recommended
+
+## File Structure
+
+Output directory depends on `default_output_dir` preference:
+
+| Preference | Output Path |
+|------------|-------------|
+| `same-dir` | `{article-dir}/` |
+| `imgs-subdir` | `{article-dir}/imgs/` |
+| `independent` (default) | `cover-image/{topic-slug}/` |
+| Pasted content | `cover-image/{topic-slug}/` (always) |
 
 ```
-path/to/
-├── article.md
-└── article/
-    └── cover-image/
-        ├── prompts/
-        │   └── cover.md
-        └── cover.png
+<output-dir>/
+├── source-{slug}.{ext}    # Source files (text, images, etc.)
+├── prompts/cover.md       # Generation prompt
+└── cover.png              # Output image
 ```
 
-Example: `/posts/ai-future.md` → `/posts/ai-future/cover-image/`
-
-### Without Article Path (Pasted Content)
-
-Save to `./cover-image/[topic-slug]/`:
-
-```
-cover-image/
-└── ai-future/
-    ├── source.md           # Saved pasted content
-    ├── prompts/
-    │   └── cover.md
-    └── cover.png
-```
-
-### Directory Backup
-
-If target directory exists, rename existing to `<dirname>-backup-YYYYMMDD-HHMMSS`
+**Slug**: Extract main topic (2-4 words, kebab-case). Example: "The Future of AI" → `future-of-ai`
+**Conflict**: If directory exists, append timestamp: `{topic-slug}-YYYYMMDD-HHMMSS`
+**Source Files**: Copy all sources with naming `source-{slug}.{ext}` (multiple supported)
 
 ## Workflow
 
+### Progress Checklist
+
+```
+Cover Image Progress:
+- [ ] Step 0: Check preferences (EXTEND.md) ⚠️ REQUIRED if not found
+- [ ] Step 1: Analyze content + determine output directory ⚠️ MUST ask if not configured
+- [ ] Step 2: Confirm options (5 dimensions) ⚠️ REQUIRED unless --quick or all specified
+- [ ] Step 3: Create prompt
+- [ ] Step 4: Generate image
+- [ ] Step 5: Completion report
+```
+
+### Flow
+
+```
+Input → [Step 0: Preferences/Setup] → Analyze → [Output Dir ⚠️] → [Confirm: 5 Dimensions] → Prompt → Generate → Complete
+                                                                          ↓
+                                                                  (skip if --quick or all specified)
+```
+
+### Step 0: Load Preferences (EXTEND.md) ⚠️
+
+**Purpose**: Load user preferences or run first-time setup. **Do NOT skip setup if EXTEND.md not found.**
+
+Use Bash to check EXTEND.md existence (priority order):
+
+```bash
+# Check project-level first
+test -f .baoyu-skills/baoyu-cover-image/EXTEND.md && echo "project"
+
+# Then user-level (cross-platform: $HOME works on macOS/Linux/WSL)
+test -f "$HOME/.baoyu-skills/baoyu-cover-image/EXTEND.md" && echo "user"
+```
+
+| Result | Action |
+|--------|--------|
+| Found | Read, parse, display preferences summary → Continue to Step 1 |
+| Not found | ⚠️ MUST run first-time setup ([references/config/first-time-setup.md](references/config/first-time-setup.md)) → Then continue to Step 1 |
+
+**Preferences Summary** (when found):
+
+```
+Preferences loaded from [project/user]:
+• Watermark: [enabled/disabled] [content if enabled]
+• Type/Palette/Rendering: [value or "auto"]
+• Text: [value or "title-only"] | Mood: [value or "balanced"]
+• Aspect: [default_aspect] | Output: [dir or "not set — will ask in Step 1.5"]
+• Quick mode: [enabled/disabled] | Language: [value or "auto"]
+```
+
+**EXTEND.md Supports**: Watermark | Preferred type | Preferred palette | Preferred rendering | Preferred text | Preferred mood | Default aspect ratio | Default output directory | Quick mode | Custom palette definitions | Language preference
+
+Schema: [references/config/preferences-schema.md](references/config/preferences-schema.md)
+
 ### Step 1: Analyze Content
 
-1. **Save source content** (if not already a file):
-   - If user provides a file path: use as-is
-   - If user pastes content: save to `source.md` in target directory
+1. **Save source content** (if pasted, save to `source.md` in target directory; if file path, use as-is)
+2. **Content analysis**: Extract topic, core message, tone, keywords; identify visual metaphors; detect content type
+3. **Language detection**: Detect source language, note user's input language, compare with EXTEND.md preference
+4. **Determine output directory** per File Structure rules. If no `default_output_dir` preference + file path input, include in Step 2 Q4
 
-2. **Extract key information**:
-   - **Main topic**: What is the article about?
-   - **Core message**: What's the key takeaway?
-   - **Tone**: Serious, playful, inspiring, educational?
-   - **Keywords**: Identify style-signaling words
+### Step 2: Confirm Options ⚠️
 
-3. **Language detection**:
-   - Detect **source language** from content
-   - Detect **user language** from conversation context
-   - Note if source_language ≠ user_language (will ask in Step 3)
+Validate all 5 dimensions + aspect ratio. Full confirmation flow: [references/workflow/confirm-options.md](references/workflow/confirm-options.md)
 
-### Step 2: Determine Options
+**Skip Conditions**:
 
-1. **Style selection**:
-   - If `--style` specified, use that style
-   - Otherwise, scan content for style signals and auto-select 3 candidates
-   - Default to `elegant` if no clear signals
+| Condition | Skipped | Still Asked |
+|-----------|---------|-------------|
+| `--quick` or `quick_mode: true` | 5 dimensions | Aspect ratio (unless `--aspect`) |
+| All 5 + `--aspect` specified | All | None |
 
-2. **Aspect ratio**:
-   - If `--aspect` specified, use that ratio
-   - Otherwise, prepare options: 2.35:1 (cinematic), 16:9 (widescreen), 1:1 (social)
+### Step 3: Create Prompt
 
-### Step 3: Confirm Options
+Save to `prompts/cover.md`. Full template: [references/workflow/prompt-template.md](references/workflow/prompt-template.md)
 
-**Purpose**: Let user confirm all options in a single step before generation.
+### Step 4: Generate Image
 
-**IMPORTANT**: Present ALL options in a single confirmation step using AskUserQuestion. Do NOT interrupt workflow with multiple separate confirmations.
+1. Backup existing `cover.png` → `cover-backup-YYYYMMDD-HHMMSS.png` (if regenerating)
+2. Check available image generation skills; if multiple, ask user preference
+3. Call selected skill with prompt file path, output path (`cover.png`), aspect ratio
+4. On failure: auto-retry once before reporting error
 
-**Determine which questions to ask**:
-
-| Question | When to Ask |
-|----------|-------------|
-| Style | Always (required) |
-| Aspect ratio | Always (offer common options) |
-| Language | Only if `source_language ≠ user_language` |
-
-**Present options** (use AskUserQuestion with all applicable questions):
-
-**Question 1 (Style)** - always:
-- Style A (recommended): [style name] - [brief description]
-- Style B: [style name] - [brief description]
-- Style C: [style name] - [brief description]
-- Custom: Provide custom style reference
-
-**Question 2 (Aspect)** - always:
-- 2.35:1 Cinematic (Recommended) - ultra-wide, dramatic
-- 16:9 Widescreen - standard video/presentation
-- 1:1 Square - social media optimized
-
-**Question 3 (Language)** - only if source ≠ user language:
-- [Source language] (matches content)
-- [User language] (your preference)
-
-**Language handling**:
-- If source language = user language: Just inform user (e.g., "Title will be in Chinese")
-- If different: Ask which language to use for title text
-
-### Step 4: Generate Cover Concept
-
-Create a cover image concept based on selected style:
-
-**Title** (if included, max 8 characters):
-- Distill the core message into a punchy headline
-- Use hooks: numbers, questions, contrasts, pain points
-- Skip if `--no-title` flag is used
-
-**Visual Elements**:
-- Style-appropriate imagery and icons
-- 1-2 symbolic elements representing the topic
-- Metaphors or analogies that fit the style
-
-### Step 5: Create Prompt File
-
-Save prompt to `prompts/cover.md` with confirmed options.
-
-**All prompts are written in the user's confirmed language preference.**
-
-**Prompt Format**:
-
-```markdown
-Cover theme: [topic in 2-3 words]
-Style: [selected style name]
-Aspect ratio: [confirmed aspect ratio]
-
-[If title included:]
-Title text: [8 characters or less, in confirmed language]
-Subtitle: [optional, in confirmed language]
-
-Visual composition:
-- Main visual: [description matching style]
-- Layout: [positioning based on title inclusion and aspect ratio]
-- Decorative elements: [style-appropriate elements]
-
-Color scheme:
-- Primary: [style primary color]
-- Background: [style background color]
-- Accent: [style accent color]
-
-Style notes: [specific style characteristics to emphasize]
-
-[If no title:]
-Note: No title text, pure visual illustration only.
-```
-
-### Step 6: Generate Image
-
-**Image Generation Tool**:
-Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
-
-**Tool Parameters**:
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | string (required) | Image generation prompt |
-| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
-| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
-| `size` | string (optional) | Size: 1024x1024 (default), 1280x720, 720x1280, etc. |
-| `quality` | string (optional) | Quality: hd (default), standard |
-| `watermark` | boolean (optional) | Enable watermark (default: false) |
-
-**Size Mapping for Aspect Ratios**:
-- 2.35:1 Cinematic → `1440x720` or `1280x720`
-- 16:9 Widescreen → `1280x720`
-- 1:1 Square → `1024x1024`
-
-**Example Usage**:
-```
-mcp__glm-image__generate({
-  prompt: "Hand-drawn style cover image for AI article, elegant design...",
-  imagePath: "article/cover-image/cover.png",
-  size: "1280x720",
-  quality: "hd"
-})
-```
-
-**Generation**:
-Call the MCP tool with prompt from Step 5, output path, and appropriate size for the confirmed aspect ratio.
-
-### Step 7: Output Summary
+### Step 5: Completion Report
 
 ```
-Cover Image Generated!
+Cover Generated!
 
 Topic: [topic]
-Style: [style name]
-Aspect: [aspect ratio]
-Title: [cover title] (or "No title - visual only")
-Language: [confirmed language]
-Location: [output path]
+Type: [type] | Palette: [palette] | Rendering: [rendering]
+Text: [text] | Mood: [mood] | Aspect: [ratio]
+Title: [title text or "visual only"]
+Language: [lang] | Watermark: [enabled/disabled]
+Location: [directory path]
 
-Preview the image to verify it matches your expectations.
+Files:
+✓ source-{slug}.{ext}
+✓ prompts/cover.md
+✓ cover.png
+[✓ cover-backup-{timestamp}.png (if regenerated)]
 ```
+
+## Image Modification
+
+| Action | Steps |
+|--------|-------|
+| **Regenerate** | Backup existing → Update prompt → Regenerate with same settings |
+| **Change dimension** | Backup existing → Confirm new value → Update prompt → Regenerate |
+
+All modifications automatically backup existing `cover.png` before regenerating.
 
 ## Notes
 
-- Cover should be instantly understandable at small preview sizes
-- Title (if included) must be readable and impactful
-- Visual metaphors work better than literal representations
-- Maintain style consistency throughout the cover
-- Image generation typically takes 10-30 seconds
-- Title text uses user's confirmed language preference
-- Aspect ratio: 2.35:1 for cinematic/dramatic, 16:9 for widescreen, 1:1 for social media
+- Cover must be readable at small preview sizes
+- Visual metaphors > literal representations
+- Title: max 8 chars, readable, impactful
+- Two confirmation points: Step 0 (first-time setup) + Step 2 (options) - skip Step 2 with `--quick`
+- Use confirmed language for title text
+- Maintain watermark consistency if enabled
+- Check compatibility matrices when selecting combinations
+- `--no-title` is alias for `--text none`
+- `--style` presets are backward-compatible; explicit `--palette`/`--rendering` override preset values
 
-## Extension Support
+## References
 
-Custom styles and configurations via EXTEND.md.
-
-**Check paths** (priority order):
-1. `.baoyu-skills/baoyu-cover-image/EXTEND.md` (project)
-2. `~/.baoyu-skills/baoyu-cover-image/EXTEND.md` (user)
-
-If found, load before Step 1. Extension content overrides defaults.
+**Dimensions**: [text.md](references/dimensions/text.md) | [mood.md](references/dimensions/mood.md)
+**Palettes**: [references/palettes/](references/palettes/)
+**Renderings**: [references/renderings/](references/renderings/)
+**Auto-Selection**: [references/auto-selection.md](references/auto-selection.md)
+**Style Presets**: [references/style-presets.md](references/style-presets.md)
+**Compatibility**: [references/compatibility.md](references/compatibility.md)
+**Types**: [references/types.md](references/types.md)
+**Workflow**: [confirm-options.md](references/workflow/confirm-options.md) | [prompt-template.md](references/workflow/prompt-template.md)
+**Config**: [preferences-schema.md](references/config/preferences-schema.md) | [first-time-setup.md](references/config/first-time-setup.md) | [watermark-guide.md](references/config/watermark-guide.md)

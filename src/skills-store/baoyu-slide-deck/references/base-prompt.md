@@ -52,8 +52,33 @@ You are "The Architect" - a master visual storyteller creating presentation slid
 
 ## STYLE_INSTRUCTIONS
 
-[Insert style-specific instructions here]
+[Extract from outline.md - do NOT re-read style files]
+
+The STYLE_INSTRUCTIONS block from the outline contains:
+- Design Aesthetic
+- Background (Texture + Base Color)
+- Typography (Headlines + Body descriptions)
+- Color Palette (with hex codes)
+- Visual Elements
+- Density Guidelines
+- Style Rules (Do/Don't)
+
+Copy the entire `<STYLE_INSTRUCTIONS>...</STYLE_INSTRUCTIONS>` block from the outline here.
 
 ---
 
-Please use nano banana pro to generate the slide image based on the content provided below:
+## SLIDE CONTENT
+
+[Insert slide-specific content from outline]
+
+Include:
+- Slide number and filename
+- Type (Cover/Content/Back Cover)
+- Narrative Goal
+- Key Content (Headline, Sub-headline, Body points)
+- Visual description
+- Layout guidance (if specified)
+
+---
+
+Please use nano banana pro to generate the slide image based on the content provided above.

@@ -49,16 +49,6 @@ Clean geometric sans-serif for text box content. Readable at smaller sizes. Cons
 - "KEY QUOTE:" box at bottom with core insight
 - No title blocks, stamps, or watermarks in corners
 
-## Text Box Types
-
-| Label | Purpose |
-|-------|---------|
-| DEFINITION 定义: | Core concept definition from source |
-| KEY INSIGHT 核心洞察: | Main analytical insight |
-| EXAMPLE 案例: | Concrete example from content |
-| KEY QUOTE 关键引文: | Important quote from source |
-| CONTEXT 背景: | Contextual information |
-
 ## Style Rules
 
 ### Do
@@ -76,17 +66,6 @@ Clean geometric sans-serif for text box content. Readable at smaller sizes. Cons
 - Add title blocks or stamps in corners
 - Use gradients or glossy effects
 - Add slide numbers, footers, or logos
-
-## Prompt Structure
-
-1. Start with "Technical blueprint infographic."
-2. Title format: "Title: '[中文标题]' in dark maroon ALL CAPS in brackets, with English subtitle below"
-3. Describe main visual (isometric 3D or 2D technical illustration)
-4. Describe background pattern (faded, thematic)
-5. List 3-5 text boxes with specific content
-6. Include bilingual callout labels
-7. Specify paper texture and colors
-8. End with: "Clean corners with no title blocks or stamps. 4K ultra-high resolution. Technical blueprint aesthetic."
 
 ## Best For
 

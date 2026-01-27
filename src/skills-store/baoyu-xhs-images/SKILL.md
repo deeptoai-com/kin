@@ -1,21 +1,11 @@
 ---
 name: baoyu-xhs-images
-description: Xiaohongshu (Little Red Book) infographic series generator with multiple style options. Breaks down content into 1-10 cartoon-style infographics. Use when user asks to create "小红书图片", "XHS images", or "RedNote infographics".
+description: Generates Xiaohongshu (Little Red Book) infographic series with 9 visual styles and 6 layouts. Breaks content into 1-10 cartoon-style images optimized for XHS engagement. Use when user mentions "小红书图片", "XHS images", "RedNote infographics", "小红书种草", or wants social media infographics for Chinese platforms.
 ---
 
 # Xiaohongshu Infographic Series Generator
 
 Break down complex content into eye-catching infographic series for Xiaohongshu with multiple style options.
-
-## Workspace Rules
-
-**IMPORTANT**: All file operations MUST use the session workspace directory.
-
-- **Use relative paths only** (e.g., `article/xhs-images/01-cover.png`, NOT absolute paths)
-- **NEVER write to `.claude/skills/`** - this is read-only
-- **All output files** must be created in the workspace using relative paths
-- When user provides a file path like `article.md`, create output in `article/xhs-images/` (relative to workspace)
-- When user pastes content, create output in `xhs-images/<topic-slug>/` (relative to workspace)
 
 ## Usage
 
@@ -30,7 +20,7 @@ Break down complex content into eye-catching infographic series for Xiaohongshu 
 /baoyu-xhs-images posts/ai-future/article.md --layout dense
 
 # Combine style and layout
-/baoyu-xhs-images posts/ai-future/article.md --style tech --layout list
+/baoyu-xhs-images posts/ai-future/article.md --style notion --layout list
 
 # Direct content input
 /baoyu-xhs-images
@@ -52,7 +42,7 @@ Break down complex content into eye-catching infographic series for Xiaohongshu 
 
 | Dimension | Controls | Options |
 |-----------|----------|---------|
-| **Style** | Visual aesthetics: colors, lines, decorations | cute, fresh, tech, warm, bold, minimal, retro, pop, notion |
+| **Style** | Visual aesthetics: colors, lines, decorations | cute, fresh, warm, bold, minimal, retro, pop, notion, chalkboard |
 | **Layout** | Information structure: density, arrangement | sparse, balanced, dense, list, comparison, flow |
 
 Style × Layout can be freely combined. Example: `--style notion --layout dense` creates an intellectual-looking knowledge card with high information density.
@@ -63,15 +53,15 @@ Style × Layout can be freely combined. Example: `--style notion --layout dense`
 |-------|-------------|
 | `cute` (Default) | Sweet, adorable, girly - classic Xiaohongshu aesthetic |
 | `fresh` | Clean, refreshing, natural |
-| `tech` | Modern, smart, digital |
 | `warm` | Cozy, friendly, approachable |
 | `bold` | High impact, attention-grabbing |
 | `minimal` | Ultra-clean, sophisticated |
 | `retro` | Vintage, nostalgic, trendy |
 | `pop` | Vibrant, energetic, eye-catching |
 | `notion` | Minimalist hand-drawn line art, intellectual |
+| `chalkboard` | Colorful chalk on black board, educational |
 
-Detailed style definitions: `references/styles/<style>.md`
+Detailed style definitions: `references/presets/<style>.md`
 
 ## Layout Gallery
 
@@ -84,7 +74,7 @@ Detailed style definitions: `references/styles/<style>.md`
 | `comparison` | Side-by-side contrast layout |
 | `flow` | Process and timeline layout (3-6 steps) |
 
-Detailed layout definitions: `references/layouts/<layout>.md`
+Detailed layout definitions: `references/elements/canvas.md`
 
 ## Auto Selection
 
@@ -92,24 +82,57 @@ Detailed layout definitions: `references/layouts/<layout>.md`
 |-----------------|-------|--------|
 | Beauty, fashion, cute, girl, pink | `cute` | sparse/balanced |
 | Health, nature, clean, fresh, organic | `fresh` | balanced/flow |
-| Tech, AI, code, digital, app, tool | `tech` | dense/list |
 | Life, story, emotion, feeling, warm | `warm` | balanced |
 | Warning, important, must, critical | `bold` | list/comparison |
 | Professional, business, elegant, simple | `minimal` | sparse/balanced |
 | Classic, vintage, old, traditional | `retro` | balanced |
 | Fun, exciting, wow, amazing | `pop` | sparse/list |
 | Knowledge, concept, productivity, SaaS | `notion` | dense/list |
+| Education, tutorial, learning, teaching, classroom | `chalkboard` | balanced/dense |
+
+## Outline Strategies
+
+Three differentiated outline strategies for different content goals:
+
+### Strategy A: Story-Driven (故事驱动型)
+
+| Aspect | Description |
+|--------|-------------|
+| **Concept** | Personal experience as main thread, emotional resonance first |
+| **Features** | Start from pain point, show before/after change, strong authenticity |
+| **Best for** | Reviews, personal shares, transformation stories |
+| **Structure** | Hook → Problem → Discovery → Experience → Conclusion |
+
+### Strategy B: Information-Dense (信息密集型)
+
+| Aspect | Description |
+|--------|-------------|
+| **Concept** | Value-first, efficient information delivery |
+| **Features** | Clear structure, explicit points, professional credibility |
+| **Best for** | Tutorials, comparisons, product reviews, checklists |
+| **Structure** | Core conclusion → Info card → Pros/Cons → Recommendation |
+
+### Strategy C: Visual-First (视觉优先型)
+
+| Aspect | Description |
+|--------|-------------|
+| **Concept** | Visual impact as core, minimal text |
+| **Features** | Large images, atmospheric, instant appeal |
+| **Best for** | High-aesthetic products, lifestyle, mood-based content |
+| **Structure** | Hero image → Detail shots → Lifestyle scene → CTA |
 
 ## File Structure
 
+Each session creates an independent directory named by content slug:
+
 ```
-[target]/
-├── source.md                       # Source content (if pasted)
-├── analysis.md                     # Deep analysis results
-├── outline-style-[slug].md         # Variant A (e.g., outline-style-tech.md)
-├── outline-style-[slug].md         # Variant B (e.g., outline-style-notion.md)
-├── outline-style-[slug].md         # Variant C (e.g., outline-style-minimal.md)
-├── outline.md                      # Final selected
+xhs-images/{topic-slug}/
+├── source-{slug}.{ext}             # Source files (text, images, etc.)
+├── analysis.md                     # Deep analysis + questions asked
+├── outline-strategy-a.md           # Strategy A: Story-driven
+├── outline-strategy-b.md           # Strategy B: Information-dense
+├── outline-strategy-c.md           # Strategy C: Visual-first
+├── outline.md                      # Final selected/merged outline
 ├── prompts/
 │   ├── 01-cover-[slug].md
 │   ├── 02-content-[slug].md
@@ -119,15 +142,82 @@ Detailed layout definitions: `references/layouts/<layout>.md`
 └── NN-ending-[slug].png
 ```
 
-**Target directory**:
-- With source path: `[source-dir]/[source-name-no-ext]/xhs-images/`
-  - Example: `/tests-data/article.md` → `/tests-data/article/xhs-images/`
-- Without source: `./xhs-images/[topic-slug]/`
+**Slug Generation**:
+1. Extract main topic from content (2-4 words, kebab-case)
+2. Example: "AI工具推荐" → `ai-tools-recommend`
 
-**Directory backup**:
-- If target directory exists, rename existing to `<dirname>-backup-YYYYMMDD-HHMMSS`
+**Conflict Resolution**:
+If `xhs-images/{topic-slug}/` already exists:
+- Append timestamp: `{topic-slug}-YYYYMMDD-HHMMSS`
+- Example: `ai-tools` exists → `ai-tools-20260118-143052`
+
+**Source Files**:
+Copy all sources with naming `source-{slug}.{ext}`:
+- `source-article.md`, `source-photo.jpg`, etc.
+- Multiple sources supported: text, images, files from conversation
 
 ## Workflow
+
+### Progress Checklist
+
+Copy and track progress:
+
+```
+XHS Infographic Progress:
+- [ ] Step 0: Check preferences (EXTEND.md) ⚠️ REQUIRED if not found
+- [ ] Step 1: Analyze content → analysis.md
+- [ ] Step 2: Confirmation 1 - Content understanding ⚠️ REQUIRED
+- [ ] Step 3: Generate 3 outline + style variants
+- [ ] Step 4: Confirmation 2 - Outline & style & elements selection ⚠️ REQUIRED
+- [ ] Step 5: Generate images (sequential)
+- [ ] Step 6: Completion report
+```
+
+### Flow
+
+```
+Input → Analyze → [Confirm 1] → 3 Outlines → [Confirm 2: Outline + Style + Elements] → Generate → Complete
+```
+
+### Step 0: Load Preferences (EXTEND.md) ⚠️
+
+**Purpose**: Load user preferences or run first-time setup. **Do NOT skip setup if EXTEND.md not found.**
+
+Use Bash to check EXTEND.md existence (priority order):
+
+```bash
+# Check project-level first
+test -f .baoyu-skills/baoyu-xhs-images/EXTEND.md && echo "project"
+
+# Then user-level (cross-platform: $HOME works on macOS/Linux/WSL)
+test -f "$HOME/.baoyu-skills/baoyu-xhs-images/EXTEND.md" && echo "user"
+```
+
+┌────────────────────────────────────────────────────┬───────────────────┐
+│                        Path                        │     Location      │
+├────────────────────────────────────────────────────┼───────────────────┤
+│ .baoyu-skills/baoyu-xhs-images/EXTEND.md           │ Project directory │
+├────────────────────────────────────────────────────┼───────────────────┤
+│ $HOME/.baoyu-skills/baoyu-xhs-images/EXTEND.md     │ User home         │
+└────────────────────────────────────────────────────┴───────────────────┘
+
+┌───────────┬───────────────────────────────────────────────────────────────────────────┐
+│  Result   │                                  Action                                   │
+├───────────┼───────────────────────────────────────────────────────────────────────────┤
+│ Found     │ Read, parse, display summary → Continue to Step 1                         │
+├───────────┼───────────────────────────────────────────────────────────────────────────┤
+│ Not found │ ⚠️ MUST run first-time setup (see below) → Then continue to Step 1        │
+└───────────┴───────────────────────────────────────────────────────────────────────────┘
+
+**First-Time Setup** (when EXTEND.md not found):
+
+**Language**: Use user's input language or saved language preference.
+
+Use AskUserQuestion with ALL questions in ONE call. See `references/config/first-time-setup.md` for question details.
+
+**EXTEND.md Supports**: Watermark | Preferred style/layout | Custom style definitions | Language preference
+
+Schema: `references/config/preferences-schema.md`
 
 ### Step 1: Analyze Content → `analysis.md`
 
@@ -138,7 +228,7 @@ Read source content, save it if needed, and perform deep analysis.
    - If user provides a file path: use as-is
    - If user pastes content: save to `source.md` in target directory
 2. Read source content
-3. **Deep analysis** following `references/analysis-framework.md`:
+3. **Deep analysis** following `references/workflows/analysis-framework.md`:
    - Content type classification (种草/干货/测评/教程/避坑...)
    - Hook analysis (爆款标题潜力)
    - Target audience identification
@@ -147,70 +237,117 @@ Read source content, save it if needed, and perform deep analysis.
    - Swipe flow design
 4. Detect source language
 5. Determine recommended image count (2-10)
-6. Select 3 style+layout combinations
+6. **Generate clarifying questions** (see Step 2)
 7. **Save to `analysis.md`**
 
-### Step 2: Generate 3 Outline Variants
+### Step 2: Confirmation 1 - Content Understanding ⚠️
 
-Based on analysis, create three distinct style variants.
+**Purpose**: Validate understanding + collect missing info. **Do NOT skip.**
 
-**For each variant**:
-1. **Generate outline** (`outline-style-[slug].md`):
-   - YAML front matter with style, layout, image_count
-   - Cover design with hook
-   - Each image: layout, core message, text content, visual concept
-   - **Written in user's preferred language**
-   - Reference: `references/outline-template.md`
+**Display summary**:
+- Content type + topic identified
+- Key points extracted
+- Tone detected
+- Source images count
 
-| Variant | Selection Logic | Example Filename |
-|---------|-----------------|------------------|
-| A | Primary recommendation | `outline-style-tech.md` |
-| B | Alternative style | `outline-style-notion.md` |
-| C | Different audience/mood | `outline-style-minimal.md` |
+**Use AskUserQuestion** for:
+1. Core selling point (multiSelect: true)
+2. Target audience
+3. Style preference: Authentic sharing / Professional review / Aesthetic mood / Auto
+4. Additional context (optional)
 
-**All variants are preserved after selection for reference.**
+**After response**: Update `analysis.md` → Step 3
 
-### Step 3: User Confirms All Options
+### Step 3: Generate 3 Outline + Style Variants
 
-**IMPORTANT**: Present ALL options in a single confirmation step using AskUserQuestion. Do NOT interrupt workflow with multiple separate confirmations.
+Based on analysis + user context, create three distinct strategy variants. Each variant includes both **outline structure** and **visual style recommendation**.
 
-**Determine which questions to ask**:
+**For each strategy**:
 
-| Question | When to Ask |
-|----------|-------------|
-| Style variant | Always (required) |
-| Default layout | Only if user might want to override |
-| Language | Only if `source_language ≠ user_language` |
+| Strategy | Filename | Outline | Recommended Style |
+|----------|----------|---------|-------------------|
+| A | `outline-strategy-a.md` | Story-driven: emotional, before/after | warm, cute, fresh |
+| B | `outline-strategy-b.md` | Information-dense: structured, factual | notion, minimal, chalkboard |
+| C | `outline-strategy-c.md` | Visual-first: atmospheric, minimal text | bold, pop, retro |
 
-**Language handling**:
-- If source language = user language: Just inform user (e.g., "Images will be in Chinese")
-- If different: Ask which language to use
+**Outline format** (YAML front matter + content):
+```yaml
+---
+strategy: a  # a, b, or c
+name: Story-Driven
+style: warm  # recommended style for this strategy
+style_reason: "Warm tones enhance emotional storytelling and personal connection"
+elements:  # from style preset, can be customized in Step 4
+  background: solid-pastel
+  decorations: [clouds, stars-sparkles]
+  emphasis: star-burst
+  typography: highlight
+layout: balanced  # primary layout
+image_count: 5
+---
 
-**AskUserQuestion format**:
+## P1 Cover
+**Type**: cover
+**Hook**: "入冬后脸不干了🥹终于找到对的面霜"
+**Visual**: Product hero shot with cozy winter atmosphere
+**Layout**: sparse
 
+## P2 Problem
+**Type**: pain-point
+**Message**: Previous struggles with dry skin
+**Visual**: Before state, relatable scenario
+**Layout**: balanced
+
+...
 ```
-Question 1 (Style): Which style variant?
-- A: tech + dense (Recommended) - 专业科技感，适合干货
-- B: notion + list - 清爽知识卡片
-- C: minimal + balanced - 简约高端风格
-- Custom: 自定义风格描述
 
-Question 2 (Layout) - only if relevant:
-- Keep variant default (Recommended)
-- sparse / balanced / dense / list / comparison / flow
+**Differentiation requirements**:
+- Each strategy MUST have different outline structure AND different recommended style
+- Adapt page count: A typically 4-6, B typically 3-5, C typically 3-4
+- Include `style_reason` explaining why this style fits the strategy
+- Consider user's style preference from Step 2
 
-Question 3 (Language) - only if mismatch:
-- 中文 (匹配原文)
-- English (your preference)
-```
+Reference: `references/workflows/outline-template.md`
 
-**After confirmation**:
-1. Copy selected `outline-style-[slug].md` → `outline.md`
-2. Update YAML front matter with confirmed options
-3. If custom style: regenerate outline with that style
-4. User may edit `outline.md` directly for fine-tuning
+### Step 4: Confirmation 2 - Outline & Style & Elements Selection ⚠️
 
-### Step 4: Generate Images
+**Purpose**: User chooses outline strategy, confirms visual style, and customizes elements. **Do NOT skip.**
+
+**Display each strategy**:
+- Strategy name + page count + recommended style
+- Page-by-page summary (P1 → P2 → P3...)
+
+**Use AskUserQuestion** with three questions:
+
+**Question 1: Outline Strategy**
+- Strategy A (Recommended if "authentic sharing")
+- Strategy B (Recommended if "professional review")
+- Strategy C (Recommended if "aesthetic mood")
+- Combine: specify pages from each
+
+**Question 2: Visual Style**
+- Use strategy's recommended style (show which style)
+- Or select from: cute / fresh / warm / bold / minimal / retro / pop / notion / chalkboard
+- Or type custom style description
+
+**Question 3: Visual Elements** (show after style selection)
+Display the selected style's default elements from preset, then ask:
+- Use style defaults (Recommended) - show preview: background, decorations, emphasis
+- Adjust background - options: solid-pastel / solid-saturated / gradient-linear / gradient-radial / paper-texture / grid
+- Adjust decorations - options: hearts / stars-sparkles / flowers / clouds / leaves / confetti
+- Type custom element preferences
+
+**After response**:
+- Single strategy → copy to `outline.md` with confirmed style
+- Combination → merge specified pages with confirmed style
+- Custom request → regenerate based on feedback
+- Style defaults → use preset's Element Combination as-is
+- Background adjustment → update elements.background with user choice
+- Decorations adjustment → update elements.decorations with user choice
+- Custom elements → parse user's preferences into elements fields
+- Update `outline.md` frontmatter with final style and elements
+
+### Step 5: Generate Images
 
 With confirmed outline + style + layout:
 
@@ -219,49 +356,41 @@ With confirmed outline + style + layout:
 2. Generate image using confirmed style and layout
 3. Report progress after each generation
 
-**Image Generation Tool**:
-Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
-
-**Tool Parameters**:
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | string (required) | Image generation prompt |
-| `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
-| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
-| `size` | string (optional) | Size: 1024x1024 (default), 768x1344 (portrait), 1344x768 (landscape) |
-| `quality` | string (optional) | Quality: hd (default), standard |
-| `watermark` | boolean (optional) | Enable watermark (default: false) |
-
-**Size for Xiaohongshu**:
-- Portrait (recommended): `768x1344` or `720x1280` (9:16 ratio)
-- Square: `1024x1024` (1:1 ratio)
-
-**Example Usage**:
+**Watermark Application** (if enabled in preferences):
+Add to each image generation prompt:
 ```
-mcp__glm-image__generate({
-  prompt: "Cute infographic about AI trends, pink and soft colors...",
-  imagePath: "article/xhs-images/01-cover-ai-trends.png",
-  size: "768x1344",
-  quality: "hd"
-})
+Include a subtle watermark "[content]" positioned at [position].
+The watermark should be legible but not distracting from the main content.
 ```
+Reference: `references/config/watermark-guide.md`
 
-### Step 5: Completion Report
+**Image Generation Skill Selection**:
+- Check available image generation skills
+- If multiple skills available, ask user preference
+
+**Session Management**:
+If image generation skill supports `--sessionId`:
+1. Generate unique session ID: `xhs-{topic-slug}-{timestamp}`
+2. Use same session ID for all images
+3. Ensures visual consistency across generated images
+
+### Step 6: Completion Report
 
 ```
 Xiaohongshu Infographic Series Complete!
 
 Topic: [topic]
+Strategy: [A/B/C/Combined]
 Style: [style name]
 Layout: [layout name or "varies"]
 Location: [directory path]
 Images: N total
 
 ✓ analysis.md
-✓ outline-style-tech.md
-✓ outline-style-notion.md
-✓ outline-style-minimal.md
-✓ outline.md (selected: tech + dense)
+✓ outline-strategy-a.md
+✓ outline-strategy-b.md
+✓ outline-strategy-c.md
+✓ outline.md (selected: [strategy])
 
 Files:
 - 01-cover-[slug].png ✓ Cover (sparse)
@@ -272,25 +401,11 @@ Files:
 
 ## Image Modification
 
-### Edit Single Image
-
-1. Identify image to edit (e.g., `03-content-chatgpt.png`)
-2. Update prompt in `prompts/03-content-chatgpt.md` if needed
-3. Regenerate image using same session ID
-
-### Add New Image
-
-1. Specify insertion position (e.g., after image 3)
-2. Create new prompt with appropriate slug
-3. Generate new image
-4. **Renumber files**: All subsequent images increment NN by 1
-5. Update `outline.md` with new image entry
-
-### Delete Image
-
-1. Remove image file and prompt file
-2. **Renumber files**: All subsequent images decrement NN by 1
-3. Update `outline.md` to remove image entry
+| Action | Steps |
+|--------|-------|
+| **Edit** | Update prompt → Regenerate with same session ID |
+| **Add** | Specify position → Create prompt → Generate → Renumber subsequent files (NN+1) → Update outline |
+| **Delete** | Remove files → Renumber subsequent (NN-1) → Update outline |
 
 ## Content Breakdown Principles
 
@@ -304,37 +419,43 @@ Files:
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | cute | ✓✓ | ✓✓ | ✓ | ✓✓ | ✓ | ✓ |
 | fresh | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓✓ |
-| tech | ✓ | ✓✓ | ✓✓ | ✓✓ | ✓✓ | ✓✓ |
 | warm | ✓✓ | ✓✓ | ✓ | ✓ | ✓✓ | ✓ |
 | bold | ✓✓ | ✓ | ✓ | ✓✓ | ✓✓ | ✓ |
 | minimal | ✓✓ | ✓✓ | ✓✓ | ✓ | ✓ | ✓ |
 | retro | ✓✓ | ✓✓ | ✓ | ✓✓ | ✓ | ✓ |
 | pop | ✓✓ | ✓✓ | ✓ | ✓✓ | ✓✓ | ✓ |
 | notion | ✓✓ | ✓✓ | ✓✓ | ✓✓ | ✓✓ | ✓✓ |
+| chalkboard | ✓✓ | ✓✓ | ✓✓ | ✓✓ | ✓ | ✓✓ |
 
 ## References
 
-Detailed templates and guidelines in `references/` directory:
-- `analysis-framework.md` - XHS-specific content analysis
-- `outline-template.md` - Outline format and examples
-- `styles/<style>.md` - Detailed style definitions
-- `layouts/<layout>.md` - Detailed layout definitions
-- `base-prompt.md` - Base prompt template
+Detailed templates in `references/` directory:
+
+**Elements** (Visual building blocks):
+- `elements/canvas.md` - Aspect ratios, safe zones, grid layouts
+- `elements/image-effects.md` - Cutout, stroke, filters
+- `elements/typography.md` - Decorated text (花字), tags, text direction
+- `elements/decorations.md` - Emphasis marks, backgrounds, doodles, frames
+
+**Presets** (Style presets):
+- `presets/<name>.md` - Element combination definitions (cute, notion, warm...)
+
+**Workflows** (Process guides):
+- `workflows/analysis-framework.md` - Content analysis framework
+- `workflows/outline-template.md` - Outline template with layout guide
+- `workflows/prompt-assembly.md` - Prompt assembly guide
+
+**Config** (Settings):
+- `config/preferences-schema.md` - EXTEND.md schema
+- `config/first-time-setup.md` - First-time setup flow
+- `config/watermark-guide.md` - Watermark configuration
 
 ## Notes
 
-- Image generation typically takes 10-30 seconds per image
-- Auto-retry once on generation failure
-- Use cartoon alternatives for sensitive public figures
-- All prompts and text use confirmed language preference
-- Maintain style consistency across all images in series
+- Auto-retry once on failure | Cartoon alternatives for sensitive figures
+- Use confirmed language preference | Maintain style consistency
+- **Two confirmation points required** (Steps 2 & 4) - do not skip
 
 ## Extension Support
 
-Custom styles and configurations via EXTEND.md.
-
-**Check paths** (priority order):
-1. `.baoyu-skills/baoyu-xhs-images/EXTEND.md` (project)
-2. `~/.baoyu-skills/baoyu-xhs-images/EXTEND.md` (user)
-
-If found, load before Step 1. Extension content overrides defaults.
+Custom configurations via EXTEND.md. See **Step 0** for paths and supported options.
