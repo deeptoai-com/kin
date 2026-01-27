@@ -395,14 +395,39 @@ function A2ComposerAdminPage() {
         },
       });
       const nextTemplate = result.template;
-      updateTemplate(nextTemplate.id, {
+      const autoFill = result.autoFill as {
+        suggestedId?: string;
+        suggestedTitle?: string;
+        suggestedSummary?: string;
+      } | undefined;
+
+      // Phase 1: Auto-fill more fields from schema
+      // Only update id if it looks like a default/placeholder (contains timestamp pattern)
+      const isDefaultId = /^(new-template|template|category)-\d+$/.test(activeTemplate.id);
+      const newId = isDefaultId && autoFill?.suggestedId ? autoFill.suggestedId : nextTemplate.id;
+
+      // Auto-fill title and summary from schema if they are default values
+      const isDefaultTitle = activeTemplate.title === '新模板' || activeTemplate.title === '';
+      const isDefaultSummary = activeTemplate.summary === '请填写模板简介' || activeTemplate.summary === '';
+
+      updateTemplate(activeTemplate.id, {
+        id: newId,
         skillId: nextTemplate.skillId,
         template: nextTemplate.template,
         locales: nextTemplate.locales,
+        // Auto-fill title and summary if they are default values
+        ...(isDefaultTitle && autoFill?.suggestedTitle ? { title: autoFill.suggestedTitle } : {}),
+        ...(isDefaultSummary && autoFill?.suggestedSummary ? { summary: autoFill.suggestedSummary } : {}),
       });
+
+      // If id changed, update the active template id
+      if (newId !== activeTemplate.id) {
+        setActiveTemplateId(newId);
+      }
+
       setLocalesTextById((prev) => ({
         ...prev,
-        [nextTemplate.id]: nextTemplate.locales
+        [newId]: nextTemplate.locales
           ? JSON.stringify(nextTemplate.locales, null, 2)
           : '',
       }));
@@ -416,7 +441,7 @@ function A2ComposerAdminPage() {
       if (displayWarnings.length > 0) {
         toast.message(`模板已生成，需检查：${displayWarnings.join('；')}`);
       } else if (!storeWarning) {
-        toast.success('模板已生成');
+        toast.success('模板已生成，已自动填充标题和简介');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '模板生成失败';

@@ -183,6 +183,17 @@ export const generateA2ComposerTemplateFn = createServerFn({ method: 'POST' })
     }
 
     const generated = await generateTemplateFromSchema(schema);
+
+    // Phase 1: Auto-fill more fields from schema
+    // - suggestedId: use skillId as template id
+    // - suggestedTitle: use schema.name
+    // - suggestedSummary: use schema.description
+    const autoFillFields = {
+      suggestedId: resolvedSkillId,
+      suggestedTitle: schema.name,
+      suggestedSummary: schema.description,
+    };
+
     if (!template) {
       return {
         template: {
@@ -191,6 +202,7 @@ export const generateA2ComposerTemplateFn = createServerFn({ method: 'POST' })
           template: generated.template,
           locales: generated.locales,
         },
+        autoFill: autoFillFields,
         warnings: ['TEMPLATE_NOT_FOUND_IN_STORE', ...(generated.warnings ?? [])],
       };
     }
@@ -214,6 +226,7 @@ export const generateA2ComposerTemplateFn = createServerFn({ method: 'POST' })
     await writeStoreFile(nextStore);
     return {
       template: updatedTemplate,
+      autoFill: autoFillFields,
       warnings: generated.warnings ?? [],
     };
   });
