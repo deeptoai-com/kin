@@ -48,7 +48,7 @@ RUN echo "=== Memory before build ===" && free -m && \
 # ---- Stage 2: Runtime --------------------------------------------------------
 FROM node:24-bookworm-slim AS runner
 
-# Install runtime dependencies including Python and common data libraries
+# Install runtime dependencies including Python, data libraries, and document tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
@@ -65,8 +65,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-seaborn \
     python3-bs4 \
     python3-lxml \
+    # Document processing tools for pdf/xlsx/docx skills
+    qpdf \
+    pandoc \
+    libreoffice-calc-nogui \
+    libreoffice-writer-nogui \
   && rm -rf /var/lib/apt/lists/*
-RUN python3 -m pip install --no-cache-dir --break-system-packages markitdown-mcp
+
+# Python packages for Skills
+# - markitdown-mcp: MCP server for document conversion
+# - pypdf, pdfplumber, reportlab: PDF skill dependencies
+# - openpyxl: XLSX skill dependencies (pandas already installed)
+# - python-docx, defusedxml: DOCX skill dependencies
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+    markitdown-mcp \
+    pypdf \
+    pdfplumber \
+    reportlab \
+    openpyxl \
+    python-docx \
+    defusedxml
+
 RUN npm install -g pnpm@10.17.1
 
 WORKDIR /app
