@@ -63,6 +63,14 @@ const trustedOrigins = [
 
 const isEmailVerificationEnabled = process.env.ENABLE_EMAIL_VERIFICATION === 'true';
 
+// Log email verification configuration
+console.log('[auth] Email verification configuration:', {
+  isEmailVerificationEnabled,
+  sendOnSignUp: isEmailVerificationEnabled,
+  requireEmailVerification: isEmailVerificationEnabled,
+  envValue: process.env.ENABLE_EMAIL_VERIFICATION,
+});
+
 // Polar is optional - only initialize if access token is configured
 const isPolarEnabled = Boolean(polarEnv.POLAR_ACCESS_TOKEN);
 
@@ -240,6 +248,10 @@ export const auth = betterAuth({
     autoSignInAfterVerification: true,
     sendVerificationEmail: isEmailVerificationEnabled
       ? async ({ user, url }) => {
+          console.log('[auth] sendVerificationEmail called', {
+            email: user.email,
+            emailVerificationEnabled: isEmailVerificationEnabled,
+          });
           try {
             await sendEmail({
               to: user.email as string,
@@ -255,8 +267,9 @@ export const auth = betterAuth({
 						</div>
 					`,
             });
+            console.log('[auth] Verification email sent successfully to:', user.email);
           } catch (error) {
-            console.error('Failed to send verification email:', error);
+            console.error('[auth] Failed to send verification email:', error);
             // Don't throw here to prevent sign-up from failing
           }
         }
