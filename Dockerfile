@@ -97,6 +97,10 @@ RUN pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 
+# Non-root user (Debian adduser/addgroup syntax)
+RUN addgroup --gid 1001 nodejs \
+  && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
+
 # Copy build output and runtime assets
 # TanStack Start outputs to .output/
 COPY --from=builder /app/.output ./.output
@@ -104,13 +108,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/drizzle ./drizzle
 
 # Include source for the worker (runs via tsx in production)
-COPY --from=builder /app/src ./src
+# IMPORTANT: src/skills-store needs to be owned by nodejs for schema writes
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-
-# Non-root user (Debian adduser/addgroup syntax)
-RUN addgroup --gid 1001 nodejs \
-  && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
 
 # Copy WebSocket server, worker, and production startup script
 COPY --from=builder --chown=nodejs:nodejs /app/ws-server.mjs ./ws-server.mjs
