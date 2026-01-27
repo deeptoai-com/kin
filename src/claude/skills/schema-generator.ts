@@ -366,12 +366,25 @@ function extractSkillMetadataFromMarkdown(skillMdContent: string): { name: strin
   let description = '';
   if (heading) {
     const headingIndex = lines.indexOf(heading);
-    const nextLine = lines.slice(headingIndex + 1).find((line) => line.length > 0 && !line.startsWith('#'));
+    // Skip empty lines and HTML comments when looking for description
+    const nextLine = lines.slice(headingIndex + 1).find((line) =>
+      line.length > 0 &&
+      !line.startsWith('#') &&
+      !line.startsWith('<!--') &&
+      !line.startsWith('```') &&
+      !line.startsWith('---')
+    );
     if (nextLine) {
       description = nextLine;
     }
   } else {
-    const firstLine = lines.find((line) => line.length > 0);
+    // Skip HTML comments and code blocks
+    const firstLine = lines.find((line) =>
+      line.length > 0 &&
+      !line.startsWith('<!--') &&
+      !line.startsWith('```') &&
+      !line.startsWith('---')
+    );
     if (firstLine) {
       description = firstLine;
     }
@@ -496,27 +509,28 @@ function normalizeStructuredOutput(raw: unknown, skillMdContent: string): Normal
       obj.version = '1.0';
     }
 
-    // Step 5: Fix name/description from fallback or variants
-    if (!obj.name || typeof obj.name !== 'string' || !obj.description || typeof obj.description !== 'string') {
-      const fallback = extractSkillMetadataFromMarkdown(skillMdContent);
-      if (!obj.name || typeof obj.name !== 'string') {
-        debugLog('normalizeStructuredOutput: using fallback name');
-        obj.name = fallback.name;
-      }
-      if (!obj.description || typeof obj.description !== 'string') {
-        debugLog('normalizeStructuredOutput: using fallback description');
-        obj.description = fallback.description;
-      }
-    }
-
-    // Step 6: Handle variant field names for name/description
-    if (!obj.name && typeof obj.skill_name === 'string') {
+    // Step 5: Handle variant field names for name/description FIRST
+    // (Check SDK output variants before falling back to markdown extraction)
+    if ((!obj.name || typeof obj.name !== 'string') && typeof obj.skill_name === 'string') {
       debugLog('normalizeStructuredOutput: using skill_name as name');
       obj.name = obj.skill_name;
     }
-    if (!obj.description && typeof obj.skill_description === 'string') {
+    if ((!obj.description || typeof obj.description !== 'string') && typeof obj.skill_description === 'string') {
       debugLog('normalizeStructuredOutput: using skill_description as description');
       obj.description = obj.skill_description;
+    }
+
+    // Step 6: Fall back to markdown extraction if still missing
+    if (!obj.name || typeof obj.name !== 'string' || !obj.description || typeof obj.description !== 'string') {
+      const fallback = extractSkillMetadataFromMarkdown(skillMdContent);
+      if (!obj.name || typeof obj.name !== 'string') {
+        debugLog('normalizeStructuredOutput: using fallback name from markdown');
+        obj.name = fallback.name;
+      }
+      if (!obj.description || typeof obj.description !== 'string') {
+        debugLog('normalizeStructuredOutput: using fallback description from markdown');
+        obj.description = fallback.description;
+      }
     }
 
     // Step 7: Parse nested skill object if present
