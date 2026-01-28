@@ -13,7 +13,8 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { mkdir, readFile, readdir, access, symlink, unlink, lstat, cp, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, access, symlink, unlink, lstat, cp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -27,7 +28,29 @@ const WORKER_PATH = path.join(__dirname, 'ws-query-worker.mjs');
 // Configuration
 const WS_PORT = parseInt(process.env.WS_PORT || '3001', 10);
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
-const SESSIONS_ROOT = process.env.CLAUDE_SESSIONS_ROOT || '/data/users';
+
+/**
+ * Resolve SESSIONS_ROOT with same logic as manager.ts getUserClaudeHome()
+ * - If CLAUDE_SESSIONS_ROOT is set, use it
+ * - Otherwise, check if /data/users exists (Docker production)
+ * - Fall back to ./user-data (development)
+ */
+function resolveSessionsRoot() {
+  const envRoot = process.env.CLAUDE_SESSIONS_ROOT;
+  if (envRoot && envRoot.trim()) {
+    return envRoot;
+  }
+  // Check for Docker production path
+  const dockerPath = '/data/users';
+  if (existsSync(dockerPath)) {
+    return dockerPath;
+  }
+  // Development fallback
+  return path.join(process.cwd(), 'user-data');
+}
+
+const SESSIONS_ROOT = resolveSessionsRoot();
+console.log('[WS Server] Sessions root:', SESSIONS_ROOT);
 
 const config = {
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -571,6 +594,13 @@ async function handleCreateSession(ws) {
     const claudeHome = getClaudeHome(ws.userId);
     await ensureDirExists(claudeHome);
 
+    // Sync user's skills based on global settings (conversation init)
+    try {
+      await syncUserSkills(claudeHome);
+    } catch (syncError) {
+      console.warn('[WS Server] Skills sync failed (continuing):', syncError.message);
+    }
+
     // Get session-specific workspace
     const workspacePath = getSessionWorkspace(ws.userId, workspaceSessionId);
     await ensureDirExists(workspacePath);
@@ -661,6 +691,14 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // Use existing session's claudeHome if available, otherwise generate new
     const claudeHome = existingSession?.claudeHomePath || getClaudeHome(ws.userId);
     await ensureDirExists(claudeHome);
+
+    // Sync user's skills based on global settings (conversation init)
+    // This ensures newly added global skills are available for this session
+    try {
+      await syncUserSkills(claudeHome);
+    } catch (syncError) {
+      console.warn('[WS Server] Skills sync failed (continuing):', syncError.message);
+    }
 
     // Get session-specific workspace (for Agent file operations)
     const workspacePath = getSessionWorkspace(ws.userId, workspaceSessionId);
@@ -966,6 +1004,15 @@ async function handleMessage(ws, msg) {
 
       console.log(`[WS Server] Resuming session: ${message.sessionId} -> SDK: ${resumeSdkSessionId || 'not found'}`);
 
+      // Sync user's skills when resuming a session
+      if (sessionData?.claudeHomePath) {
+        try {
+          await syncUserSkills(sessionData.claudeHomePath);
+        } catch (syncError) {
+          console.warn('[WS Server] Skills sync failed on resume (continuing):', syncError.message);
+        }
+      }
+
       // Send confirmation back to client
       sendMessage(ws, {
         type: 'session_init',
@@ -1243,15 +1290,17 @@ wss.on('close', () => {
 /**
  * Seed Skills Store from built-in skills directory
  *
- * Strategy: "Incremental sync with overwrite"
- * - Syncs all built-in skills to store directory
- * - Overwrites existing skills with same name (ensures updates)
- * - Preserves user-installed skills not in built-in directory
+ * Strategy: "Non-destructive seed by default"
+ * - Syncs built-in skills to store directory if missing
+ * - Skips existing skills to preserve runtime-generated files (e.g. schema)
+ * - Optional overwrite via SKILLS_STORE_SEED_MODE=overwrite
  *
  * Only runs in production when SKILLS_STORE_DIR is set.
  */
 export async function seedSkillsStore() {
   const storeDir = process.env.SKILLS_STORE_DIR;
+  const seedMode = (process.env.SKILLS_STORE_SEED_MODE || 'skip').toLowerCase();
+  const shouldOverwrite = seedMode === 'overwrite';
 
   // Only seed in production (when SKILLS_STORE_DIR is set)
   if (!storeDir) {
@@ -1288,6 +1337,7 @@ export async function seedSkillsStore() {
 
   let synced = 0;
   let skipped = 0;
+  let overwritten = 0;
 
   for (const skill of builtInSkills) {
     const sourcePath = path.join(builtInDir, skill.name);
@@ -1303,17 +1353,43 @@ export async function seedSkillsStore() {
         // Target doesn't exist, will be created
       }
 
-      // Remove existing and copy fresh (overwrite strategy)
-      if (targetExists) {
+      // Default: skip existing skills to preserve runtime-generated files (e.g. schema)
+      if (targetExists && !shouldOverwrite) {
+        console.log(`[Skills]   → Skipped (exists): ${skill.name}`);
+        skipped++;
+        continue;
+      }
+
+      // Overwrite mode: preserve schema files if present
+      const preservedFiles = new Map();
+      if (targetExists && shouldOverwrite) {
+        for (const filename of ['.schema.json', '.schema.meta.json']) {
+          const filePath = path.join(targetPath, filename);
+          try {
+            const content = await readFile(filePath, 'utf-8');
+            preservedFiles.set(filename, content);
+          } catch {
+            // Ignore missing/invalid schema files
+          }
+        }
+
         await rm(targetPath, { recursive: true, force: true });
       }
 
       await cp(sourcePath, targetPath, { recursive: true });
       synced++;
 
-      if (targetExists) {
+      if (targetExists && shouldOverwrite) {
+        for (const [filename, content] of preservedFiles.entries()) {
+          try {
+            await writeFile(path.join(targetPath, filename), content, 'utf-8');
+          } catch (restoreError) {
+            console.warn(`[Skills]   ! Failed to restore ${filename} for ${skill.name}:`, restoreError.message);
+          }
+        }
+        overwritten++;
         console.log(`[Skills]   ✓ Updated: ${skill.name}`);
-      } else {
+      } else if (!targetExists) {
         console.log(`[Skills]   ✓ Added: ${skill.name}`);
       }
     } catch (err) {
@@ -1322,7 +1398,214 @@ export async function seedSkillsStore() {
     }
   }
 
-  console.log(`[Skills] Sync complete: ${synced} synced, ${skipped} failed`);
+  console.log(`[Skills] Sync complete: ${synced} synced, ${overwritten} updated, ${skipped} skipped/failed`);
+}
+
+// ============================================================================
+// User Skills Sync (inline implementation for .mjs compatibility)
+// ============================================================================
+
+const USER_DISABLED_SKILLS_FILENAME = '.disabled-skills.json';
+const GLOBAL_SKILLS_FILENAME = '.global-skills.json';
+
+/**
+ * Get Skills Store directory
+ */
+function getSkillsStoreDir() {
+  const envDir = process.env.SKILLS_STORE_DIR;
+  if (envDir) return envDir;
+
+  // Check if /data/skills-store exists (production)
+  const dataDir = '/data/skills-store';
+  if (existsSync(dataDir)) return dataDir;
+
+  // Fallback to source directory (development)
+  return path.join(process.cwd(), 'src', 'skills-store');
+}
+
+/**
+ * Read global skills list
+ */
+async function readGlobalSkills() {
+  const storeDir = getSkillsStoreDir();
+  const filePath = path.join(storeDir, GLOBAL_SKILLS_FILENAME);
+
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.skills)) return [];
+    return parsed.skills.map(s => s.replace(/[^A-Za-z0-9-_]/g, '_'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    console.warn('[Skills] Failed to read global skills file:', error);
+    return [];
+  }
+}
+
+/**
+ * Read user's disabled skills list
+ */
+async function readUserDisabledSkills(claudeHome) {
+  const filePath = path.join(claudeHome, '.claude', USER_DISABLED_SKILLS_FILENAME);
+
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.skills)) return [];
+    return parsed.skills.map(s => s.replace(/[^A-Za-z0-9-_]/g, '_'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    console.warn('[Skills] Failed to read user disabled skills file:', error);
+    return [];
+  }
+}
+
+/**
+ * Get user's currently enabled skills (from directory)
+ */
+async function getUserEnabledSkills(claudeHome) {
+  const skillsDir = path.join(claudeHome, '.claude', 'skills');
+
+  try {
+    const entries = await readdir(skillsDir, { withFileTypes: true });
+    return entries.filter(e => e.isDirectory()).map(e => e.name);
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+/**
+ * Check if a file/directory exists
+ */
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sync user's skills based on global settings and user preferences
+ *
+ * Logic:
+ * - Target skills = (global enabled) ∪ (user enabled) - (user disabled)
+ * - Add: skills in target but not in current user directory
+ * - Remove: skills in current user directory but not in target
+ *
+ * @param {string} claudeHome - User's CLAUDE_HOME directory
+ * @returns {Promise<{added: string[], removed: string[], unchanged: string[]}>}
+ */
+async function syncUserSkills(claudeHome) {
+  console.log(`[Skills] Syncing skills for CLAUDE_HOME: ${claudeHome}`);
+
+  // 1. Read all lists
+  const globalEnabled = await readGlobalSkills();
+  const userDisabled = await readUserDisabledSkills(claudeHome);
+  const currentUserSkills = await getUserEnabledSkills(claudeHome);
+
+  // 2. Calculate target skills
+  // Target = (global enabled - user disabled) ∪ (current user skills - user disabled)
+  const disabledSet = new Set(userDisabled);
+
+  // Skills that should be enabled = global enabled (minus disabled) + currently enabled (minus disabled)
+  const targetSet = new Set();
+
+  // Add global skills (unless user disabled them)
+  for (const skill of globalEnabled) {
+    if (!disabledSet.has(skill)) {
+      targetSet.add(skill);
+    }
+  }
+
+  // Keep user-enabled skills that are not disabled
+  for (const skill of currentUserSkills) {
+    if (!disabledSet.has(skill)) {
+      targetSet.add(skill);
+    }
+  }
+
+  // 3. Calculate diff
+  const currentSet = new Set(currentUserSkills);
+  const toAdd = Array.from(targetSet).filter(s => !currentSet.has(s));
+  const toRemove = Array.from(currentSet).filter(s => !targetSet.has(s));
+  // For global skills that already exist, we should update them (overwrite strategy)
+  const toUpdate = globalEnabled.filter(s => currentSet.has(s) && !disabledSet.has(s));
+  const unchanged = Array.from(currentSet).filter(s => targetSet.has(s) && !globalEnabled.includes(s));
+
+  console.log(`[Skills] Sync plan:`, {
+    globalEnabled: globalEnabled.length,
+    userDisabled: userDisabled.length,
+    current: currentUserSkills.length,
+    target: targetSet.size,
+    toAdd: toAdd.length,
+    toUpdate: toUpdate.length,
+    toRemove: toRemove.length,
+  });
+
+  const storeDir = getSkillsStoreDir();
+
+  // 4. Add new skills
+  const added = [];
+  for (const skillName of toAdd) {
+    try {
+      const sourceDir = path.join(storeDir, skillName);
+      const targetDir = path.join(claudeHome, '.claude', 'skills', skillName);
+
+      if (!await fileExists(sourceDir)) {
+        console.warn(`[Skills] Skill not found in store, skipping: ${skillName}`);
+        continue;
+      }
+
+      await mkdir(path.dirname(targetDir), { recursive: true });
+      await cp(sourceDir, targetDir, { recursive: true });
+      added.push(skillName);
+      console.log(`[Skills]   ✓ Added: ${skillName}`);
+    } catch (error) {
+      console.error(`[Skills]   ✗ Failed to add: ${skillName}`, error);
+    }
+  }
+
+  // 4.5 Update existing global skills (overwrite with latest version)
+  const updated = [];
+  for (const skillName of toUpdate) {
+    try {
+      const sourceDir = path.join(storeDir, skillName);
+      const targetDir = path.join(claudeHome, '.claude', 'skills', skillName);
+
+      if (!await fileExists(sourceDir)) {
+        console.warn(`[Skills] Skill not found in store, skipping update: ${skillName}`);
+        continue;
+      }
+
+      // Remove old version and copy fresh
+      await rm(targetDir, { recursive: true, force: true });
+      await cp(sourceDir, targetDir, { recursive: true });
+      updated.push(skillName);
+      console.log(`[Skills]   ✓ Updated: ${skillName}`);
+    } catch (error) {
+      console.error(`[Skills]   ✗ Failed to update: ${skillName}`, error);
+    }
+  }
+
+  // 5. Remove skills
+  const removed = [];
+  for (const skillName of toRemove) {
+    try {
+      const targetDir = path.join(claudeHome, '.claude', 'skills', skillName);
+      await rm(targetDir, { recursive: true, force: true });
+      removed.push(skillName);
+      console.log(`[Skills]   ✓ Removed: ${skillName}`);
+    } catch (error) {
+      console.error(`[Skills]   ✗ Failed to remove: ${skillName}`, error);
+    }
+  }
+
+  console.log(`[Skills] Sync complete: ${added.length} added, ${updated.length} updated, ${removed.length} removed, ${unchanged.length} unchanged`);
+
+  return { added, updated, removed, unchanged };
 }
 
 // Run as standalone script when executed directly
