@@ -298,33 +298,50 @@ process.stdin.on('end', async () => {
 
     // System prompt extension to guide Claude to use relative paths for file operations
     // Using preset form with 'append' to extend Claude Code's default system prompt
+    const userRoot = process.env.CLAUDE_HOME || '';
     const workspaceInstructions = `
 
 IMPORTANT - File Access and Path Boundaries:
 
-You have access to THREE distinct locations:
+You have access to FOUR distinct locations:
 
-1. **Session Workspace** (Read/Write, Relative Paths)
+1. **Session Workspace** (Read/Write, PRIMARY - use this by default)
    - Location: ${config.cwd}
    - Use for: Creating, editing, and managing user files
    - Path style: Relative paths only (e.g., "index.html", "src/App.jsx")
    - Examples: "index.html", "src/components/Header.tsx", "data/results.json"
+   - THIS IS YOUR DEFAULT WORKING DIRECTORY for all file operations.
 
-2. **Project Source Code** (Read-Only, Absolute Path)
+2. **User Home Directory** (Read/Write, for ~/Documents, ~/Downloads, etc.)
+   - Location: ${userRoot}
+   - Use for: Files that need to persist across sessions or be accessible outside workspace
+   - Path style: Absolute paths starting with ${userRoot}
+   - Examples: "${userRoot}/Documents/report.md", "${userRoot}/Downloads/data.csv"
+   - Use this ONLY when the user explicitly requests a specific location like ~/Documents.
+
+3. **Project Source Code** (Read-Only, Absolute Path)
    - Location: /app
    - Use for: Reading framework code, dependencies, and system files
    - Path style: Must use path="/app/..." parameter
    - Examples: path="/app/src/routes", path="/app/package.json"
    - WARNING: This directory is READ-ONLY. Do not attempt to write here.
 
-3. **User Skills** (Read-Only, via CLAUDE_HOME)
-   - Location: ${process.env.CLAUDE_HOME}/.claude/skills/
+4. **User Skills** (Read-Only, via CLAUDE_HOME)
+   - Location: ${userRoot}/.claude/skills/
    - Use for: Loading user-defined custom skills
    - Automatically loaded via settingSources: ['project']
    - READ-ONLY: Never Write/Edit here. The workspace .claude path is a symlink.
    - To create a new skill: write files under the workspace (e.g., "my-skill/SKILL.md"),
      then export/import via the Skill actions in the Artifact panel (or Workspace panel),
      and do NOT write into .claude.
+
+SKILL INSTRUCTION OVERRIDE RULE:
+
+When executing skills, if a skill instructs you to write to a specific path like ~/Documents or ~/Desktop:
+1. **PREFER workspace**: Unless the user explicitly requested that location, write to the workspace instead.
+2. **Transform paths**: Convert "~/Documents/report.md" → "report.md" (workspace-relative)
+3. **Ask if unclear**: If unsure, ask the user where they want the file saved.
+4. **User home is allowed**: If the user explicitly wants ~/Documents, you CAN write there (${userRoot}/Documents/...).
 
 TOOL USAGE GUIDELINES:
 
@@ -341,9 +358,10 @@ TOOL USAGE GUIDELINES:
 - Use absolute /app/... paths for project source
 
 **Write/Edit Tools**:
-- ONLY write to workspace (relative paths)
+- DEFAULT: Write to workspace (relative paths)
+- ALLOWED: Write to user home (${userRoot}/...) if user explicitly requests
 - NEVER write to /app (it's read-only)
-- NEVER write to .claude/ or ${process.env.CLAUDE_HOME}/.claude/skills/
+- NEVER write to .claude/ or ${userRoot}/.claude/skills/
 
 **Python Tool (MCP)**:
 - Use mcp__python__run to execute Python code
@@ -355,7 +373,8 @@ Example good file operations:
 - Read project: Read({ file_path: "/app/src/lib/db.ts" })
 - Glob workspace: glob("**/*.jsx")
 - Glob project: glob("**/*.ts", { path: "/app/src" })
-- Write file: Write("index.html", "<html>...</html>")
+- Write to workspace: Write("index.html", "<html>...</html>")
+- Write to user home: Write("${userRoot}/Documents/report.md", "...") - only if user requests
 
 Example bad operations:
 - Write("/app/src/file.ts", "...")  ← DON'T write to /app
