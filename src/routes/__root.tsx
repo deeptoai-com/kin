@@ -1,6 +1,8 @@
 import { AuthQueryProvider } from '@daveyplate/better-auth-tanstack';
 import { AuthUIProviderTanstack } from '@daveyplate/better-auth-ui/tanstack';
 // Root route file
+import { IntlayerProvider } from 'react-intlayer';
+import * as React from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   HeadContent,
@@ -15,10 +17,13 @@ import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary';
 import { NotFound } from '~/components/NotFound';
 import { ThemeInitScript } from '~/components/theme-init-script';
 import { ThemeProvider } from '~/components/theme-provider';
+import { getLocaleServer } from '~/lib/locale';
 import { authClient } from '~/lib/auth-client';
 import { getTheme } from '~/lib/theme';
 import type { Theme } from '~/lib/theme';
 import { seo } from '~/utils/seo';
+import { localeStorageOptions } from '@intlayer/core';
+import { defaultLocale, getHTMLTextDir, getIntlayer, setLocaleInStorage } from 'intlayer';
 // Import CSS files directly - TanStack Start will handle them automatically
 import '../styles/app.css';
 import '../styles/custom.css';
@@ -59,44 +64,52 @@ if (typeof window !== 'undefined') {
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
 }>()({
-  loader: () => getTheme(),
-  head: () => ({
-    meta: [
-      {
-        charSet: 'utf-8',
-      },
-      {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
-      },
-      ...seo({
-        title: 'DeeptoAI - AI 工作台',
-        description: '基于 Claude Agent SDK 的 AI 工作台，支持流式对话、Skills 管理、Artifacts 展示和会话管理。Powered by Zhipu AI GLM-4.7',
-        keywords: 'AI, Claude Agent, Zhipu AI, GLM-4.7, Chat, Skills, Artifacts, AI Workspace',
-      }),
-    ],
-    links: [
-      {
-        rel: 'apple-touch-icon',
-        sizes: '180x180',
-        href: '/apple-touch-icon.png',
-      },
-      {
-        rel: 'icon',
-        type: 'image/png',
-        sizes: '32x32',
-        href: '/favicon.png',
-      },
-      {
-        rel: 'icon',
-        type: 'image/png',
-        sizes: '16x16',
-        href: '/favicon.png',
-      },
-      { rel: 'manifest', href: '/site.webmanifest', color: '#fffff' },
-      { rel: 'icon', href: '/favicon.ico' },
-    ],
-  }),
+  loader: async () => {
+    const [theme, localeData] = await Promise.all([getTheme(), getLocaleServer()]);
+    return { theme, locale: localeData.locale };
+  },
+  head: ({ loaderData }) => {
+    const locale = loaderData?.locale ?? defaultLocale;
+    const metaContent = getIntlayer('app', locale);
+
+    return {
+      meta: [
+        {
+          charSet: 'utf-8',
+        },
+        {
+          name: 'viewport',
+          content: 'width=device-width, initial-scale=1',
+        },
+        ...seo({
+          title: metaContent.meta.title,
+          description: metaContent.meta.description,
+          keywords: metaContent.meta.keywords,
+        }),
+      ],
+      links: [
+        {
+          rel: 'apple-touch-icon',
+          sizes: '180x180',
+          href: '/apple-touch-icon.png',
+        },
+        {
+          rel: 'icon',
+          type: 'image/png',
+          sizes: '32x32',
+          href: '/favicon.png',
+        },
+        {
+          rel: 'icon',
+          type: 'image/png',
+          sizes: '16x16',
+          href: '/favicon.png',
+        },
+        { rel: 'manifest', href: '/site.webmanifest', color: '#fffff' },
+        { rel: 'icon', href: '/favicon.ico' },
+      ],
+    };
+  },
   errorComponent: (props) => {
     return (
       <RootDocument>
@@ -119,8 +132,12 @@ function RootComponent() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const initial = Route.useLoaderData() as Theme;
+  const { theme, locale } = Route.useLoaderData() as {
+    theme: Theme;
+    locale: string;
+  };
   const router = useRouter();
+  const [activeLocale, setActiveLocale] = React.useState(locale);
   const hasGithub = !!import.meta.env.VITE_GITHUB_CLIENT_ID;
   const hasGoogle = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const socialProviders = [
@@ -128,8 +145,18 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     ...(hasGoogle ? ['google'] : []),
   ];
 
+  const handleLocaleChange = React.useCallback((nextLocale: string) => {
+    setActiveLocale(nextLocale);
+    setLocaleInStorage(nextLocale, localeStorageOptions);
+  }, []);
+
   return (
-    <html lang="en" className={initial === 'system' ? '' : initial} suppressHydrationWarning>
+    <html
+      dir={getHTMLTextDir(activeLocale)}
+      lang={activeLocale}
+      className={theme === 'system' ? '' : theme}
+      suppressHydrationWarning
+    >
       <head>
         {/* Early theme application – prevents FOUC without react/no-danger noise */}
         <ThemeInitScript />
@@ -137,8 +164,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className="">
         <AuthQueryProvider>
-          <ThemeProvider initial={initial}>
-            <AuthUIProviderTanstack
+          <ThemeProvider initial={theme}>
+            <IntlayerProvider locale={activeLocale} setLocale={handleLocaleChange}>
+              <AuthUIProviderTanstack
               authClient={authClient}
               redirectTo="/agents/claude-chat"
               navigate={(href) => router.navigate({ href })}
@@ -153,6 +181,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               <div className="flex min-h-svh flex-col">{children}</div>
               <Toaster />
             </AuthUIProviderTanstack>
+            </IntlayerProvider>
           </ThemeProvider>
         </AuthQueryProvider>
 
