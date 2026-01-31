@@ -24,31 +24,13 @@ export default ({ mode }: ConfigEnv) => {
       external: ['pg', '@mastra/pg'],
     },
     build: {
-      // Reduce memory pressure by lowering chunk size limit
+      // Increase chunk size warning limit to accommodate i18n content files
+      // Reference: https://github.com/vitejs/vite/discussions/9440
       chunkSizeWarningLimit: 1000, // 1MB instead of default 500KB
       rollupOptions: {
         // Exclude standalone scripts from the build (they have shebangs that break esbuild)
         external: [/ws-server\.mjs$/, /ws-query-worker\.mjs$/],
-        output: {
-          // Manual chunk splitting to reduce memory pressure during build
-          manualChunks: {
-            // Split large vendor libraries
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-router': ['@tanstack/react-router', '@tanstack/react-start'],
-            'vendor-ui': ['@assistant-ui/react'],
-          },
-        },
-        // Reduce parallelism to save memory
-        maxParallelFileOps: 5,
-        // Use less memory for treeshaking
-        treeshake: {
-          moduleSideEffects: false,
-        },
       },
-      // Reduce build parallelism
-      minify: 'esbuild',
-      // Use fewer workers for esbuild
-      target: 'esnext',
     },
     plugins: [
       intlayerProxy(),

@@ -48,48 +48,42 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"   # 8GB ✅
 
 **File**: `Dockerfile` (line 11)
 
-### 2. Added Vite Build Optimizations
+**Community Practice**:
+- [n8n community](https://community.n8n.io/t/why-does-the-build-script-set-node-options-max-old-space-size-8192/145783) uses 8192 MB
+- [Vite OOM issues](https://github.com/vitejs/vite/issues/2433) show 4-8GB is sufficient for most builds
+- [Docker Vite React builds](https://joetatusko.com/2024/10/18/avoiding-memory-issues-during-docker-vite-react-builds/) recommend 4-8GB
+
+### 2. Increased Vite Chunk Size Warning Limit
 
 **File**: `vite.config.ts`
 
 ```typescript
 build: {
-  chunkSizeWarningLimit: 1000,  // 1MB threshold
-  rollupOptions: {
-    maxParallelFileOps: 5,      // Reduce parallelism
-    output: {
-      manualChunks: {
-        'vendor-react': ['react', 'react-dom'],
-        'vendor-router': ['@tanstack/react-router', '@tanstack/react-start'],
-        'vendor-ui': ['@assistant-ui/react'],
-      },
-    },
-  },
-  minify: 'esbuild',            // Faster than terser
+  chunkSizeWarningLimit: 1000,  // 1MB instead of default 500KB
 }
 ```
 
-**Benefits**:
-- Splits large chunks into smaller pieces
-- Reduces memory pressure during treeshaking
-- Lowers peak memory usage
+**Community Practice**:
+- [Vite Discussion #9440](https://github.com/vitejs/vite/discussions/9440) - Standard approach for large chunks
+- [TanStack Router Code Splitting](https://tanstack.com/router/v1/docs/framework/react/guide/code-splitting) - TanStack Start handles route splitting automatically
+- **Note**: We do NOT use `manualChunks` because TanStack Start has built-in code splitting for routes
 
-### 3. Removed Docker Compose Build Conflict
+### 3. Docker Compose Build Configuration
 
 **File**: `docker-compose.yml`
 
-**Before**:
 ```yaml
 app:
   image: *app_image
-  <<: *app_build  # ❌ Causes Dokploy to rebuild
+  <<: *app_build
+  # Dokploy ignores the build section and uses pre-built images from registry
+  # Local development uses: docker compose --profile selfhost up -d --build
 ```
 
-**After**:
-```yaml
-app:
-  image: *app_image  # ✅ Dokploy handles build separately
-```
+**Community Practice**:
+- [Dokploy Docker Compose docs](https://docs.dokploy.com/docs/core/docker-compose) - Dokploy supports both image and build in compose
+- [Docker Tip #57](https://nickjanetakis.com/blog/docker-tip-57-using-build-and-image-in-the-same-docker-compose-service) - Using both `image` and `build` is valid
+- **Key**: Keep both for flexibility - Dokploy uses `image:`, local dev uses `build:`
 
 ### 4. Add Swap Space (Optional but Recommended)
 
@@ -103,6 +97,11 @@ sudo bash scripts/add-swap.sh
 - Creates 4GB swap file
 - Prevents OOM killer from terminating builds
 - Allows burst memory usage during peak build times
+
+**Community Practice**:
+- [Docker Resource Constraints](https://docs.docker.com/engine/containers/resource_constraints/) - Docker can use host swap
+- [Understanding OOM Events](https://prabhatchouhan.hashnode.dev/understanding-and-managing-oom-out-of-memory-events) - Swap prevents OOM kills
+- [Can Containers Use Swap](https://blog.stackademic.com/can-containers-use-swap-space-157d93fbc972) - Containers can use host swap if available
 
 ## Verification Steps
 
