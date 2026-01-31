@@ -200,9 +200,9 @@ services:
     profiles: ['dev', 'selfhost', 'prod']
 
   # App container (useful for self-host/preview via reverse proxy; in dev run pnpm dev)
+  # Note: Dokploy uses its own build pipeline, so we only use image: reference here
   app:
     image: *app_image
-    <<: *app_build
     container_name: ex0-app
     depends_on:
       db:

@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # Allow Vite build to use more memory inside the builder container
-ENV NODE_OPTIONS="--max-old-space-size=16384"
+# Reduced from 16384 to 8192 (8GB) to prevent OOM on 16GB VPS
+ENV NODE_OPTIONS="--max-old-space-size=8192"
 
 # Build-time args for Vite environment variables
 ARG VITE_WS_URL
