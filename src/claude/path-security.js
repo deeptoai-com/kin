@@ -227,10 +227,17 @@ export function createPathSecurity({
     { requireAbsolute: true }
   );
 
+  // Allow writes to:
+  // 1. workspaceRoot - current session workspace (primary)
+  // 2. userSessionsRoot - all user sessions (for cross-session file sharing)
+  // 3. userRoot - entire user directory (for ~/Documents, ~/Downloads, etc.)
+  //    Risk assessment: Low - user isolation is enforced at lines 282-290,
+  //    system directories are blocked by blockedPrefixes
   const writeAllowedPrefixes = normalizePrefixList(
     [
       workspaceRoot,
       userSessionsRoot,
+      userRoot,
       ...(extraWritePrefixes || []),
       ...envWritePrefixes,
     ],

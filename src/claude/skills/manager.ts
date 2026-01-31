@@ -47,14 +47,28 @@ export function getSkillsStoreDir(): string {
 /**
  * Get user's CLAUDE_HOME directory
  * Uses CLAUDE_SESSIONS_ROOT to be consistent with ws-server.mjs
+ * Resolution order:
+ * 1. CLAUDE_SESSIONS_ROOT env var (if set and non-empty)
+ * 2. /data/users (Docker production, if exists)
+ * 3. process.cwd()/user-data (development fallback)
  */
 export function getUserClaudeHome(userId: string): string {
-  // Use same root as WebSocket server for consistency
-  // Handle both undefined and empty string cases
   const envRoot = process.env.CLAUDE_SESSIONS_ROOT
-  const sessionsRoot = (envRoot && envRoot.trim())
-    ? envRoot
-    : path.join(process.cwd(), 'user-data')
+  let sessionsRoot: string
+
+  if (envRoot && envRoot.trim()) {
+    sessionsRoot = envRoot
+  } else {
+    // Check for Docker production path
+    const dockerPath = path.join(path.sep, 'data', 'users')
+    if (existsSync(dockerPath)) {
+      sessionsRoot = dockerPath
+    } else {
+      // Development fallback
+      sessionsRoot = path.join(process.cwd(), 'user-data')
+    }
+  }
+
   return path.join(sessionsRoot, userId)
 }
 
@@ -107,6 +121,7 @@ export async function getUserEnabledSkills(userId: string): Promise<string[]> {
 
 /**
  * Enable a Skill for a user
+ * Also removes the skill from user's disabled list if present
  */
 export async function enableSkill(userId: string, skillName: string): Promise<void> {
   const normalizedName = normalizeSkillName(skillName)
@@ -135,11 +150,15 @@ export async function enableSkill(userId: string, skillName: string): Promise<vo
     throw new Error(`SKILL_NOT_SYNCED: ${normalizedName}`)
   }
 
+  // 6. Remove from disabled list if present (user explicitly enabled)
+  await removeFromUserDisabledSkills(userId, normalizedName)
+
   console.log(`[Skills] Enabled skill: ${normalizedName} for user: ${userId}`)
 }
 
 /**
  * Disable a Skill for a user
+ * Records the skill in user's disabled list to prevent auto-sync from global settings
  */
 export async function disableSkill(userId: string, skillName: string): Promise<void> {
   const normalizedName = normalizeSkillName(skillName)
@@ -154,7 +173,73 @@ export async function disableSkill(userId: string, skillName: string): Promise<v
     throw new Error('Failed to disable skill: directory still exists after deletion')
   }
 
+  // 3. Add to user's disabled list (to prevent global auto-sync)
+  await addToUserDisabledSkills(userId, normalizedName)
+
   console.log(`[Skills] Disabled skill: ${normalizedName} for user: ${userId}`)
+}
+
+// ============================================================================
+// User Disabled Skills (Prevents auto-sync from global settings)
+// ============================================================================
+
+const USER_DISABLED_SKILLS_FILENAME = '.disabled-skills.json'
+
+type UserDisabledSkillsFile = {
+  version: number
+  skills: string[]
+  updatedAt?: string
+}
+
+async function getUserDisabledSkillsPath(userId: string): Promise<string> {
+  const userHome = getUserClaudeHome(userId)
+  return path.join(userHome, '.claude', USER_DISABLED_SKILLS_FILENAME)
+}
+
+export async function readUserDisabledSkills(userId: string): Promise<string[]> {
+  const filePath = await getUserDisabledSkillsPath(userId)
+
+  try {
+    const raw = await fsp.readFile(filePath, 'utf-8')
+    const parsed = JSON.parse(raw) as UserDisabledSkillsFile
+    if (!parsed || !Array.isArray(parsed.skills)) {
+      return []
+    }
+    return normalizeSkillList(parsed.skills)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return []
+    }
+    console.warn('[Skills] Failed to read user disabled skills file:', error)
+    return []
+  }
+}
+
+async function writeUserDisabledSkills(userId: string, skills: string[]): Promise<void> {
+  const filePath = await getUserDisabledSkillsPath(userId)
+  const normalized = normalizeSkillList(skills)
+  const payload: UserDisabledSkillsFile = {
+    version: 1,
+    skills: normalized,
+    updatedAt: new Date().toISOString(),
+  }
+
+  await fsp.mkdir(path.dirname(filePath), { recursive: true })
+  await fsp.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+}
+
+async function addToUserDisabledSkills(userId: string, skillName: string): Promise<void> {
+  const current = await readUserDisabledSkills(userId)
+  const set = new Set(current)
+  set.add(normalizeSkillName(skillName))
+  await writeUserDisabledSkills(userId, Array.from(set))
+}
+
+async function removeFromUserDisabledSkills(userId: string, skillName: string): Promise<void> {
+  const current = await readUserDisabledSkills(userId)
+  const set = new Set(current)
+  set.delete(normalizeSkillName(skillName))
+  await writeUserDisabledSkills(userId, Array.from(set))
 }
 
 // ============================================================================
@@ -222,32 +307,112 @@ export async function setGlobalSkillEnabled(skillName: string, enabled: boolean)
   return next
 }
 
-export async function ensureGlobalSkillsForUser(userId: string): Promise<string[]> {
-  const globalSkills = await readGlobalSkills()
-  if (globalSkills.length === 0) {
-    return []
+/**
+ * Sync user's skills based on global settings and user preferences
+ *
+ * Logic:
+ * - Target skills = (global enabled) ∪ (user enabled) - (user disabled)
+ * - Add: skills in target but not in current user directory
+ * - Remove: skills in current user directory but not in target
+ *
+ * This should be called on conversation initialization.
+ */
+export async function syncUserSkills(userId: string): Promise<{
+  added: string[]
+  removed: string[]
+  unchanged: string[]
+}> {
+  console.log(`[Skills] Syncing skills for user: ${userId}`)
+
+  // 1. Read all lists
+  const globalEnabled = await readGlobalSkills()
+  const userDisabled = await readUserDisabledSkills(userId)
+  const currentUserSkills = await getUserEnabledSkills(userId)
+
+  // 2. Calculate target skills
+  // Target = (global enabled - user disabled) ∪ (current user skills - user disabled)
+  // But we need to be careful: user disabled takes priority
+  const disabledSet = new Set(userDisabled)
+
+  // Skills that should be enabled = global enabled (minus disabled) + currently enabled (minus disabled)
+  const targetSet = new Set<string>()
+
+  // Add global skills (unless user disabled them)
+  for (const skill of globalEnabled) {
+    if (!disabledSet.has(skill)) {
+      targetSet.add(skill)
+    }
   }
 
-  const enabled = await getUserEnabledSkills(userId)
-  const enabledSet = new Set(enabled)
-
-  for (const skillName of globalSkills) {
-    if (enabledSet.has(skillName)) {
-      continue
+  // Keep user-enabled skills that are not disabled
+  // (These are skills user explicitly enabled, even if not in global list)
+  for (const skill of currentUserSkills) {
+    if (!disabledSet.has(skill)) {
+      targetSet.add(skill)
     }
+  }
+
+  // 3. Calculate diff
+  const currentSet = new Set(currentUserSkills)
+  const toAdd = Array.from(targetSet).filter(s => !currentSet.has(s))
+  const toRemove = Array.from(currentSet).filter(s => !targetSet.has(s))
+  const unchanged = Array.from(currentSet).filter(s => targetSet.has(s))
+
+  console.log(`[Skills] Sync plan:`, {
+    globalEnabled: globalEnabled.length,
+    userDisabled: userDisabled.length,
+    current: currentUserSkills.length,
+    target: targetSet.size,
+    toAdd: toAdd.length,
+    toRemove: toRemove.length,
+  })
+
+  // 4. Add new skills
+  const added: string[] = []
+  for (const skillName of toAdd) {
     try {
-      await enableSkill(userId, skillName)
-      enabledSet.add(skillName)
+      // Use internal copy logic (don't call enableSkill to avoid removing from disabled list)
+      const sourceDir = path.join(getSkillsStoreDir(), skillName)
+      const targetDir = path.join(getUserClaudeHome(userId), '.claude', 'skills', skillName)
+
+      if (!await fileExists(sourceDir)) {
+        console.warn(`[Skills] Skill not found in store, skipping: ${skillName}`)
+        continue
+      }
+
+      await fsp.mkdir(path.dirname(targetDir), { recursive: true })
+      await fsp.cp(sourceDir, targetDir, { recursive: true })
+      added.push(skillName)
+      console.log(`[Skills]   ✓ Added: ${skillName}`)
     } catch (error) {
-      console.warn('[Skills] Failed to sync global skill for user:', {
-        skillName,
-        userId,
-        error,
-      })
+      console.error(`[Skills]   ✗ Failed to add: ${skillName}`, error)
     }
   }
 
-  return globalSkills
+  // 5. Remove skills
+  const removed: string[] = []
+  for (const skillName of toRemove) {
+    try {
+      const targetDir = path.join(getUserClaudeHome(userId), '.claude', 'skills', skillName)
+      await fsp.rm(targetDir, { recursive: true, force: true })
+      removed.push(skillName)
+      console.log(`[Skills]   ✓ Removed: ${skillName}`)
+    } catch (error) {
+      console.error(`[Skills]   ✗ Failed to remove: ${skillName}`, error)
+    }
+  }
+
+  console.log(`[Skills] Sync complete: ${added.length} added, ${removed.length} removed, ${unchanged.length} unchanged`)
+
+  return { added, removed, unchanged }
+}
+
+/**
+ * @deprecated Use syncUserSkills instead
+ */
+export async function ensureGlobalSkillsForUser(userId: string): Promise<string[]> {
+  const result = await syncUserSkills(userId)
+  return [...result.added, ...result.unchanged]
 }
 
 // ============================================================================
