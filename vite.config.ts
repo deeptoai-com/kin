@@ -1,3 +1,4 @@
+import { intlayer, intlayerProxy } from 'vite-intlayer';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import { defineConfig, loadEnv, type ConfigEnv, type ViteDevServer } from 'vite';
@@ -29,13 +30,20 @@ export default ({ mode }: ConfigEnv) => {
       },
     },
     plugins: [
+      intlayerProxy(),
+      nitro(),
       tsConfigPaths({
         projects: ['./tsconfig.json'],
       }),
+      intlayer(),
       // WebSocket server: handled by Nitro plugin (server/plugins/websocket.mjs)
       // Dev mode: start manually with "node ws-server.mjs"
-      tanstackStart(),
-      nitro(),
+      tanstackStart({
+        router: {
+          routeFileIgnorePattern:
+            '.content.(ts|tsx|js|mjs|cjs|jsx|json|jsonc|json5)$',
+        },
+      }),
       viteReact(),
       Icons({
         compiler: 'jsx',
