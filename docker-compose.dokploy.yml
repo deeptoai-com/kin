@@ -204,10 +204,10 @@ services:
       - private
 
   # Main application (Nitro + WebSocket server)
-  # Note: Dokploy pulls GHCR image first; if not found, falls back to local build
+  # Note: Dokploy pulls pre-built image from GHCR (built by GitHub Actions)
+  # No local build needed - saves memory and deployment time
   app:
     image: *app_image
-    <<: *app_build  # Fallback: build if GHCR image unavailable
     container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
