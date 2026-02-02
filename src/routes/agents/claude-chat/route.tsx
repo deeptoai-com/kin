@@ -469,6 +469,7 @@ function RouteComponent() {
               sessionListExpanded={sessionListExpanded}
               currentSessionId={currentSessionId}
               setSessionListExpanded={setSessionListExpanded}
+              handleSelectSession={handleSelectSession}
               handleNewSession={handleNewSession}
               chatKey={chatKey}
               permissionInfo={permissionInfo}
@@ -538,7 +539,9 @@ const MainContent: FC<{
   activeArtifactId: string | null;
   hasAnySessions: boolean;
   sessionListExpanded: boolean;
+  currentSessionId: string | null;
   setSessionListExpanded: (value: boolean) => void;
+  handleSelectSession: (sdkSessionId: string) => void;
   handleNewSession: () => void;
   chatKey: number;
   permissionInfo: PermissionInfo;
@@ -553,7 +556,9 @@ const MainContent: FC<{
   activeArtifactId,
   hasAnySessions,
   sessionListExpanded,
+  currentSessionId,
   setSessionListExpanded,
+  handleSelectSession,
   handleNewSession,
   chatKey,
   permissionInfo,
@@ -570,8 +575,8 @@ const MainContent: FC<{
         {/* Session List - only show when no artifact AND user has sessions */}
         {!activeArtifactId && hasAnySessions && (
           <SessionList
-            currentSessionId={undefined}
-            onSelectSession={undefined}
+            currentSessionId={currentSessionId}
+            onSelectSession={handleSelectSession}
             onNewSession={handleNewSession}
             isExpanded={sessionListExpanded}
             onToggleExpanded={() => setSessionListExpanded(!sessionListExpanded)}
