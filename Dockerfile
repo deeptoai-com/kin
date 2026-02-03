@@ -30,7 +30,7 @@ WORKDIR /app
 # Install dependencies (with lockfile)
 COPY package.json pnpm-lock.yaml ./
 RUN echo "=== Memory before pnpm install ===" && free -m && \
-    pnpm install --frozen-lockfile && \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile && \
     echo "=== Memory after pnpm install ===" && free -m
 
 # Copy source and build
@@ -94,13 +94,19 @@ ENV PORT=5000
 
 # Install runtime dependencies (keep dev tools for migrations/worker)
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 
 # Non-root user (Debian adduser/addgroup syntax)
 RUN addgroup --gid 1001 nodejs \
   && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
+
+# Playwright browsers (chromium) for server-side screenshots
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} \
+  && npx playwright install --with-deps chromium \
+  && chown -R nodejs:nodejs ${PLAYWRIGHT_BROWSERS_PATH}
 
 # Copy build output and runtime assets
 # TanStack Start outputs to .output/

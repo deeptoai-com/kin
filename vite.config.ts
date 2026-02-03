@@ -21,7 +21,7 @@ export default ({ mode }: ConfigEnv) => {
     ssr: {
       // Externalize pg and @mastra/pg to avoid ESM/CJS interop TDZ errors
       // The 'pg' package is CommonJS, and bundling it causes "Cannot access 'pg' before initialization"
-      external: ['pg', '@mastra/pg'],
+      external: ['pg', '@mastra/pg', 'playwright'],
     },
     build: {
       // Increase chunk size warning limit to accommodate i18n content files
@@ -29,7 +29,7 @@ export default ({ mode }: ConfigEnv) => {
       chunkSizeWarningLimit: 1000, // 1MB instead of default 500KB
       rollupOptions: {
         // Exclude standalone scripts from the build (they have shebangs that break esbuild)
-        external: [/ws-server\.mjs$/, /ws-query-worker\.mjs$/],
+        external: [/ws-server\.mjs$/, /ws-query-worker\.mjs$/, 'playwright'],
       },
     },
     plugins: [

@@ -5,8 +5,8 @@
  */
 
 import JSZip from 'jszip'
-import { Download, Package, Upload, X, Wrench, Clock } from 'lucide-react'
-import { useMemo, useState, type FC } from 'react'
+import { Download, Package, Upload, X } from 'lucide-react'
+import { useMemo, useRef, useState, type FC } from 'react'
 import { useIntlayer } from 'react-intlayer'
 import { toLocalizedString } from '~/lib/utils'
 import { useServerFn } from '@tanstack/react-start'
@@ -63,6 +63,8 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
     return state.getArtifactById(artifactId)
   })
   const [isSkillBusy, setIsSkillBusy] = useState(false)
+  const [isExportingPng, setIsExportingPng] = useState(false)
+  const htmlIframeRef = useRef<HTMLIFrameElement | null>(null)
   const uploadSkill = useServerFn(uploadUserSkillFn)
 
   const skillInfo = useMemo<SkillInfo | null>(() => {
@@ -244,23 +246,85 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
 
   if (!artifact) return null
 
+  const fileName =
+    artifact.fileName ||
+    (artifact.sourceFilePath ? artifact.sourceFilePath.split('/').pop() : undefined)
+  const fileStem = fileName ? fileName.replace(/\.[^.]+$/, '') : undefined
+  const typeTitleMap = content.artifactsPanel.typeTitle as Record<string, unknown>
+  const typeTitleEntry = typeTitleMap?.[artifact.type]
+  const typeTitle = typeTitleEntry ? toLocalizedString(typeTitleEntry) : artifact.type.toUpperCase()
+  const headerTitle = fileStem ? `${typeTitle} (${fileStem})` : typeTitle
+  const updatedAt = new Date(artifact.updatedAt)
+  const formattedUpdatedAt = `${updatedAt.getFullYear()}/${String(
+    updatedAt.getMonth() + 1
+  ).padStart(2, '0')}/${String(updatedAt.getDate()).padStart(2, '0')} ${String(
+    updatedAt.getHours()
+  ).padStart(2, '0')}:${String(updatedAt.getMinutes()).padStart(2, '0')}`
+  const updatedLabel = toLocalizedString(content.artifactsPanel.updated)
+  const updatedText = updatedLabel
+    .replace('{time}', formattedUpdatedAt)
+    .replace(/:\s+/, ':')
+  const isHtmlArtifact = artifact.type === 'html'
+
+  const exportHtmlAsPng = async () => {
+    if (!isHtmlArtifact || isExportingPng) return
+    setIsExportingPng(true)
+    try {
+      const iframe = htmlIframeRef.current
+      const width = Math.round(iframe?.clientWidth || 1280)
+      const height = Math.round(iframe?.clientHeight || 720)
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : undefined
+
+      const response = await fetch('/api/artifacts/render-png', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          html: artifact.content,
+          width,
+          height,
+          baseUrl,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to export PNG')
+      }
+
+      const pngBlob = await response.blob()
+      const baseName =
+        fileStem || artifact.title || `artifact-${artifact.id.slice(0, 8)}`
+      const url = URL.createObjectURL(pngBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${baseName}.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(toLocalizedString(content.artifactsPanel.toast.pngExportSuccess))
+    } catch (error) {
+      console.error('Failed to export HTML to PNG:', error)
+      toast.error(toLocalizedString(content.artifactsPanel.toast.pngExportFailed))
+    } finally {
+      setIsExportingPng(false)
+    }
+  }
+
   return (
     <div className="artifacts-panel h-full w-full flex flex-col border-l bg-background">
       {/* Header */}
       <div className="artifacts-header flex flex-col border-b bg-muted/30">
         {/* Title bar */}
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-sm font-medium text-muted-foreground">{content.artifactsPanel.title}</span>
-            {artifact.title && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-sm font-medium truncate">{artifact.title}</span>
-              </>
-            )}
+        <div className="flex items-center justify-between px-4 py-2 gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+            <span className="text-sm font-medium truncate">{headerTitle}</span>
             {artifact.isTemporary && (
               <span className="text-xs text-muted-foreground italic">{content.artifactsPanel.preview}</span>
             )}
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {updatedText}
+            </span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -291,15 +355,41 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={downloadArtifact}
-              title={toLocalizedString(content.artifactsPanel.downloadArtifact)}
-              className="h-8 w-8"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+            {isHtmlArtifact ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={toLocalizedString(content.artifactsPanel.downloadArtifact)}
+                    className="h-8 w-8"
+                    disabled={isExportingPng}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onSelect={downloadArtifact} disabled={isExportingPng}>
+                    <Download className="h-4 w-4" />
+                    {content.artifactsPanel.downloadHtml}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={exportHtmlAsPng} disabled={isExportingPng}>
+                    <Download className="h-4 w-4" />
+                    {content.artifactsPanel.exportPng}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={downloadArtifact}
+                title={toLocalizedString(content.artifactsPanel.downloadArtifact)}
+                className="h-8 w-8"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
 
             <Button
               variant="ghost"
@@ -312,42 +402,16 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
             </Button>
           </div>
         </div>
-
-        {/* Description (if available) */}
-        {artifact.description && (
-          <div className="px-4 pb-3">
-            <p className="text-sm text-muted-foreground">{artifact.description}</p>
-          </div>
-        )}
-
-        {/* P14: Lineage info - source tool and update time */}
-        {(artifact.toolName || artifact.updatedAt) && (
-          <div className="px-4 pb-3 flex items-center gap-4 text-xs text-muted-foreground border-t">
-            {artifact.toolName && (
-              <div className="flex items-center gap-1.5">
-                <Wrench className="h-3 w-3" />
-                <span>{toLocalizedString(content.artifactsPanel.source).replace('{tool}', artifact.toolName)}</span>
-              </div>
-            )}
-            {artifact.updatedAt && (
-              <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3" />
-                <span>{toLocalizedString(content.artifactsPanel.updated).replace('{time}', new Date(artifact.updatedAt).toLocaleTimeString())}</span>
-              </div>
-            )}
-            {artifact.fileName && (
-              <div className="truncate" title={artifact.fileName}>
-                文件: {artifact.fileName}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Content */}
       <div className="artifacts-content flex-1 overflow-hidden">
         {artifact.type === 'html' && (
-          <HTMLArtifact content={artifact.content} title={artifact.title} />
+          <HTMLArtifact
+            content={artifact.content}
+            title={artifact.title}
+            iframeRef={htmlIframeRef}
+          />
         )}
         {artifact.type === 'svg' && (
           <SVGArtifact content={artifact.content} title={artifact.title} />

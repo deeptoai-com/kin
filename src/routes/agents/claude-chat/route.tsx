@@ -32,19 +32,18 @@ import { ThumbsDown, ThumbsUp, Layers, Paperclip, FolderOpen, Plus, MessageSquar
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
+import { AssistantTurnCard } from '~/components/claude-chat/assistant-turn-card';
 import { SessionList, useInvalidateSessions } from '~/components/claude-chat/session-list';
 import { UsageCard } from '~/components/claude-chat/usage-card';
 import { type SessionMetadata } from '~/components/claude-chat/session-info-panel';
 import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
-import { ReasoningPart } from '~/components/agent-chat/reasoning-part';
-import { ToolCallPart } from '~/components/agent-chat/tool-call-part';
 import { InlineStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
-import { toLocalizedString } from '~/lib/utils';
+import { cn, toLocalizedString } from '~/lib/utils';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
@@ -468,6 +467,7 @@ function RouteComponent() {
               hasAnySessions={hasAnySessions}
               sessionListExpanded={sessionListExpanded}
               currentSessionId={currentSessionId}
+              setActiveArtifact={setActiveArtifact}
               setSessionListExpanded={setSessionListExpanded}
               handleSelectSession={handleSelectSession}
               handleNewSession={handleNewSession}
@@ -540,6 +540,7 @@ const MainContent: FC<{
   hasAnySessions: boolean;
   sessionListExpanded: boolean;
   currentSessionId: string | null;
+  setActiveArtifact: (id: string | null) => void;
   setSessionListExpanded: (value: boolean) => void;
   handleSelectSession: (sdkSessionId: string) => void;
   handleNewSession: () => void;
@@ -557,6 +558,7 @@ const MainContent: FC<{
   hasAnySessions,
   sessionListExpanded,
   currentSessionId,
+  setActiveArtifact,
   setSessionListExpanded,
   handleSelectSession,
   handleNewSession,
@@ -627,7 +629,7 @@ const MainContent: FC<{
           <div className="w-2/3 h-full shrink-0 border-l">
             <ArtifactsPanel
               artifactId={activeArtifactId}
-              onClose={() => {}}
+              onClose={() => setActiveArtifact(null)}
             />
           </div>
         )}
@@ -1223,7 +1225,9 @@ function extractFileChanges(content: ContentPart[], messageId: string): FileChan
 function getMessageTextContent(parts?: ContentPart[]): string {
   if (!parts || parts.length === 0) return '';
   return parts
-    .filter((part): part is TextContentPart => part.type === 'text' && Boolean(part.text))
+    .filter((part): part is TextContentPart =>
+      part.type === 'text' && Boolean(part.text) && !part.isIntermediate && !part.isPending
+    )
     .map((part) => part.text)
     .join('\n');
 }
@@ -1335,6 +1339,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const isRunning = messageStatus?.type === 'running';
   const hasContent = (messageContent?.length ?? 0) > 0;
   const copyText = useMemo(() => getMessageTextContent(messageContent), [messageContent]);
+  const hasFinalResponse = Boolean(copyText?.trim());
 
   // State for showing usage card
   const [showUsageCard, setShowUsageCard] = useState(false);
@@ -1365,78 +1370,25 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
 
   return (
     <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
-      <div className="relative mb-12 font-sans">
+      <div className={cn('relative font-sans', hasFinalResponse ? 'mb-12' : 'mb-4')}>
         <div className="relative leading-[1.65rem]">
           <div className="grid grid-cols-1 gap-2.5">
             <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
-              {/* Status indicator - shows different states based on agentStatus */}
+              {/* Status indicator - only show when no structured content is available yet */}
               {isRunning && !hasContent && (
                 <div className="mb-3">
                   <InlineStatus status={displayStatus} toolName={currentToolName} />
                 </div>
               )}
 
-              {/* Inline status when content exists but still running */}
-              {isRunning && hasContent && (
-                <InlineStatus status={displayStatus} toolName={currentToolName} />
+              {messageContent && (
+                <AssistantTurnCard
+                  content={messageContent}
+                  status={messageStatus}
+                  onUrlClick={onUrlClick}
+                  onFileClick={onFileClick}
+                />
               )}
-
-              {/* Manual rendering to support custom tool-call type */}
-              {messageContent?.map((part, index) => {
-                if (part.type === 'text') {
-                  // Check if this is the last text part and we're streaming
-                  const isLastTextPart = messageContent
-                    .slice(index + 1)
-                    .every(p => p.type !== 'text');
-                  const showCursor = isRunning && agentStatus === 'streaming' && isLastTextPart;
-
-                  return (
-                    <div key={index} className="relative">
-                      <StreamingMarkdown
-                        content={part.text}
-                        isStreaming={showCursor}
-                        mode="minimal"
-                        onUrlClick={onUrlClick}
-                        onFileClick={onFileClick}
-                      />
-                      {showCursor && (
-                        <span className="inline-block h-4 w-0.5 animate-pulse bg-[#ae5630] ml-0.5" />
-                      )}
-                    </div>
-                  );
-                }
-                if (part.type === 'reasoning') {
-                  return (
-                    <ReasoningPart
-                      key={index}
-                      text={part.text}
-                      status={messageStatus}
-                    />
-                  );
-                }
-                if (part.type === 'tool-call') {
-                  return (
-                    <ToolCallPart
-                      key={index}
-                      toolCallId={part.toolCallId}
-                      toolName={part.toolName}
-                      args={part.args}
-                      argsText={part.argsText}
-                      result={part.result}
-                      isError={part.isError}
-                      toolStatus={part.toolStatus}
-                      status={messageStatus}
-                      backgroundTaskId={part.backgroundTaskId}
-                      backgroundShellId={part.backgroundShellId}
-                      intent={part.intent}
-                      command={part.command}
-                      elapsedSeconds={part.elapsedSeconds}
-                    />
-                  );
-                }
-                console.warn('[AssistantMessage] Unknown part type:', part.type, part);
-                return null;
-              })}
 
               {/* Multi-diff aggregation button */}
               {hasMultipleFileChanges && !isRunning && (
@@ -1453,53 +1405,55 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
             </div>
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0">
-          <ActionBarPrimitive.Root
-            hideWhenRunning
-            autohide="not-last"
-            className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
-          >
-            <div className="relative flex items-center text-muted-foreground">
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(copyText)}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                aria-label={toLocalizedString(content.message.copy)}
-              >
-                <ClipboardIcon width={20} height={20} />
-              </button>
-              <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.helpful)}>
-                <ThumbsUp width={16} height={16} />
-              </ActionBarPrimitive.FeedbackPositive>
-              <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.notHelpful)}>
-                <ThumbsDown width={16} height={16} />
-              </ActionBarPrimitive.FeedbackNegative>
-              <ActionBarPrimitive.Reload className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
-                <ReloadIcon width={20} height={20} />
-              </ActionBarPrimitive.Reload>
-              {/* Statistics button - only show for last message with usage data */}
-              {isLast && usageData && (
+        {hasFinalResponse && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0">
+            <ActionBarPrimitive.Root
+              hideWhenRunning
+              autohide="not-last"
+              className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
+            >
+              <div className="relative flex items-center text-muted-foreground">
                 <button
                   type="button"
-                  onClick={() => setShowUsageCard(!showUsageCard)}
+                  onClick={() => navigator.clipboard.writeText(copyText)}
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label={toLocalizedString(content.actions.viewStats)}
+                  aria-label={toLocalizedString(content.message.copy)}
                 >
-                  <BarChartIcon width={20} height={20} />
+                  <ClipboardIcon width={20} height={20} />
                 </button>
+                <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.helpful)}>
+                  <ThumbsUp width={16} height={16} />
+                </ActionBarPrimitive.FeedbackPositive>
+                <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.notHelpful)}>
+                  <ThumbsDown width={16} height={16} />
+                </ActionBarPrimitive.FeedbackNegative>
+                <ActionBarPrimitive.Reload className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
+                  <ReloadIcon width={20} height={20} />
+                </ActionBarPrimitive.Reload>
+                {/* Statistics button - only show for last message with usage data */}
+                {isLast && usageData && (
+                  <button
+                    type="button"
+                    onClick={() => setShowUsageCard(!showUsageCard)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                    aria-label={toLocalizedString(content.actions.viewStats)}
+                  >
+                    <BarChartIcon width={20} height={20} />
+                  </button>
+                )}
+                {/* Usage Card - shown when statistics button is clicked */}
+                {isLast && showUsageCard && usageData && (
+                  <UsageCard data={usageData} onClose={() => setShowUsageCard(false)} />
+                )}
+              </div>
+              {isLast && (
+                <p className="mt-2 w-full text-right text-muted-foreground text-[0.65rem] leading-[0.85rem] opacity-90 sm:text-[0.75rem]">
+                  {content.disclaimer}
+                </p>
               )}
-              {/* Usage Card - shown when statistics button is clicked */}
-              {isLast && showUsageCard && usageData && (
-                <UsageCard data={usageData} onClose={() => setShowUsageCard(false)} />
-              )}
-            </div>
-            {isLast && (
-              <p className="mt-2 w-full text-right text-muted-foreground text-[0.65rem] leading-[0.85rem] opacity-90 sm:text-[0.75rem]">
-                {content.disclaimer}
-              </p>
-            )}
-          </ActionBarPrimitive.Root>
-        </div>
+            </ActionBarPrimitive.Root>
+          </div>
+        )}
       </div>
 
       {/* Multi-diff overlay */}
@@ -1537,8 +1491,8 @@ const ChatMessage: FC = () => {
     return (
       <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
-          <div className="relative flex flex-row gap-2">
-            <div className="shrink-0 self-start transition-all duration-300">
+          <div className="relative flex flex-row items-center gap-2">
+            <div className="shrink-0 transition-all duration-300">
               <Avatar.Root className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-primary font-bold text-[12px] text-primary-foreground">
                 <Avatar.AvatarFallback>U</Avatar.AvatarFallback>
               </Avatar.Root>
@@ -1632,14 +1586,19 @@ const HistoricalMessage: FC<{
   // Filter to only successful changes for multi-diff display
   const successfulChanges = useMemo(() => fileChanges.filter(c => !c.error), [fileChanges]);
   const hasMultipleFileChanges = successfulChanges.length > 1;
+  const finalText = useMemo(
+    () => getMessageTextContent(message.content as ContentPart[]),
+    [message.content]
+  );
+  const hasFinalResponse = Boolean(finalText?.trim());
 
   if (isUser) {
     // User message - aligned with ChatMessage user structure
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
-          <div className="relative flex flex-row gap-2">
-            <div className="shrink-0 self-start transition-all duration-300">
+          <div className="relative flex flex-row items-center gap-2">
+            <div className="shrink-0 transition-all duration-300">
               <Avatar.Root className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-primary font-bold text-[12px] text-primary-foreground">
                 <Avatar.AvatarFallback>U</Avatar.AvatarFallback>
               </Avatar.Root>
@@ -1690,52 +1649,15 @@ const HistoricalMessage: FC<{
     // because HistoricalMessage renders outside ThreadPrimitive.Messages
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
-        <div className="relative mb-12 font-sans">
+        <div className={cn('relative font-sans', hasFinalResponse ? 'mb-12' : 'mb-4')}>
           <div className="relative leading-[1.65rem]">
             <div className="grid grid-cols-1 gap-2.5">
               <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
-                {message.content.map((part, index) => {
-                  if (part.type === 'text') {
-                    return (
-                      <StreamingMarkdown
-                        key={index}
-                        content={part.text}
-                        isStreaming={false}
-                        mode="minimal"
-                        onUrlClick={onUrlClick}
-                        onFileClick={onFileClick}
-                      />
-                    );
-                  }
-                  if (part.type === 'reasoning') {
-                    return (
-                      <ReasoningPart
-                        key={index}
-                        text={part.text}
-                      />
-                    );
-                  }
-                  if (part.type === 'tool-call') {
-                    return (
-                      <ToolCallPart
-                        key={index}
-                        toolCallId={part.toolCallId}
-                        toolName={part.toolName}
-                        args={part.args}
-                        argsText={part.argsText}
-                        result={part.result}
-                        isError={part.isError}
-                        toolStatus={part.toolStatus}
-                        backgroundTaskId={part.backgroundTaskId}
-                        backgroundShellId={part.backgroundShellId}
-                        intent={part.intent}
-                        command={part.command}
-                        elapsedSeconds={part.elapsedSeconds}
-                      />
-                    );
-                  }
-                  return null;
-                })}
+                <AssistantTurnCard
+                  content={message.content as ContentPart[]}
+                  onUrlClick={onUrlClick}
+                  onFileClick={onFileClick}
+                />
 
                 {/* Artifact Button */}
                 {artifact && (
@@ -1762,40 +1684,42 @@ const HistoricalMessage: FC<{
             </div>
           </div>
           {/* ActionBar - aligned with AssistantMessage (copy/feedback only, no reload/stats for historical) */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0">
-            <div className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition">
-              <div className="relative flex items-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const allText = message.content
-                      .filter((p): p is TextContentPart => p.type === 'text')
-                      .map((p) => p.text)
-                      .join('\n');
-                    navigator.clipboard.writeText(allText);
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label={toLocalizedString(content.message.copy)}
-                >
-                  <ClipboardIcon width={20} height={20} />
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label={toLocalizedString(content.actions.helpful)}
-                >
-                  <ThumbsUp width={16} height={16} />
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label={toLocalizedString(content.actions.notHelpful)}
-                >
-                  <ThumbsDown width={16} height={16} />
-                </button>
+          {hasFinalResponse && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0">
+              <div className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition">
+                <div className="relative flex items-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allText = message.content
+                        .filter((p): p is TextContentPart => p.type === 'text')
+                        .map((p) => p.text)
+                        .join('\n');
+                      navigator.clipboard.writeText(allText);
+                    }}
+                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                    aria-label={toLocalizedString(content.message.copy)}
+                  >
+                    <ClipboardIcon width={20} height={20} />
+                  </button>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                    aria-label={toLocalizedString(content.actions.helpful)}
+                  >
+                    <ThumbsUp width={16} height={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
+                    aria-label={toLocalizedString(content.actions.notHelpful)}
+                  >
+                    <ThumbsDown width={16} height={16} />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Multi-diff overlay */}
