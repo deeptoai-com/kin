@@ -17,10 +17,9 @@
 
 version: '3.8'
 
-# Build configuration (use GHCR image from CI/CD)
-# GitHub Actions builds to: ghcr.io/foreveryh/constructa-starter/app:latest
-x-app-image: &app_image ${APP_IMAGE:-ghcr.io/foreveryh/constructa-starter/app}:${APP_TAG:-latest}
-
+# Build configuration for Dokploy
+# Dokploy builds the image locally using environment variables from its UI
+# This ensures VITE_* variables are baked into the frontend bundle at build time
 x-app-build: &app_build
   build:
     context: .
@@ -138,9 +137,9 @@ services:
       - private
 
   # Database migrations (runs before app starts)
+  # Uses the same image built by the app service
   migrate:
-    image: *app_image
-    pull_policy: always
+    <<: *app_build
     container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
@@ -164,9 +163,9 @@ services:
       - private
 
   # Background workers for BullMQ (cron + indexing, etc.)
+  # Uses the same image built by the app service
   worker:
-    image: *app_image
-    pull_policy: always
+    <<: *app_build
     container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
@@ -206,11 +205,10 @@ services:
       - private
 
   # Main application (Nitro + WebSocket server)
-  # Note: Dokploy pulls pre-built image from GHCR (built by GitHub Actions)
-  # No local build needed - saves memory and deployment time
+  # Dokploy builds the image locally to include VITE_* environment variables
+  # Build args are passed from Dokploy's environment configuration
   app:
-    image: *app_image
-    pull_policy: always
+    <<: *app_build
     container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
