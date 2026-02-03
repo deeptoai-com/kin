@@ -140,6 +140,7 @@ services:
   # Database migrations (runs before app starts)
   migrate:
     image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
@@ -165,6 +166,7 @@ services:
   # Background workers for BullMQ (cron + indexing, etc.)
   worker:
     image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
@@ -208,6 +210,7 @@ services:
   # No local build needed - saves memory and deployment time
   app:
     image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
