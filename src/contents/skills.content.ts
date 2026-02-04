@@ -37,6 +37,21 @@ const skillsContent = {
     toolbar: {
       searchPlaceholder: t({ en: 'Search skills...', 'zh-Hans': '搜索技能...', fr: 'Rechercher des skills...', ja: 'スキルを検索...', ko: '스킬 검색...', 'zh-Hant': '搜尋技能...' }),
       allSkills: t({ en: 'All Skills', 'zh-Hans': 'All Skills', fr: 'Tous les Skills', ja: 'すべてのスキル', ko: '모든 Skills', 'zh-Hant': 'All Skills' }),
+      refresh: t({ en: 'Refresh', 'zh-Hans': '刷新', fr: 'Actualiser', ja: '更新', ko: '새로고침', 'zh-Hant': '重新整理' }),
+      newSkill: t({ en: 'New skill', 'zh-Hans': '新建技能', fr: 'Nouveau skill', ja: '新規スキル', ko: '새 스킬', 'zh-Hant': '新建技能' }),
+    },
+
+    // Page
+    page: {
+      title: t({ en: 'Skills', 'zh-Hans': 'Skills', fr: 'Skills', ja: 'Skills', ko: 'Skills', 'zh-Hant': 'Skills' }),
+      subtitle: t({ en: 'Give your AI superpowers.', 'zh-Hans': '赋予你的 AI 超能力。', fr: 'Donnez des super pouvoirs à votre IA.', ja: 'AI に超能力を与えましょう。', ko: 'AI에게 초능력을 부여하세요.', 'zh-Hant': '賦予你的 AI 超能力。' }),
+      learnMore: t({ en: 'Learn more', 'zh-Hans': '了解更多', fr: 'En savoir plus', ja: '詳細を見る', ko: '더 알아보기', 'zh-Hant': '了解更多' }),
+    },
+
+    // Sections
+    sections: {
+      installed: t({ en: 'Installed', 'zh-Hans': '已安装', fr: 'Installés', ja: 'インストール済み', ko: '설치됨', 'zh-Hant': '已安裝' }),
+      recommended: t({ en: 'Recommended', 'zh-Hans': '推荐', fr: 'Recommandés', ja: 'おすすめ', ko: '추천', 'zh-Hant': '推薦' }),
     },
 
     // Empty state
@@ -57,6 +72,7 @@ const skillsContent = {
       viewDetailsTitle: t({ en: 'View Details', 'zh-Hans': '查看详情', fr: 'Voir les détails', ja: '詳細を見る', ko: '상세 보기', 'zh-Hant': '查看詳情' }),
       deleteCustomTitle: t({ en: 'Delete Custom Skill', 'zh-Hans': '删除自定义技能', fr: 'Supprimer le Skill personnalisé', ja: 'カスタムスキルを削除', ko: '맞춤 스킬 삭제', 'zh-Hant': '刪除自訂技能' }),
       deleteGithubTitle: t({ en: 'Delete GitHub-installed Skill', 'zh-Hans': '删除 GitHub 安装的技能', fr: 'Supprimer le Skill GitHub', ja: 'GitHub インストールスキルを削除', ko: 'GitHub 설치 스킬 삭제', 'zh-Hant': '刪除 GitHub 安裝的技能' }),
+      regenerateIconTitle: t({ en: 'Regenerate Icon', 'zh-Hans': '重新生成图标', fr: 'Régénérer l\'icône', ja: 'アイコンを再生成', ko: '아이콘 재생성', 'zh-Hant': '重新生成圖標' }),
       enabledTooltip: t({ en: 'Globally enabled, cannot disable', 'zh-Hans': '已全局启用，无法关闭', fr: 'Activé globalement, impossible à désactiver', ja: 'グローバルで有効、無効にできません', ko: '전역 활성화됨, 비활성화 불가', 'zh-Hant': '已全域啟用，無法關閉' }),
       schemaStatus: {
         missing: t({ en: 'Missing', 'zh-Hans': 'Missing', fr: 'Manquant', ja: 'Missing', ko: 'Missing', 'zh-Hant': 'Missing' }),
@@ -114,6 +130,9 @@ const skillsContent = {
         'zh-Hant': '確定要從全域技能庫刪除這個 GitHub 技能嗎？所有使用者將無法再看到此技能。',
       }),
       deleteFailed: t({ en: 'Failed to delete skill', 'zh-Hans': '删除技能失败', fr: 'Échec de la suppression du skill', ja: 'スキルの削除に失敗しました', ko: '스킬 삭제 실패', 'zh-Hant': '刪除技能失敗' }),
+      iconGenerating: t({ en: 'Generating icon...', 'zh-Hans': '正在生成图标...', fr: 'Génération de l\'icône...', ja: 'アイコンを生成中...', ko: '아이콘 생성 중...', 'zh-Hant': '正在生成圖標...' }),
+      iconGenerated: t({ en: 'Icon generated successfully', 'zh-Hans': '图标生成成功', fr: 'Icône générée avec succès', ja: 'アイコンが生成されました', ko: '아이콘이 생성되었습니다', 'zh-Hant': '圖標生成成功' }),
+      iconGenerateFailed: t({ en: 'Failed to generate icon', 'zh-Hans': '图标生成失败', fr: 'Échec de la génération de l\'icône', ja: 'アイコンの生成に失敗しました', ko: '아이콘 생성 실패', 'zh-Hant': '圖標生成失敗' }),
     },
 
     // Upload dialog
@@ -228,12 +247,16 @@ const skillsContent = {
 
     // Skill detail dialog
     detail: {
-      filesLabel: t({ en: 'Files', 'zh-Hans': 'Files', fr: 'Fichiers', ja: 'ファイル', ko: '파일', 'zh-Hant': '檔案' }),
-      selectFile: t({ en: 'Select a file to view its content', 'zh-Hans': 'Select a file to view its content', fr: 'Sélectionnez un fichier pour voir son contenu', ja: 'ファイルを選択して内容を表示', ko: '파일을 선택해 내용 보기', 'zh-Hant': '選擇檔案以檢視內容' }),
-      noContent: t({ en: 'No content available', 'zh-Hans': 'No content available', fr: 'Aucun contenu', ja: 'コンテンツがありません', ko: '내용 없음', 'zh-Hant': '無可用內容' }),
-      binaryFile: t({ en: 'Binary file - preview not available', 'zh-Hans': 'Binary file - preview not available', fr: 'Fichier binaire - pas d\'aperçu', ja: 'バイナリファイル - プレビュー不可', ko: '바이너리 파일 - 미리보기 불가', 'zh-Hant': '二進位檔案 - 無法預覽' }),
-      tooLarge: t({ en: 'File too large for preview (>1MB)', 'zh-Hans': 'File too large for preview (>1MB)', fr: 'Fichier trop volumineux (>1 Mo)', ja: 'プレビューには大きすぎます（>1MB）', ko: '미리보기에는 너무 큼 (>1MB)', 'zh-Hant': '檔案過大無法預覽（>1MB）' }),
-      directoryNoContent: t({ en: 'Directories have no content preview', 'zh-Hans': 'Directories have no content preview', fr: 'Les répertoires n\'ont pas d\'aperçu', ja: 'ディレクトリにはプレビューがありません', ko: '디렉터리는 미리보기 없음', 'zh-Hant': '目錄無內容預覽' }),
+      filesLabel: t({ en: 'Files', 'zh-Hans': '文件', fr: 'Fichiers', ja: 'ファイル', ko: '파일', 'zh-Hant': '檔案' }),
+      selectFile: t({ en: 'Select a file to view its content', 'zh-Hans': '选择文件查看内容', fr: 'Sélectionnez un fichier pour voir son contenu', ja: 'ファイルを選択して内容を表示', ko: '파일을 선택해 내용 보기', 'zh-Hant': '選擇檔案以檢視內容' }),
+      noContent: t({ en: 'No content available', 'zh-Hans': '暂无内容', fr: 'Aucun contenu', ja: 'コンテンツがありません', ko: '내용 없음', 'zh-Hant': '無可用內容' }),
+      binaryFile: t({ en: 'Binary file - preview not available', 'zh-Hans': '二进制文件 - 无法预览', fr: 'Fichier binaire - pas d\'aperçu', ja: 'バイナリファイル - プレビュー不可', ko: '바이너리 파일 - 미리보기 불가', 'zh-Hant': '二進位檔案 - 無法預覽' }),
+      tooLarge: t({ en: 'File too large for preview (>1MB)', 'zh-Hans': '文件过大，无法预览 (>1MB)', fr: 'Fichier trop volumineux (>1 Mo)', ja: 'プレビューには大きすぎます（>1MB）', ko: '미리보기에는 너무 큼 (>1MB)', 'zh-Hant': '檔案過大無法預覽（>1MB）' }),
+      directoryNoContent: t({ en: 'Directories have no content preview', 'zh-Hans': '目录无法预览', fr: 'Les répertoires n\'ont pas d\'aperçu', ja: 'ディレクトリにはプレビューがありません', ko: '디렉터리는 미리보기 없음', 'zh-Hant': '目錄無內容預覽' }),
+      copy: t({ en: 'Copy', 'zh-Hans': '复制', fr: 'Copier', ja: 'コピー', ko: '복사', 'zh-Hant': '複製' }),
+      copied: t({ en: 'Copied', 'zh-Hans': '已复制', fr: 'Copié', ja: 'コピー済み', ko: '복사됨', 'zh-Hant': '已複製' }),
+      install: t({ en: 'Install', 'zh-Hans': '安装', fr: 'Installer', ja: 'インストール', ko: '설치', 'zh-Hant': '安裝' }),
+      uninstall: t({ en: 'Uninstall', 'zh-Hans': '卸载', fr: 'Désinstaller', ja: 'アンインストール', ko: '제거', 'zh-Hant': '解除安裝' }),
     },
 
     // Schema manage dialog

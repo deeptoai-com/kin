@@ -1,10 +1,11 @@
 import { FC, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Zap, Code, Palette, Plug, CheckCircle, Circle, Trash2 } from 'lucide-react';
+import { Search, RefreshCw, Plus, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
 import { Input } from '~/components/ui/input';
+import { Button } from '~/components/ui/button';
 import { useServerFn } from '@tanstack/react-start';
 import {
   enableUserSkill as enableUserSkillFn,
@@ -12,61 +13,44 @@ import {
   enableUserUploadedSkillFn,
   disableUserUploadedSkillFn,
   deleteUserSkillFn,
-  deleteGitHubSkillFn,
   getSkillDetailFn,
   setGlobalSkillEnabledFn,
+  generateSkillIconFn,
 } from '~/server/function/skills.server';
-import type { ExtendedSkillInfo, SkillDetail } from '~/claude/skills';
-import { SkillsSidebar } from './skills-sidebar';
-import { SkillsGrid } from './skills-grid';
+import type { ExtendedSkillInfo } from '~/claude/skills';
+import { SkillListItem } from './skill-list-item';
 import { SkillDetailDialog } from './skill-detail-dialog';
 import { SchemaManageDialog } from './schema-manage-dialog';
 
-interface CategoryItem {
-  id: string;
-  label: string;
-  icon: FC<{ className?: string }>;
-}
-
-// Get localized categories - will be initialized after content is available
-const getCategories = (content: any): CategoryItem[] => [
-  { id: 'all', label: content.categories.all, icon: Zap },
-  { id: 'development', label: content.categories.development, icon: Code },
-  { id: 'design', label: content.categories.design, icon: Palette },
-  { id: 'productivity', label: content.categories.productivity, icon: Zap },
-  { id: 'integration', label: content.categories.integration, icon: Plug },
-  { id: 'installed', label: content.categories.installed, icon: CheckCircle },
-];
-
 /**
- * Skills Page Component
+ * Skills Page Component - New List-Based Design
  *
- * Displays all skills (official + user) in a unified list.
- * Uses skill.store property to determine permissions and actions.
+ * Displays skills in two groups: Installed and Recommended
+ * - Installed: Skills that the user has enabled
+ * - Recommended: All other available skills (official)
  *
- * Follows TanStack Start best practices:
- * - Data passed from loader (SSR + streaming)
- * - Server Functions for mutations (type-safe)
- * - No useEffect for data fetching
+ * Only user-uploaded skills can be deleted.
  */
 export const SkillsPageComponent: FC<{
   skills: ExtendedSkillInfo[];
   enabledSkills: string[];
   isAdmin: boolean;
-}> = ({ skills, enabledSkills: initialEnabledSkills, isAdmin }) => {
+  onRefresh?: () => void;
+  onNewSkill?: () => void;
+}> = ({ skills, enabledSkills: initialEnabledSkills, isAdmin, onRefresh, onNewSkill }) => {
   const content = useIntlayer('skills');
+
   // Server Functions (type-safe RPC)
   const enableOfficialSkill = useServerFn(enableUserSkillFn);
   const disableOfficialSkill = useServerFn(disableUserSkillFn);
   const enableUserSkillServer = useServerFn(enableUserUploadedSkillFn);
   const disableUserSkillServer = useServerFn(disableUserUploadedSkillFn);
   const deleteUserSkill = useServerFn(deleteUserSkillFn);
-  const deleteGitHubSkill = useServerFn(deleteGitHubSkillFn);
   const setGlobalSkill = useServerFn(setGlobalSkillEnabledFn);
+  const generateSkillIcon = useServerFn(generateSkillIconFn);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedSkillSlug, setSelectedSkillSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [enabledSkills, setEnabledSkills] = useState<string[]>(() => initialEnabledSkills);
@@ -75,9 +59,11 @@ export const SkillsPageComponent: FC<{
   );
   const [schemaManageSlug, setSchemaManageSlug] = useState<string | null>(null);
   const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [regeneratingIconSlug, setRegeneratingIconSlug] = useState<string | null>(null);
 
   // Query for skill detail (lazy loading on dialog open)
-  const { data: skillDetail, isLoading: isLoadingDetail } = useQuery({
+  const { data: skillDetail } = useQuery({
     queryKey: ['skill-detail', selectedSkillSlug],
     queryFn: async () => {
       if (!selectedSkillSlug) return null;
@@ -86,12 +72,31 @@ export const SkillsPageComponent: FC<{
     enabled: !!selectedSkillSlug && isDetailOpen,
   });
 
-  // Handle toggle skill (using Server Functions)
+  // Filter and group skills
+  const { installedSkills, recommendedSkills } = useMemo(() => {
+    let filtered = skills;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(query) ||
+          (skill.description && skill.description.toLowerCase().includes(query))
+      );
+    }
+
+    // Group by installed status
+    const installed = filtered.filter((skill) => enabledSkills.includes(skill.slug));
+    const recommended = filtered.filter((skill) => !enabledSkills.includes(skill.slug));
+
+    return { installedSkills: installed, recommendedSkills: recommended };
+  }, [skills, searchQuery, enabledSkills]);
+
+  // Handle toggle skill
   const handleToggleSkill = async (skillSlug: string) => {
-    // Find the skill to determine its type
-    const skill = skills.find(s => s.slug === skillSlug);
+    const skill = skills.find((s) => s.slug === skillSlug);
     if (!skill) {
-      console.error('Skill not found:', skillSlug);
       toast.error(toLocalizedString(content.toast.skillNotFound));
       return;
     }
@@ -104,16 +109,13 @@ export const SkillsPageComponent: FC<{
     const isEnabled = enabledSkills.includes(skillSlug);
 
     try {
-      // Use appropriate function based on skill store
       if (skill.store === 'official') {
-        // Official skills
         if (isEnabled) {
           await disableOfficialSkill({ data: { skillName: skillSlug } });
         } else {
           await enableOfficialSkill({ data: { skillName: skillSlug } });
         }
       } else {
-        // User skills
         if (isEnabled) {
           await disableUserSkillServer({ data: { skillName: skillSlug } });
         } else {
@@ -121,21 +123,13 @@ export const SkillsPageComponent: FC<{
         }
       }
 
-      // Update local state so UI reflects the change immediately
       setEnabledSkills((prev) =>
         isEnabled ? prev.filter((s) => s !== skillSlug) : [...prev, skillSlug]
       );
     } catch (error) {
       console.error('Failed to toggle skill:', error);
       const message = error instanceof Error ? error.message : toLocalizedString(content.toast.toggleFailed);
-      if (message.startsWith('SKILL_NOT_SYNCED:')) {
-        const slug = message.split(':')[1]?.trim() ?? skillSlug;
-        toast.error(toLocalizedString(content.toast.skillNotSynced).replace('{slug}', slug));
-      } else if (message.includes('SKILL_GLOBAL_ENABLED')) {
-        toast.error(toLocalizedString(content.toast.globalEnabledError));
-      } else {
-        toast.error(message);
-      }
+      toast.error(message);
     }
   };
 
@@ -151,193 +145,201 @@ export const SkillsPageComponent: FC<{
       }
     } catch (error) {
       console.error('Failed to toggle global skill:', error);
-      const message = error instanceof Error ? error.message : toLocalizedString(content.toast.globalEnableFailed);
-      toast.error(message);
+      toast.error(toLocalizedString(content.toast.globalEnableFailed));
     }
   };
 
-  // Handle delete skill (user skills or GitHub-installed skills)
+  // Handle delete skill (only user-uploaded skills)
   const handleDeleteSkill = async (skillSlug: string) => {
-    // Find the skill
-    const skill = skills.find(s => s.slug === skillSlug);
-    if (!skill) {
-      console.error('Skill not found:', skillSlug);
+    const skill = skills.find((s) => s.slug === skillSlug);
+    if (!skill || skill.store !== 'user') {
+      toast.error(toLocalizedString(content.toast.cannotDeleteOfficial));
       return;
     }
 
-    // Check if skill can be deleted
-    const canDelete = skill.store === 'user' || skill.deletable === true;
-    if (!canDelete) {
-      console.error('Cannot delete official skill:', skillSlug);
-      alert(toLocalizedString(content.toast.cannotDeleteOfficial));
-      return;
-    }
-
-    const confirmMessage = skill.store === 'user'
-      ? toLocalizedString(content.toast.deleteConfirmCustom)
-      : toLocalizedString(content.toast.deleteConfirmGithub);
-
-    if (!confirm(confirmMessage)) {
+    if (!confirm(toLocalizedString(content.toast.deleteConfirmCustom))) {
       return;
     }
 
     try {
-      if (skill.store === 'user') {
-        // Delete user-uploaded skill
-        await deleteUserSkill({ data: { skillName: skillSlug } });
-      } else {
-        // Delete GitHub-installed skill
-        await deleteGitHubSkill({ data: { skillName: skillSlug } });
-      }
-      // Refresh page to update list
+      await deleteUserSkill({ data: { skillName: skillSlug } });
       window.location.reload();
     } catch (error) {
       console.error('Failed to delete skill:', error);
-      alert(`${toLocalizedString(content.toast.deleteFailed)}: ${(error as Error).message}`);
+      toast.error(`${toLocalizedString(content.toast.deleteFailed)}: ${(error as Error).message}`);
     }
   };
 
-  // Handle view details
   const handleViewDetails = (skillSlug: string) => {
     setSelectedSkillSlug(skillSlug);
     setIsDetailOpen(true);
   };
 
-  // Handle close detail dialog
   const handleCloseDetail = () => {
     setIsDetailOpen(false);
     setSelectedSkillSlug(null);
   };
 
-  // Handle open schema manage dialog (admin only)
   const handleManageSchema = (skillSlug: string) => {
     setSchemaManageSlug(skillSlug);
     setIsSchemaDialogOpen(true);
   };
 
-  // Handle close schema dialog
-  const handleCloseSchemaDialog = () => {
-    setIsSchemaDialogOpen(false);
-    setSchemaManageSlug(null);
-  };
-
-  // Handle schema generation success
-  const handleSchemaSuccess = () => {
-    // Refresh page to show updated status
-    window.location.reload();
-  };
-
-  // Filter skills based on search and category (computed on render)
-  const filteredSkills = useMemo(() => {
-    let result = skills;
-
-    // Apply category filter
-    if (activeFilter === 'installed') {
-      result = result.filter((skill) => enabledSkills.includes(skill.slug));
-    } else if (activeFilter !== 'all') {
-      result = result.filter((skill) => skill.category === activeFilter);
+  const handleRegenerateIcon = async (skillSlug: string) => {
+    const skill = skills.find((s) => s.slug === skillSlug);
+    if (!skill || !skill.description) {
+      return;
     }
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (skill) =>
-          skill.name.toLowerCase().includes(query) ||
-          (skill.description && skill.description.toLowerCase().includes(query))
-      );
+    try {
+      setRegeneratingIconSlug(skillSlug);
+      toast.info(toLocalizedString(content.toast.iconGenerating));
+
+      const result = await generateSkillIcon({ data: { skillSlug: skillSlug, description: skill.description } });
+
+      if (result.success && result.iconUrl) {
+        toast.success(toLocalizedString(content.toast.iconGenerated));
+        // Refresh to show new icon
+        window.location.reload();
+      } else {
+        toast.error(`${toLocalizedString(content.toast.iconGenerateFailed)}: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to regenerate icon:', error);
+      toast.error(`${toLocalizedString(content.toast.iconGenerateFailed)}: ${(error as Error).message}`);
+    } finally {
+      setRegeneratingIconSlug(null);
     }
-
-    return result;
-  }, [skills, activeFilter, searchQuery, enabledSkills]);
-
-  // Get category counts
-  const getCategoryCount = (categoryId: string) => {
-    if (categoryId === 'all') return skills.length;
-    if (categoryId === 'installed') return enabledSkills.length;
-    return skills.filter((s) => s.category === categoryId).length;
   };
 
-  const categories = getCategories(content);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    if (onRefresh) {
+      await onRefresh();
+    } else {
+      window.location.reload();
+    }
+    setIsRefreshing(false);
+  };
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16))]">
-      {/* Left Sidebar */}
-      <SkillsSidebar
-        categories={categories}
-        activeFilter={activeFilter}
-        onFilterChange={setActiveFilter}
-        getCategoryCount={getCategoryCount}
-      />
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-3 mb-6 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {content.toolbar.refresh}
+        </Button>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={toLocalizedString(content.toolbar.searchPlaceholder)}
+            className="w-64 pl-9"
+          />
+        </div>
+        {onNewSkill && (
+          <Button onClick={onNewSkill} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" />
+            {content.toolbar.newSkill}
+          </Button>
+        )}
+      </div>
 
-      {/* Right Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-lg font-semibold">
-            {activeFilter === 'all'
-              ? content.toolbar.allSkills
-              : categories.find((c) => c.id === activeFilter)?.label || content.sidebar.title}
-            <span className="ml-2 text-muted-foreground">
-              • {filteredSkills.length}
-            </span>
-          </h2>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={toLocalizedString(content.toolbar.searchPlaceholder)}
-                className="w-64 pl-9"
-              />
+      {/* Skills List */}
+      <div className="flex-1 overflow-y-auto space-y-8 pb-8">
+        {/* Installed Section */}
+        {installedSkills.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              {content.sections.installed}
+            </h2>
+            <div className="grid gap-2 md:grid-cols-2">
+              {installedSkills.map((skill) => (
+                <SkillListItem
+                  key={skill.slug}
+                  skill={skill}
+                  isEnabled={true}
+                  isGlobalEnabled={globalSkills.includes(skill.slug)}
+                  isAdmin={isAdmin}
+                  onToggle={() => handleToggleSkill(skill.slug)}
+                  onToggleGlobal={() => handleToggleGlobal(skill.slug)}
+                  onViewDetails={() => handleViewDetails(skill.slug)}
+                  onDeleteSkill={handleDeleteSkill}
+                  onManageSchema={handleManageSchema}
+                  onRegenerateIcon={handleRegenerateIcon}
+                  regeneratingIcon={regeneratingIconSlug === skill.slug}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Recommended Section */}
+        {recommendedSkills.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              {content.sections.recommended}
+            </h2>
+            <div className="grid gap-2 md:grid-cols-2">
+              {recommendedSkills.map((skill) => (
+                <SkillListItem
+                  key={skill.slug}
+                  skill={skill}
+                  isEnabled={false}
+                  isGlobalEnabled={globalSkills.includes(skill.slug)}
+                  isAdmin={isAdmin}
+                  onToggle={() => handleToggleSkill(skill.slug)}
+                  onToggleGlobal={() => handleToggleGlobal(skill.slug)}
+                  onViewDetails={() => handleViewDetails(skill.slug)}
+                  onDeleteSkill={handleDeleteSkill}
+                  onManageSchema={handleManageSchema}
+                  onRegenerateIcon={handleRegenerateIcon}
+                  regeneratingIcon={regeneratingIconSlug === skill.slug}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Empty State */}
+        {installedSkills.length === 0 && recommendedSkills.length === 0 && (
+          <div className="flex h-64 items-center justify-center">
+            <div className="text-center">
+              <p className="text-muted-foreground">{content.empty.title}</p>
+              <p className="text-sm text-muted-foreground/70">{content.empty.subtitle}</p>
             </div>
           </div>
-        </div>
-
-        {/* Skills Grid */}
-        <div className="flex-1 overflow-auto p-6">
-          {filteredSkills.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <Circle className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-4 text-muted-foreground">{content.empty.title}</p>
-                <p className="text-sm text-muted-foreground/70">
-                  {content.empty.subtitle}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <SkillsGrid
-              skills={filteredSkills}
-              enabledSkills={enabledSkills}
-              globalSkills={globalSkills}
-              isAdmin={isAdmin}
-              onToggleSkill={handleToggleSkill}
-              onToggleGlobal={handleToggleGlobal}
-              onViewDetails={handleViewDetails}
-              onDeleteSkill={handleDeleteSkill}
-              onManageSchema={handleManageSchema}
-            />
-          )}
-        </div>
-      </main>
+        )}
+      </div>
 
       {/* Skill Detail Dialog */}
       <SkillDetailDialog
         skill={skillDetail ?? null}
         isOpen={isDetailOpen}
         onClose={handleCloseDetail}
+        isInstalled={selectedSkillSlug ? enabledSkills.includes(selectedSkillSlug) : false}
+        onToggleInstall={selectedSkillSlug ? () => handleToggleSkill(selectedSkillSlug) : undefined}
       />
 
       {/* Schema Manage Dialog - Admin Only */}
       {isAdmin && (
         <SchemaManageDialog
           skillSlug={schemaManageSlug}
-          skillName={skills.find(s => s.slug === schemaManageSlug)?.name ?? ''}
+          skillName={skills.find((s) => s.slug === schemaManageSlug)?.name ?? ''}
           isOpen={isSchemaDialogOpen}
-          onClose={handleCloseSchemaDialog}
-          onSuccess={handleSchemaSuccess}
+          onClose={() => {
+            setIsSchemaDialogOpen(false);
+            setSchemaManageSlug(null);
+          }}
+          onSuccess={() => window.location.reload()}
         />
       )}
     </div>
