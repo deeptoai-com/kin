@@ -1,22 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useIntlayer } from 'react-intlayer';
-import { toLocalizedString } from '~/lib/utils';
 import { listAllMcpsFn } from '~/server/function/mcp.server';
 import { McpPageComponent } from '~/components/mcp/mcp-page';
 import type { ExtendedMcpInfo } from '~/claude/mcp';
 
+/**
+ * MCP Management Route - New List-Based Design
+ *
+ * Displays all MCPs in two groups: Installed and Recommended
+ * - Installed: MCPs that the user has enabled
+ * - Recommended: All other available MCPs
+ *
+ * Custom MCPs (system or personal) can be deleted.
+ * Official MCPs cannot be deleted.
+ */
 export const Route = createFileRoute('/agents/mcp')({
   loader: async () => {
     const result = await listAllMcpsFn();
-    // Defensive: ensure arrays are never undefined
     const official = result.official || [];
     const system = result.system || [];
     const user = result.user || [];
-    const allMcps: ExtendedMcpInfo[] = [
-      ...official,
-      ...system,
-      ...user,
-    ];
+    const allMcps: ExtendedMcpInfo[] = [...official, ...system, ...user];
 
     return {
       officialMcps: official,
@@ -26,22 +29,11 @@ export const Route = createFileRoute('/agents/mcp')({
     };
   },
   component: () => {
-    const content = useIntlayer('mcp');
     const { officialMcps, systemMcps, userMcps, allMcps } = Route.useLoaderData();
     const enabledMcps = allMcps.filter((mcp) => mcp.enabled).map((mcp) => mcp.slug);
-    const customCount = systemMcps.length + userMcps.length;
 
     return (
-      <div className="container mx-auto py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">{content.header.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              {toLocalizedString(content.header.description).replace('{total}', String(allMcps.length)).replace('{custom}', String(customCount))}
-            </p>
-          </div>
-        </div>
-
+      <div className="container mx-auto px-6 py-8 max-w-6xl">
         <McpPageComponent
           mcps={officialMcps}
           systemMcps={systemMcps}

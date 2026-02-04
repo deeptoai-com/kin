@@ -263,15 +263,21 @@ export async function readGlobalSkills(): Promise<string[]> {
   const storeDir = getSkillsStoreDir()
   const filePath = path.join(storeDir, GLOBAL_SKILLS_FILENAME)
 
+  console.log(`[Skills] Reading global skills from: ${filePath}`)
+
   try {
     const raw = await fsp.readFile(filePath, 'utf-8')
     const parsed = JSON.parse(raw) as GlobalSkillsFile
     if (!parsed || !Array.isArray(parsed.skills)) {
+      console.log(`[Skills] Global skills file exists but invalid format`)
       return []
     }
-    return normalizeSkillList(parsed.skills)
+    const skills = normalizeSkillList(parsed.skills)
+    console.log(`[Skills] Global skills found: ${skills.length}`, skills)
+    return skills
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      console.log(`[Skills] Global skills file not found at: ${filePath}`)
       return []
     }
     console.warn('[Skills] Failed to read global skills file:', error)
@@ -289,8 +295,16 @@ export async function writeGlobalSkills(skills: string[]): Promise<void> {
     updatedAt: new Date().toISOString(),
   }
 
-  await fsp.mkdir(storeDir, { recursive: true })
-  await fsp.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+  console.log(`[Skills] Writing global skills to: ${filePath}`, normalized)
+
+  try {
+    await fsp.mkdir(storeDir, { recursive: true })
+    await fsp.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+    console.log(`[Skills] ✓ Global skills saved successfully`)
+  } catch (error) {
+    console.error(`[Skills] ✗ Failed to write global skills:`, error)
+    throw error
+  }
 }
 
 export async function setGlobalSkillEnabled(skillName: string, enabled: boolean): Promise<string[]> {

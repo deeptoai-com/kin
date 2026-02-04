@@ -622,9 +622,27 @@ export const uploadUserSkillFn = createServerFn({ method: 'POST' })
 
     await uploadUserSkill(user.id, data.name, data.files);
 
+    // Auto-generate icon if description is provided and GEMINI_API_KEY is configured
+    let iconUrl: string | undefined;
+    if (data.description && process.env.GEMINI_API_KEY) {
+      try {
+        const { generateSkillIcon } = await import('~/claude/skills/icon-generator');
+        const slug = normalizeSkillName(data.name);
+        const result = await generateSkillIcon(slug, data.description);
+        if (result.success) {
+          iconUrl = result.iconUrl;
+          console.log(`[SkillUpload] Auto-generated icon for "${data.name}": ${iconUrl}`);
+        }
+      } catch (iconError) {
+        // Don't fail upload if icon generation fails
+        console.error('[SkillUpload] Icon generation failed:', iconError);
+      }
+    }
+
     return {
       success: true,
       skillName: data.name,
+      iconUrl,
     };
   });
 
@@ -636,11 +654,23 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
   .handler(async () => {
     const user = await requireUser();
 
+    console.log(`[Skills] listAllSkillsFn called for user: ${user.id}`);
+
+    // Import icon utility
+    const { getSkillIconUrl } = await import('~/claude/skills/icon-generator');
+
     // Get official skills (from src/skills-store)
     const allOfficialSkills = await getSkillsStore();
+    console.log(`[Skills] Official skills in store: ${allOfficialSkills.length}`);
+
     const globalSkills = await ensureGlobalSkillsForUser(user.id);
+    console.log(`[Skills] Global skills after sync: ${globalSkills.length}`, globalSkills);
+
     const enabledOfficialSlugs = await getUserEnabledSkills(user.id);
+    console.log(`[Skills] User enabled skills: ${enabledOfficialSlugs.length}`, enabledOfficialSlugs);
+
     const effectiveEnabled = new Set([...enabledOfficialSlugs, ...globalSkills]);
+    console.log(`[Skills] Effective enabled: ${effectiveEnabled.size}`, [...effectiveEnabled]);
 
     // Check which skills are GitHub-installed (deletable by admin)
     // Use static imports (not dynamic) to avoid runtime issues
@@ -653,6 +683,7 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
           enabled: effectiveEnabled.has(skill.slug),
           globalEnabled: globalSkills.includes(skill.slug),
           deletable: extendedInfo.isGitHubInstalled,
+          iconUrl: getSkillIconUrl(skill.slug),
         };
       })
     );
@@ -666,6 +697,7 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
         ...skill,
         store: 'user' as const,
         deletable: true, // User skills are always deletable
+        iconUrl: getSkillIconUrl(skill.slug),
       })),
     };
   });
@@ -1001,3 +1033,98 @@ export const getSkillSchemaStatusFn = createServerFn({ method: 'GET' })
       skillSlug: statusInfo.skillSlug,
     };
   });
+
+// ============================================================
+// Icon Generation
+// ============================================================
+
+import {
+  generateSkillIcon,
+  getSkillIconUrl,
+  deleteSkillIcon,
+} from '~/claude/skills/icon-generator';
+
+const generateIconSchema = z.object({
+  skillSlug: z.string().min(1),
+  description: z.string().min(1),
+});
+
+/**
+ * Generate icon for a skill using Gemini API
+ *
+ * Can be called:
+ * 1. Automatically after skill upload (with description from SKILL.md)
+ * 2. Manually by admin to regenerate
+ *
+ * Returns the icon URL on success.
+ */
+export const generateSkillIconFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return generateIconSchema.parse(data);
+  })
+  .handler(async ({ data }) => {
+    // Allow authenticated users (auto-generation on upload)
+    // or admin (manual regeneration)
+    await requireUser();
+
+    const result = await generateSkillIcon(data.skillSlug, data.description);
+
+    if (result.success && result.iconUrl) {
+      return {
+        success: true,
+        iconUrl: result.iconUrl,
+      };
+    }
+
+    return {
+      success: false,
+      error: result.error || 'Failed to generate icon',
+    };
+  });
+
+/**
+ * Get icon URL for a skill
+ */
+export const getSkillIconUrlFn = createServerFn({ method: 'GET' })
+  .inputValidator((input) => {
+    const searchParams = typeof input === 'string' ? new URLSearchParams(input) : null;
+    const skillSlug = searchParams?.get('skillSlug') ||
+      (typeof input === 'object' && input && 'skillSlug' in input
+        ? (input as { skillSlug?: string }).skillSlug
+        : null);
+
+    return z.object({
+      skillSlug: z.string().min(1),
+    }).parse({ skillSlug });
+  })
+  .handler(async ({ data }) => {
+    const iconUrl = getSkillIconUrl(data.skillSlug);
+    return { iconUrl };
+  });
+
+/**
+ * Delete icon for a skill (admin only)
+ */
+export const deleteSkillIconFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return z.object({
+      skillSlug: z.string().min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+
+    const deleted = deleteSkillIcon(data.skillSlug);
+    return { deleted };
+  });
+
