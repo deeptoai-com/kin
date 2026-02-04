@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import type { SkillInfo } from './types'
+import { getSkillIconUrl } from './icon-generator'
 
 /**
  * Check if a file exists
@@ -34,7 +35,8 @@ export async function parseSkillMetadata(
   try {
     const content = await fs.readFile(manifestPath, 'utf-8')
     const { name, description, category } = extractSkillMetadataFromMarkdown(content, fallbackName)
-    return { slug: fallbackName, name, description, category }
+    const iconUrl = getSkillIconUrl(fallbackName)
+    return { slug: fallbackName, name, description, category, iconUrl }
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
       console.warn(`[Skills] Failed to read SKILL.md:`, error)

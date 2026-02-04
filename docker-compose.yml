@@ -246,6 +246,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      # Gemini API for skill icon generation
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
       CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}

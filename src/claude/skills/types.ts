@@ -22,6 +22,7 @@ export interface ExtendedSkillInfo extends SkillInfo {
   author?: string             // 作者 ID（仅用户技能）
   createdAt?: string          // 创建时间（仅用户技能）
   fileCount?: number          // 文件数量（仅用户技能）
+  iconUrl?: string            // 图标 URL（AI 生成）
 }
 
 // Category constants
