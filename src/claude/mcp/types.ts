@@ -36,6 +36,7 @@ export type McpInfo = {
 export type ExtendedMcpInfo = McpInfo & {
   store: 'official' | 'system' | 'user';
   enabled: boolean;
+  iconUrl?: string;  // AI-generated icon URL
 };
 
 export type McpFile = {

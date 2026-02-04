@@ -1,8 +1,8 @@
 import { FC, useMemo, useState, useCallback } from 'react';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, Circle, Code, Database, Plug, Search, Plus, User, Globe } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { RefreshCw, Search, Plus } from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { useServerFn } from '@tanstack/react-start';
@@ -15,51 +15,33 @@ import {
   listAllMcpsFn,
 } from '~/server/function/mcp.server';
 import type { ExtendedMcpInfo, McpDetail } from '~/claude/mcp';
-import { McpSidebar } from './mcp-sidebar';
-import { McpGrid } from './mcp-grid';
+import { McpListItem } from './mcp-list-item';
 import { McpDetailDialog } from './mcp-detail-dialog';
 import { AddCustomMcpDialog } from './add-custom-mcp-dialog';
 
-interface CategoryItem {
-  id: string;
-  labelKey: string;
-  icon: FC<{ className?: string }>;
-}
-
-// Define categories with label keys for i18n
-const CATEGORIES_BASE: Omit<CategoryItem, 'label'>[] = [
-  { id: 'all', labelKey: 'categories.all', icon: Plug },
-  { id: 'development', labelKey: 'categories.development', icon: Code },
-  { id: 'data', labelKey: 'categories.data', icon: Database },
-  { id: 'installed', labelKey: 'categories.installed', icon: CheckCircle },
-  { id: 'system', labelKey: 'categories.system', icon: Globe },
-  { id: 'custom', labelKey: 'categories.custom', icon: User },
-];
-
+/**
+ * MCP Page Component - New List-Based Design
+ *
+ * Displays MCPs in two groups: Installed and Recommended
+ * - Installed: MCPs that the user has enabled
+ * - Recommended: All other available MCPs (official)
+ *
+ * Custom MCPs (system or personal) can be deleted.
+ */
 export const McpPageComponent: FC<{
   mcps: ExtendedMcpInfo[];
   systemMcps: ExtendedMcpInfo[];
   userMcps: ExtendedMcpInfo[];
   enabledMcps: string[];
-}> = ({ mcps: initialMcps, systemMcps: initialSystemMcps, userMcps: initialUserMcps, enabledMcps: initialEnabled }) => {
+  onAddMcp?: () => void;
+}> = ({ mcps: initialMcps, systemMcps: initialSystemMcps, userMcps: initialUserMcps, enabledMcps: initialEnabled, onAddMcp }) => {
   const content = useIntlayer('mcp');
-  const queryClient = useQueryClient();
   const enableMcp = useServerFn(enableMcpServerFn);
   const disableMcp = useServerFn(disableMcpServerFn);
   const verifyMcp = useServerFn(verifyMcpServerFn);
   const deleteCustomMcp = useServerFn(deleteCustomMcpFn);
 
-  // Build categories with translated labels
-  const CATEGORIES = useMemo(() => {
-    return CATEGORIES_BASE.map((cat) => ({
-      ...cat,
-      // Access nested property like content.sidebar.categories.all
-      label: (content.sidebar.categories as Record<string, string>)[cat.id] || cat.id,
-    }));
-  }, [content]);
-
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -69,8 +51,9 @@ export const McpPageComponent: FC<{
   const [enabledMcps, setEnabledMcps] = useState<string[]>(() => initialEnabled || []);
   const [verifyingSlug, setVerifyingSlug] = useState<string | null>(null);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Combine official, system, and user MCPs
+  // Combine all MCPs
   const allMcps = useMemo(() => [...mcps, ...systemMcps, ...userMcps], [mcps, systemMcps, userMcps]);
 
   const { data: detail } = useQuery({
@@ -81,6 +64,27 @@ export const McpPageComponent: FC<{
     },
     enabled: !!selectedSlug && isDetailOpen,
   });
+
+  // Filter and group MCPs
+  const { installedMcps, recommendedMcps } = useMemo(() => {
+    let filtered = allMcps;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (mcp) =>
+          mcp.name.toLowerCase().includes(query) ||
+          (mcp.description && mcp.description.toLowerCase().includes(query))
+      );
+    }
+
+    // Group by enabled status
+    const installed = filtered.filter((mcp) => enabledMcps.includes(mcp.slug));
+    const recommended = filtered.filter((mcp) => !enabledMcps.includes(mcp.slug));
+
+    return { installedMcps: installed, recommendedMcps: recommended };
+  }, [allMcps, searchQuery, enabledMcps]);
 
   const handleToggleMcp = async (slug: string) => {
     const isEnabled = enabledMcps.includes(slug);
@@ -130,7 +134,6 @@ export const McpPageComponent: FC<{
   };
 
   const handleDeleteCustomMcp = async (slug: string) => {
-    // Find the MCP to determine its store type
     const mcp = allMcps.find((m) => m.slug === slug);
     const storeType = mcp?.store;
     const isSystemMcp = storeType === 'system';
@@ -165,7 +168,6 @@ export const McpPageComponent: FC<{
   };
 
   const handleAddSuccess = useCallback(async () => {
-    // Refresh MCP list
     try {
       const result = await listAllMcpsFn();
       setMcps(result.official);
@@ -176,99 +178,111 @@ export const McpPageComponent: FC<{
     }
   }, []);
 
-  const filteredMcps = useMemo(() => {
-    let result = allMcps;
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await handleAddSuccess();
+    setIsRefreshing(false);
+  };
 
-    if (activeFilter === 'installed') {
-      result = result.filter((mcp) => enabledMcps.includes(mcp.slug));
-    } else if (activeFilter === 'system') {
-      result = systemMcps;
-    } else if (activeFilter === 'custom') {
-      result = userMcps;
-    } else if (activeFilter !== 'all') {
-      result = result.filter((mcp) => mcp.category === activeFilter);
+  const handleOpenAddDialog = () => {
+    if (onAddMcp) {
+      onAddMcp();
+    } else {
+      setIsAddDialogOpen(true);
     }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (mcp) =>
-          mcp.name.toLowerCase().includes(query) ||
-          (mcp.description && mcp.description.toLowerCase().includes(query))
-      );
-    }
-
-    return result;
-  }, [allMcps, systemMcps, userMcps, activeFilter, searchQuery, enabledMcps]);
-
-  const getCategoryCount = (categoryId: string) => {
-    if (categoryId === 'all') return allMcps.length;
-    if (categoryId === 'installed') return enabledMcps.length;
-    if (categoryId === 'system') return systemMcps.length;
-    if (categoryId === 'custom') return userMcps.length;
-    return allMcps.filter((mcp) => mcp.category === categoryId).length;
   };
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16))]">
-      <McpSidebar
-        categories={CATEGORIES}
-        activeFilter={activeFilter}
-        onFilterChange={setActiveFilter}
-        getCategoryCount={getCategoryCount}
-      />
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-3 mb-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {content.detailDialog.refresh}
+        </Button>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={toLocalizedString(content.page.searchPlaceholder)}
+            className="w-64 pl-9"
+          />
+        </div>
+        <Button onClick={handleOpenAddDialog} size="sm" className="gap-2">
+          <Plus className="h-4 w-4" />
+          {content.page.addMcpButton}
+        </Button>
+      </div>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-lg font-semibold">
-            {activeFilter === 'all'
-              ? content.sidebar.categories.all
-              : (content.sidebar.categories as Record<string, string>)[activeFilter] || 'MCPs'}
-            <span className="ml-2 text-muted-foreground">• {filteredMcps.length}</span>
-          </h2>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={toLocalizedString(content.page.searchPlaceholder)}
-                className="w-64 pl-9"
-              />
+      {/* MCP List */}
+      <div className="flex-1 overflow-y-auto space-y-8 pb-8">
+        {/* Installed Section */}
+        {installedMcps.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              Installed
+            </h2>
+            <div className="grid gap-1 md:grid-cols-2">
+              {installedMcps.map((mcp) => (
+                <McpListItem
+                  key={mcp.slug}
+                  mcp={mcp}
+                  isEnabled={true}
+                  onToggle={() => handleToggleMcp(mcp.slug)}
+                  onViewDetails={() => handleViewDetails(mcp.slug)}
+                  onVerify={() => handleVerify(mcp.slug)}
+                  onDelete={mcp.store !== 'official' ? () => handleDeleteCustomMcp(mcp.slug) : undefined}
+                  verifying={verifyingSlug === mcp.slug}
+                  deleting={deletingSlug === mcp.slug}
+                />
+              ))}
             </div>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              {content.page.addMcpButton}
-            </Button>
+          </section>
+        )}
+
+        {/* Recommended Section */}
+        {recommendedMcps.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              Recommended
+            </h2>
+            <div className="grid gap-1 md:grid-cols-2">
+              {recommendedMcps.map((mcp) => (
+                <McpListItem
+                  key={mcp.slug}
+                  mcp={mcp}
+                  isEnabled={false}
+                  onToggle={() => handleToggleMcp(mcp.slug)}
+                  onViewDetails={() => handleViewDetails(mcp.slug)}
+                  onVerify={() => handleVerify(mcp.slug)}
+                  onDelete={mcp.store !== 'official' ? () => handleDeleteCustomMcp(mcp.slug) : undefined}
+                  verifying={verifyingSlug === mcp.slug}
+                  deleting={deletingSlug === mcp.slug}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Empty State */}
+        {installedMcps.length === 0 && recommendedMcps.length === 0 && (
+          <div className="flex h-64 items-center justify-center">
+            <div className="text-center">
+              <p className="text-muted-foreground">{content.page.noResults}</p>
+              <p className="text-sm text-muted-foreground/70">{content.page.noResultsHint}</p>
+            </div>
           </div>
-        </div>
+        )}
+      </div>
 
-        <div className="flex-1 overflow-auto p-6">
-          {filteredMcps.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <Circle className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-4 text-muted-foreground">{content.page.noResults}</p>
-                <p className="text-sm text-muted-foreground/70">
-                  {content.page.noResultsHint}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <McpGrid
-              mcps={filteredMcps}
-              enabledMcps={enabledMcps}
-              verifyingSlug={verifyingSlug}
-              deletingSlug={deletingSlug}
-              onToggleMcp={handleToggleMcp}
-              onViewDetails={handleViewDetails}
-              onVerifyMcp={handleVerify}
-              onDeleteMcp={handleDeleteCustomMcp}
-            />
-          )}
-        </div>
-      </main>
-
+      {/* MCP Detail Dialog */}
       <McpDetailDialog
         mcp={detail as McpDetail | null}
         isOpen={isDetailOpen}
@@ -280,6 +294,7 @@ export const McpPageComponent: FC<{
         }}
       />
 
+      {/* Add Custom MCP Dialog */}
       <AddCustomMcpDialog
         isOpen={isAddDialogOpen}
         onClose={() => setIsAddDialogOpen(false)}

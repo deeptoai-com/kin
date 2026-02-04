@@ -85,6 +85,8 @@ const mcpContent = {
       enabled: t({ en: 'Enabled', 'zh-Hans': '已启用', fr: 'Activé', ja: '有効', ko: '활성화됨', 'zh-Hant': '已啟用' }),
       disabled: t({ en: 'Disabled', 'zh-Hans': '已禁用', fr: 'Désactivé', ja: '無効', ko: '비활성화됨', 'zh-Hant': '已停用' }),
       refresh: t({ en: 'Refresh', 'zh-Hans': '刷新', fr: 'Actualiser', ja: '更新', ko: '새로고침', 'zh-Hant': '重新整理' }),
+      install: t({ en: 'Enable', 'zh-Hans': '启用', fr: 'Activer', ja: '有効にする', ko: '활성화', 'zh-Hant': '啟用' }),
+      uninstall: t({ en: 'Disable', 'zh-Hans': '禁用', fr: 'Désactiver', ja: '無効にする', ko: '비활성화', 'zh-Hant': '停用' }),
       storeBadge: {
         system: t({ en: 'System', 'zh-Hans': 'System', fr: 'Système', ja: 'System', ko: 'System', 'zh-Hant': 'System' }),
         personal: t({ en: 'Personal', 'zh-Hans': 'Personal', fr: 'Personnel', ja: 'Personal', ko: 'Personal', 'zh-Hant': 'Personal' }),
@@ -97,7 +99,9 @@ const mcpContent = {
       about: {
         noDocs: t({ en: 'No documentation available for this MCP.', 'zh-Hans': '此 MCP 没有可用文档。', fr: 'Aucune documentation pour ce MCP.', ja: 'この MCP にドキュメントはありません。', ko: '이 MCP에 문서가 없습니다.', 'zh-Hant': '此 MCP 沒有可用文件。' }),
         configuration: t({ en: 'Configuration', 'zh-Hans': '配置', fr: 'Configuration', ja: '設定', ko: '설정', 'zh-Hant': '設定' }),
-        tools: t({ en: 'Tools', 'zh-Hans': '工具', fr: 'Outils', ja: 'ツール', ko: '도구', 'zh-Hant': '工具' }),
+        tools: t({ en: 'Available Tools', 'zh-Hans': '可用工具', fr: 'Outils disponibles', ja: '利用可能なツール', ko: '사용 가능한 도구', 'zh-Hant': '可用工具' }),
+        copy: t({ en: 'Copy', 'zh-Hans': '复制', fr: 'Copier', ja: 'コピー', ko: '복사', 'zh-Hant': '複製' }),
+        copied: t({ en: 'Copied', 'zh-Hans': '已复制', fr: 'Copié', ja: 'コピー済み', ko: '복사됨', 'zh-Hant': '已複製' }),
       },
       configure: {
         noConfig: t({ en: 'No configuration needed for {name}.', 'zh-Hans': '{name} 无需配置。', fr: 'Aucune configuration requise pour {name}.', ja: '{name} は設定不要です。', ko: '{name}은(는) 설정 불필요.', 'zh-Hant': '{name} 無需設定。' }),
