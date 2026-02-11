@@ -56,6 +56,14 @@ const marketingContent = {
         ko: '제공',
         'zh-Hant': '由以下技術提供支援',
       }),
+      poweredByLine: t({
+        en: 'Zhipu AI GLM 5.0',
+        'zh-Hans': '智谱 AI GLM 5.0',
+        fr: 'Zhipu AI GLM 5.0',
+        ja: 'Zhipu AI GLM 5.0',
+        ko: 'Zhipu AI GLM 5.0',
+        'zh-Hant': '智譜 AI GLM 5.0',
+      }),
     },
     features: {
       title: t({

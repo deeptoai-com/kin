@@ -70,7 +70,7 @@ function RouteComponent() {
             rel="noopener noreferrer"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            {content.techStack.zhipuAi}
+            {content.hero.poweredByLine}
           </a>
         </p>
       </section>
