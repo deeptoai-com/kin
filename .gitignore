@@ -5,10 +5,15 @@
 .cache
 .env
 .env.development
+.env.docker
 .env.local
 .env.prod
 .env.sentry-build-plugin
 .env.dokploy
+
+# Runtime data directories (not source)
+/data/
+/user-data/
 .hidden
 .mastra
 .nitro
