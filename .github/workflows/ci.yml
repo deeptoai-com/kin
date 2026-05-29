@@ -63,3 +63,6 @@ jobs:
         run: pnpm build
         env:
           NODE_ENV: production
+          # Match the Dockerfile: the Vite SSR build needs more heap than the
+          # Node default (~2GB) or it OOMs (exit 134).
+          NODE_OPTIONS: --max-old-space-size=8192
