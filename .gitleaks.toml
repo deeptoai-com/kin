@@ -1,0 +1,21 @@
+# Gitleaks configuration for ClaudeAgentChat/oxygenie
+# Extends the default ruleset and allowlists known-safe placeholder files.
+# Files like infra/deploy/env.dokploy.example and docs/libs-frameworks/assistant-ui.md
+# intentionally contain placeholder API keys (e.g. sk-ant-...XXXX) for documentation
+# and template purposes — these are not real secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe placeholder, template, and documentation files"
+paths = [
+  '''.*\.example$''',
+  '''.*\.sample$''',
+  '''.*\.j2$''',
+  '''(^|/)\.env\.docker\.example$''',
+  '''(^|/)\.env\.example$''',
+  '''^docs/.*\.md$''',
+  '''(^|/)\.gitleaks\.toml$''',
+  '''(^|/)pnpm-lock\.yaml$''',
+]
