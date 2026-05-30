@@ -110,7 +110,7 @@ export const updateKnowledgeBase = createServerFn({ method: 'POST' })
         description: data.description || null,
         updatedAt: new Date(),
       })
-      .where(eq(knowledgeBases.id, data.id))
+      .where(and(eq(knowledgeBases.id, data.id), eq(knowledgeBases.userId, user.id)))
       .returning();
 
     return updated;

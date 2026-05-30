@@ -167,10 +167,12 @@ export const Route = createFileRoute('/api/workspace/$sessionId/documents')({
             console.log(`[POST] Processing file: ${fileId}`);
 
             // Get file details
+            // Tenant isolation: only resolve files owned by the authenticated user
+            // (prevents downloading another tenant's file by id — review Risk #3).
             const [file] = await db
               .select()
               .from(files)
-              .where(eq(files.id, fileId));
+              .where(and(eq(files.id, fileId), eq(files.clientId, user.id)));
 
             if (!file) {
               console.log(`[POST] ERROR: File not found: ${fileId}`);

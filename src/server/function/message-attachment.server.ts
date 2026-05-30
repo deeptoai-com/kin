@@ -3,6 +3,11 @@
  *
  * Handles persistence of user-uploaded attachments per message.
  * Part of P13: Attachment Persistence Pipeline
+ *
+ * Tenant isolation: messageAttachment has no owner column; ownership flows through
+ * sessionId -> agentSession.userId. Every handler that takes a client-supplied
+ * sessionId or attachmentId verifies the session belongs to the authenticated user
+ * before reading/mutating (fixes cross-tenant access, review Risk #4).
  */
 
 import { createServerFn } from '@tanstack/react-start';
@@ -11,6 +16,7 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { messageAttachment } from '~/db/schema/message-attachment.schema';
+import { agentSession } from '~/db/schema/agent-session.schema';
 import { auth } from '~/server/auth.server';
 
 /**
@@ -25,6 +31,27 @@ const requireUser = async () => {
   }
 
   return session.user;
+};
+
+/**
+ * Verify that an agent_session (PK = sessionId) belongs to the given user.
+ * Used to authorize attachment access, which is scoped only via the session FK.
+ */
+const sessionBelongsToUser = async (sessionId: string, userId: string): Promise<boolean> => {
+  const [row] = await db
+    .select({ id: agentSession.id })
+    .from(agentSession)
+    .where(and(eq(agentSession.id, sessionId), eq(agentSession.userId, userId)));
+  return Boolean(row);
+};
+
+/** Resolve the owning sessionId of an attachment (or null if it doesn't exist). */
+const attachmentSessionId = async (attachmentId: string): Promise<string | null> => {
+  const [row] = await db
+    .select({ sessionId: messageAttachment.sessionId })
+    .from(messageAttachment)
+    .where(eq(messageAttachment.id, attachmentId));
+  return row?.sessionId ?? null;
 };
 
 // Input validation schemas
@@ -74,7 +101,10 @@ export const createMessageAttachment = createServerFn({ method: 'POST' })
     return createAttachmentSchema.parse(data);
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    if (!(await sessionBelongsToUser(data.sessionId, user.id))) {
+      throw new Error('FORBIDDEN');
+    }
 
     const [attachment] = await db
       .insert(messageAttachment)
@@ -106,7 +136,12 @@ export const markAttachmentUploaded = createServerFn({ method: 'POST' })
     return markUploadedSchema.parse(data);
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    const ownerSessionId = await attachmentSessionId(data.attachmentId);
+    if (!ownerSessionId) return undefined;
+    if (!(await sessionBelongsToUser(ownerSessionId, user.id))) {
+      throw new Error('FORBIDDEN');
+    }
 
     const [updated] = await db
       .update(messageAttachment)
@@ -134,7 +169,10 @@ export const markAttachmentReferenced = createServerFn({ method: 'POST' })
     return markReferencedSchema.parse(data);
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    if (!(await sessionBelongsToUser(data.sessionId, user.id))) {
+      throw new Error('FORBIDDEN');
+    }
 
     const [updated] = await db
       .update(messageAttachment)
@@ -165,7 +203,8 @@ export const getSessionAttachments = createServerFn({ method: 'GET' })
     return sessionIdSchema.parse({ sessionId });
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    if (!(await sessionBelongsToUser(data.sessionId, user.id))) return [];
 
     try {
       const attachments = await db
@@ -201,7 +240,8 @@ export const getMessageAttachments = createServerFn({ method: 'GET' })
     return messageAttachmentSchema.parse({ sessionId, messageId });
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    if (!(await sessionBelongsToUser(data.sessionId, user.id))) return [];
 
     try {
       const attachments = await db
@@ -234,7 +274,12 @@ export const deleteMessageAttachment = createServerFn({ method: 'POST' })
     return deleteAttachmentSchema.parse(data);
   })
   .handler(async ({ data }) => {
-    await requireUser();
+    const user = await requireUser();
+    const ownerSessionId = await attachmentSessionId(data.attachmentId);
+    if (!ownerSessionId) return { success: true };
+    if (!(await sessionBelongsToUser(ownerSessionId, user.id))) {
+      throw new Error('FORBIDDEN');
+    }
 
     await db
       .delete(messageAttachment)
