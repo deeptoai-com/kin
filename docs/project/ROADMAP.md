@@ -45,12 +45,13 @@ hundreds/thousands of concurrent sessions, and it gates sandboxing (Risk #1),
 checkpointing, and cost. Deep-read of hermes-agent, deer-flow, ruflo, and Anthropic's
 `sandbox-runtime` validated a clear path.
 
-- [ ] **Adopt `@anthropic-ai/sandbox-runtime` (srt)** (TS, Apache-2.0) as the exec
+- [x] **Adopt `@anthropic-ai/sandbox-runtime` (srt)** (TS, Apache-2.0) as the exec
       sandbox primitive — deny-network + workspace-fenced FS per tool-call. This *is*
-      the Risk #1 fix; it uses bubblewrap (already installed) under the hood on Linux.
-- [ ] **Define a TS `ExecutionRuntime` interface** (start / exec / stream / abort /
-      snapshot / stop) — pattern from hermes-agent `BaseEnvironment` + deer-flow
-      `SandboxProvider`. First backend: local-process + srt.
+      the Risk #1 fix; it uses bubblewrap (already installed) under the hood on Linux. *(PR #3/#29)*
+- [x] **Define an `ExecutionRuntime` interface** (exec / stop / sandboxStatus; start/stream/
+      abort/snapshot reserved) — pattern from hermes-agent `BaseEnvironment` + deer-flow
+      `SandboxProvider`. First backend `LocalProcessBackend` (local-process + srt), behind
+      `getExecutionRuntime()` (EXEC_RUNTIME selector). Behavior-identical refactor. *(PR #39, PR-1)*
 - [ ] **Move execution off per-message spawn** → per-session sandbox (warm pool,
       reused across messages) behind that interface.
 - [ ] **Decouple tiers**: stateless web/WS gateway · shared session state
