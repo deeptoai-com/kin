@@ -598,8 +598,16 @@ async function authenticateRequest(request) {
 function sendMessage(ws, msg) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(msg));
+    return ws.bufferedAmount;
   }
+  return 0;
 }
+
+// C4 backpressure (consumer side): bytes queued on the WS socket above/below
+// which we pause/resume reading the worker's stdout, so a fast agent stream +
+// slow client can't grow the server's send buffer without bound.
+const WS_BACKPRESSURE_HIGH = Number(process.env.WS_BACKPRESSURE_HIGH_BYTES) || 8 * 1024 * 1024;
+const WS_BACKPRESSURE_LOW = Number(process.env.WS_BACKPRESSURE_LOW_BYTES) || 1 * 1024 * 1024;
 
 /**
  * Create a new empty session without requiring a user message
@@ -866,7 +874,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
             }
           }
           if (!silentInit) {
-            sendMessage(ws, { type: 'message', event });
+            applyBackpressure(sendMessage(ws, { type: 'message', event }));
           }
         } else if (msg.type === 'done') {
           worker.__terminalSent = true;
