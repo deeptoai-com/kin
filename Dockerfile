@@ -55,7 +55,17 @@ RUN echo "=== Memory before build ===" && free -m && \
 # ---- Stage 2: Runtime --------------------------------------------------------
 FROM node:24-bookworm-slim AS runner
 
-# Install runtime dependencies including Python, data libraries, and document tools
+# ---- Image-size controls (default ON = unchanged behavior) -------------------
+# Two heavy, optional capability groups dominate the image size:
+#   * LibreOffice (~1GB)  -> only needed for office/doc-conversion Skills
+#   * Playwright chromium (~1.2GB) -> only needed for server-side screenshot Skills
+# Build a lean (~2.5GB) image for environments that don't use those Skills:
+#   docker build --build-arg INSTALL_OFFICE=false --build-arg INSTALL_BROWSER=false .
+ARG INSTALL_OFFICE=true
+ARG INSTALL_BROWSER=true
+
+# Core runtime deps: Python data stack + sandbox tools (bubblewrap/socat/ripgrep)
+# + lightweight doc tools (qpdf, pandoc). LibreOffice is installed separately below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
@@ -73,12 +83,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-seaborn \
     python3-bs4 \
     python3-lxml \
-    # Document processing tools for pdf/xlsx/docx skills
     qpdf \
     pandoc \
-    libreoffice-calc-nogui \
-    libreoffice-writer-nogui \
   && rm -rf /var/lib/apt/lists/*
+
+# Optional: LibreOffice (office/doc-conversion Skills). ~1GB. Gate with INSTALL_OFFICE.
+RUN if [ "$INSTALL_OFFICE" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-calc-nogui \
+        libreoffice-writer-nogui \
+      && rm -rf /var/lib/apt/lists/*; \
+    else echo "Skipping LibreOffice (INSTALL_OFFICE=$INSTALL_OFFICE)"; fi
 
 # Python packages for Skills
 # - markitdown-mcp: MCP server for document conversion
@@ -109,10 +124,14 @@ ENV NODE_ENV=production
 RUN addgroup --gid 1001 nodejs \
   && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
 
-# Playwright browsers (chromium) for server-side screenshots
+# Playwright browsers (chromium) for server-side screenshots. ~1.2GB.
+# Optional: gate with INSTALL_BROWSER (re-declared here; ARGs are stage-scoped).
+ARG INSTALL_BROWSER=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} \
-  && npx playwright install --with-deps chromium \
+  && if [ "$INSTALL_BROWSER" = "true" ]; then \
+       npx playwright install --with-deps chromium; \
+     else echo "Skipping chromium (INSTALL_BROWSER=$INSTALL_BROWSER)"; fi \
   && chown -R nodejs:nodejs ${PLAYWRIGHT_BROWSERS_PATH}
 
 # Copy build output and runtime assets
