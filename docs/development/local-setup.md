@@ -19,6 +19,18 @@ This guide describes how to run OxyGenie in a **portable development environment
 
 This guide focuses on **Hybrid** mode.
 
+> **⭐ Fastest path:** the repo ships a one-command script that automates the entire
+> Hybrid flow below (start deps → migrate → build → start). See
+> [README → Option C: One-command hybrid dev](../../README.md#option-c-one-command-hybrid-dev-recommended-for-local):
+> ```bash
+> ./scripts/dev-up.sh             # deps + migrate + build + start  → http://localhost:3000
+> ./scripts/dev-up.sh --no-build  # faster: reuse the existing build
+> ./scripts/dev-up.sh --deps-only # only start deps + run migrations
+> ./scripts/dev-down.sh           # stop the dependency containers
+> ```
+> The manual steps below explain what that script does, for when you need to run the
+> pieces individually.
+
 ---
 
 ## Hybrid Mode: Step by Step

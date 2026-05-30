@@ -6,7 +6,7 @@ Documentation hub for developers and deployers.
 
 | Document | Description |
 |----------|-------------|
-| [Local Development Setup](development/local-setup.md) | pnpm + Docker hybrid mode, portable dev environment |
+| [Local Development Setup](development/local-setup.md) | pnpm + Docker hybrid mode (incl. the `./scripts/dev-up.sh` one-command flow) |
 | [Deployment Overview](deployment/overview.md) | Deployment options: Docker Compose, Dokploy, Dokku |
 | [Docker Compose Deployment](deployment/docker-compose.md) | Single-server self-host with Docker Compose |
 | [Dokploy Deployment](deployment/dokploy.md) | Deploy on Dokploy with Traefik |
