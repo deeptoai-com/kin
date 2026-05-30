@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
+import { Semaphore } from './src/server/concurrency/semaphore.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,18 @@ function summarizeMessage(msg) {
 // Configuration
 const WS_PORT = parseInt(process.env.WS_PORT || '3001', 10);
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
+
+// S1 — single-host worker concurrency cap. Each active agent worker is a Node +
+// Claude Agent SDK child (~150–300 MB). Cap how many run at once so a burst of
+// concurrent chats queues instead of spawning unboundedly and OOM-ing the box.
+// Default 8 (tuned for a 16 GB / 8-core VPS targeting ~50 concurrent sessions —
+// most sessions are idle/awaiting the model, so a few parallel workers suffice).
+const MAX_CONCURRENT_WORKERS = Math.max(
+  1,
+  parseInt(process.env.MAX_CONCURRENT_WORKERS || '8', 10) || 8,
+);
+const workerSemaphore = new Semaphore(MAX_CONCURRENT_WORKERS);
+console.log(`[WS Server] Max concurrent workers: ${MAX_CONCURRENT_WORKERS}`);
 
 /**
  * Resolve SESSIONS_ROOT with same logic as manager.ts getUserClaudeHome()
@@ -789,12 +802,34 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
     workerEnv.CLAUDE_PERMISSION_MODE = permissionMode;
 
+    // S1 — acquire a worker permit before spawning. If all slots are busy, this
+    // awaits a free one (FIFO) instead of spawning unboundedly; tell the client
+    // it's queued so the UI can show a waiting state. The window between acquire()
+    // and spawn() below is synchronous (no await), so a held permit always maps to
+    // a spawned worker; the permit is released exactly once in worker 'close'.
+    if (workerSemaphore.activeCount >= workerSemaphore.max && !silentInit) {
+      sendMessage(ws, {
+        type: 'queued',
+        position: workerSemaphore.waitingCount + 1,
+        message: 'Server busy — your request is queued and will start shortly.',
+      });
+    }
+    await workerSemaphore.acquire();
+
     // Spawn worker process with user-specific CLAUDE_HOME
     const worker = spawn('node', [WORKER_PATH], {
       env: workerEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     ws.workerProcess = worker;
+    // S1: release this worker's concurrency permit exactly once (in 'close').
+    worker.__permitReleased = false;
+    const releaseWorkerPermit = () => {
+      if (!worker.__permitReleased) {
+        worker.__permitReleased = true;
+        workerSemaphore.release();
+      }
+    };
     // Risk #10: track whether this run already delivered a terminal frame
     // (done/error/aborted). If the worker dies without one (e.g. a crash), the
     // close handler emits a terminal error so the client never hangs "running".
@@ -932,6 +967,8 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
 
     // Handle worker exit
     worker.on('close', (code, signal) => {
+      // S1: free the concurrency slot so a queued request can start. Idempotent.
+      releaseWorkerPermit();
       try {
         console.log('[WS Server] ========== WORKER CLOSE EVENT ==========');
         console.log('[WS Server] Worker PID:', worker.pid);
@@ -976,6 +1013,8 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     });
 
     worker.on('error', (error) => {
+      // S1: on spawn failure 'close' may not fire — release here too (idempotent).
+      releaseWorkerPermit();
       try {
         console.error('[WS Server] ========== WORKER ERROR EVENT ==========');
         console.error('[WS Server] Worker PID:', worker.pid);
