@@ -53,6 +53,20 @@ const MAX_CONCURRENT_WORKERS = Math.max(
 const workerSemaphore = new Semaphore(MAX_CONCURRENT_WORKERS);
 console.log(`[WS Server] Max concurrent workers: ${MAX_CONCURRENT_WORKERS}`);
 
+// S2 — per-worker V8 heap cap. S1 bounds *how many* workers run; S2 bounds *how
+// much* each can grow, so one runaway worker (infinite loop / leak) can't eat the
+// whole 16 GB host. Passed to node as --max-old-space-size (MB). Note this caps
+// the V8 old-space heap only; process RSS typically runs ~20-30% higher. Default
+// 1536 MB (8 parallel × 1.5 G heap stays well under 16 GB with system headroom).
+// Set to 0 to disable the cap (use node's default heap sizing).
+const rawWorkerMaxOldSpaceMb = parseInt(process.env.WORKER_MAX_OLD_SPACE_MB ?? '', 10);
+const WORKER_MAX_OLD_SPACE_MB = Number.isFinite(rawWorkerMaxOldSpaceMb)
+  ? Math.max(0, rawWorkerMaxOldSpaceMb)
+  : 1536;
+console.log(
+  `[WS Server] Worker max old-space: ${WORKER_MAX_OLD_SPACE_MB ? WORKER_MAX_OLD_SPACE_MB + ' MB' : 'unbounded (node default)'}`,
+);
+
 /**
  * Resolve SESSIONS_ROOT with same logic as manager.ts getUserClaudeHome()
  * - If CLAUDE_SESSIONS_ROOT is set, use it
@@ -816,8 +830,12 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     }
     await workerSemaphore.acquire();
 
-    // Spawn worker process with user-specific CLAUDE_HOME
-    const worker = spawn('node', [WORKER_PATH], {
+    // Spawn worker process with user-specific CLAUDE_HOME.
+    // S2 — cap this worker's V8 heap so a runaway one can't OOM the host.
+    const nodeArgs = WORKER_MAX_OLD_SPACE_MB
+      ? [`--max-old-space-size=${WORKER_MAX_OLD_SPACE_MB}`, WORKER_PATH]
+      : [WORKER_PATH];
+    const worker = spawn('node', nodeArgs, {
       env: workerEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
