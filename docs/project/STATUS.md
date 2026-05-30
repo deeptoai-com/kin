@@ -45,6 +45,11 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Done (most recent first)
 
+- ✅ **Phase 0.5 PR-1 — `ExecutionRuntime` interface + `LocalProcessBackend`** (PR #39):
+  pluggable execution backend; `runPython` delegates to `runtime.exec()`. Behavior-identical
+  refactor (baseline vs after `verify-exec-sandbox` matched; edge cases compute/nonzero/timeout/
+  truncation/file-tracking + 11-field return shape all verified; `test:unit` 6/6). `EXEC_RUNTIME`
+  selector (default `local`; `docker` warns+falls back until PR-2). *(2026-05-30)*
 - ✅ **Live model wired + end-to-end smoke test** (PR #8): switched to ByteDance Ark
   (`ark-code-latest`, Anthropic-compatible endpoint); `scripts/smoke-agent.mjs` proves the full
   agent loop — real query → streamed events → tool_use → workspace file written → done. *(2026-05-30)*
