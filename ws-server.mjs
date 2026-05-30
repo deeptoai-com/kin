@@ -671,6 +671,9 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
+    // Intentional replace: suppress the close-handler recovery error.
+    ws.workerProcess.__intentionalAbort = true;
+    ws.workerProcess.__terminalSent = true;
     ws.workerProcess.kill();
     ws.workerProcess = null;
   }
@@ -1097,6 +1100,9 @@ async function handleMessage(ws, msg) {
         // Gracefully terminate worker process if running
         if (ws.workerProcess) {
           const worker = ws.workerProcess;
+          // Intentional abort: we send 'aborted' below; suppress recovery error.
+          worker.__intentionalAbort = true;
+          worker.__terminalSent = true;
           console.log('[WS Server] Attempting to kill worker process');
 
           try {
