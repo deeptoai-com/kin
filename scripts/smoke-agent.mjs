@@ -10,9 +10,12 @@
  * This proves the heart of the system is live (model + streaming + tool exec)
  * WITHOUT needing the WebSocket server, auth, or the database.
  *
- * Run from repo root (loads .env automatically):
- *   node --env-file=.env scripts/smoke-agent.mjs
+ * Run from repo root:
+ *   node scripts/smoke-agent.mjs
+ * (loads .env via dotenv; do NOT use `node --env-file=.env` — its parser mishandles
+ *  this .env's `${VAR}` references and silently drops later vars.)
  */
+import 'dotenv/config';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

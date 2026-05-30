@@ -35,7 +35,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 - ✅ **Live model wired + end-to-end smoke test** (PR #8): switched to ByteDance Ark
   (`ark-code-latest`, Anthropic-compatible endpoint); `scripts/smoke-agent.mjs` proves the full
-  agent loop — real query → 47 stream events → tool_use → workspace file written → done. *(2026-05-30)*
+  agent loop — real query → streamed events → tool_use → workspace file written → done. *(2026-05-30)*
 - ✅ **Risk #5 — agent run bounds** (PR #5): `AGENT_MAX_TURNS` → `maxTurns`, `AGENT_WALLCLOCK_TIMEOUT_MS`
   → worker watchdog; opt-in (0 = unbounded). Watchdog timing verified in isolation. *(2026-05-30)*
 - ✅ **Risks #3/#4 — cross-tenant access** (PR #4): owner predicates on 8 handlers (files.clientId /

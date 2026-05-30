@@ -7,8 +7,8 @@ external resource. Grouped by urgency. (Living — I append as I hit blockers.)
 - [x] **Live model wired & verified.** Switched from the expired GLM plan to **ByteDance Ark**
   (Anthropic-compatible): `ANTHROPIC_BASE_URL=https://ark.cn-beijing.volces.com/api/coding`,
   `ANTHROPIC_MODEL=ark-code-latest` (key in gitignored `.env`). **Full end-to-end smoke test
-  passes** (`node --env-file=.env scripts/smoke-agent.mjs`): real `query()` → 47 streamed
-  events → 1 tool_use → workspace file written with exact content → `done`. The agent loop is live.
+  passes** (`node scripts/smoke-agent.mjs`): real `query()` → ~79 streamed events → 1 tool_use →
+  workspace file written with exact content (`OXYGENIE_SMOKE_OK`) → `done`. The agent loop is live.
 
 ## 🔴 Blocks live functionality — please action
 - [ ] **Rotate the LLM key if it was ever exposed.** Current Ark key lives only in `.env`
