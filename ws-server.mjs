@@ -960,7 +960,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
  */
 async function handleMessage(ws, msg) {
   try {
-    console.log(`[WS Server] Received message from ${ws.userId}:`, msg.toString().substring(0, 200));
+    console.log(`[WS Server] Received message from ${ws.userId}:`, summarizeMessage(msg));
     const message = JSON.parse(msg);
     console.log(`[WS Server] Parsed message type: ${message.type}`);
 
@@ -1166,7 +1166,7 @@ async function handleMessage(ws, msg) {
     console.error('[WS Server] Error handling message:', handleMessageError);
     console.error('[WS Server] Error stack:', handleMessageError.stack);
     console.error('[WS Server] Error type:', handleMessageError.constructor.name);
-    console.error('[WS Server] Message preview:', msg.toString().substring(0, 500));
+    console.error('[WS Server] Message preview:', summarizeMessage(msg));
     console.error('[WS Server] User ID:', ws.userId);
     console.error('[WS Server] ==================================================');
 
