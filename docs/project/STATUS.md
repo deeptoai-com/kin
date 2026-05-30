@@ -9,10 +9,13 @@ Research is done — the adversarial architecture review + Deep Agents compariso
 ([`research/2026-05-architecture-review.md`](./research/2026-05-architecture-review.md))
 **and** a scalability / execution-runtime study
 ([`research/2026-05-scalability-and-runtime.md`](./research/2026-05-scalability-and-runtime.md)).
-We are in **Phase 0: Foundation**, laying groundwork (repo split, CI gates, dev env)
-**before** real tuning. The runtime study added **Phase 0.5** (execution-runtime + sandbox
-decision) ahead of Phase 1: adopt Anthropic's `srt` for sandboxing + a TS `ExecutionRuntime`
-abstraction, then a 100→1000-concurrency bake-off (serverless vs self-hosted sandboxes).
+**Phase 0 (Foundation) is largely done** (repo split, CI gates + branch protection, project
+memory, Docker dev stack, live ByteDance Ark model + passing e2e smoke). We are now **mid
+Phase 1 (security hardening)** — Risks #1/#2/#3/#4/#5/#10 + D4 shipped as merged PRs. The
+runtime study added **Phase 0.5** (execution-runtime + sandbox re-platform) which still needs a
+human design checkpoint + sandbox-backend budget before it starts (see HUMAN-REVIEW.md).
+Caveat: several Phase-1 fixes are code-verified (node --check / unit / smoke) but their full
+WS+auth+DB integration behavior is **NEEDS-VERIFY** pending the running stack.
 **Autonomous sprint in progress** (see `SPRINT-2026-06.md`): first security fixes have landed on
 main — Risk #1 (srt exec sandbox), Risks #3/#4 (cross-tenant scoping), Risk #5 (turn/wall-clock
 bounds). **Live model is now wired & verified end-to-end** via ByteDance Ark (`ark-code-latest`,
