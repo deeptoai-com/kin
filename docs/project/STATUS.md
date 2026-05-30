@@ -45,6 +45,16 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Done (most recent first)
 
+- ✅ **Phase 0.5 PR-4 — WebSocket backpressure (C4)** (PR #43): worker `send()` awaits stdout
+  `drain`; ws-server pauses `worker.stdout` above 8MB `ws.bufferedAmount`, resumes below 1MB.
+  Verified: smoke PASS (no streaming regression) + standalone primitive test BACKPRESSURE_WORKS. *(2026-05-30)*
+- ✅ **Phase 0.5 PR-3 — unify route path guard (B3)** (PR #42): 5 duplicated `validateFilePath`
+  → one shared `src/server/security/validate-relative-path.ts` (+ hardening: reject `\`, `C:/`, `./`).
+  Verified: test:unit 13/13; regression 7 allow / 16 deny. *(2026-05-30)*
+- ✅ **Phase 0.5 PR-2 — `DockerBackend`** (PR #41): per-exec locked-down container (network none,
+  non-root, read-only rootfs + workspace mount, cpu/mem/pids caps, host env not inherited), via
+  `EXEC_RUNTIME=docker`. Verified in real containers: host key→NONE, network→BLOCKED, ws-write +
+  file-tracking, nonzero/timeout/truncation all correct. *(2026-05-30)*
 - ✅ **Phase 0.5 PR-1 — `ExecutionRuntime` interface + `LocalProcessBackend`** (PR #39):
   pluggable execution backend; `runPython` delegates to `runtime.exec()`. Behavior-identical
   refactor (baseline vs after `verify-exec-sandbox` matched; edge cases compute/nonzero/timeout/
