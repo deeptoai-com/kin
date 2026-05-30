@@ -17,6 +17,7 @@
     "worker": "node --import tsx/loader src/worker/index.ts",
     "search:sync": "node --import tsx/loader src/scripts/search-sync.ts",
     "test": "vitest",
+    "test:unit": "vitest run tests/unit",
     "test:auth": "vitest tests/auth-integration.test.ts",
     "test:auth:watch": "vitest tests/auth-integration.test.ts --watch",
     "test:e2e": "vitest tests/e2e-auth-billing.test.ts",
