@@ -53,7 +53,7 @@ function RouteComponent() {
           </Button>
           <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
             <a
-              href="https://github.com/Deeptoai-com/OxyGenie"
+              href="https://github.com/foreveryh/oxygenie"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -317,7 +317,7 @@ function RouteComponent() {
           </p>
           <p className="text-center text-sm text-muted-foreground">
             <a
-              href="https://github.com/Deeptoai-com/OxyGenie"
+              href="https://github.com/foreveryh/oxygenie"
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"

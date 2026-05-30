@@ -45,7 +45,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 
 1. **克隆并安装:**
    ```bash
-   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   git clone https://github.com/foreveryh/oxygenie.git
    cd OxyGenie
    pnpm install
    ```
@@ -351,7 +351,7 @@ pnpm test            # 运行测试
 
 ## 链接
 
-- **GitHub**: https://github.com/Deeptoai-com/OxyGenie
+- **GitHub**: https://github.com/foreveryh/oxygenie
 - **Claude Agent SDK**: https://github.com/anthropics/claude-agent-sdk
 - **Mastra 文档**: https://mastra.ai
 - **Assistant UI**: https://assistant-ui.com

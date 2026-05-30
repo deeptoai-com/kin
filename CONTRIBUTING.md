@@ -35,7 +35,7 @@ Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   git clone https://github.com/foreveryh/oxygenie.git
    cd OxyGenie
    ```
 

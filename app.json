@@ -2,8 +2,8 @@
   "name": "oxygenie",
   "description": "OxyGenie - Enterprise AI Agent Platform",
   "keywords": ["tanstack", "react", "typescript", "ai", "agent"],
-  "website": "https://github.com/Deeptoai-com/OxyGenie",
-  "repository": "https://github.com/Deeptoai-com/OxyGenie",
+  "website": "https://github.com/foreveryh/oxygenie",
+  "repository": "https://github.com/foreveryh/oxygenie",
   "scripts": {
     "dokku": {
       "predeploy": "pnpm run db:migrate"

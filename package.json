@@ -1,7 +1,7 @@
 {
   "name": "oxygenie",
   "description": "OxyGenie - Extensible enterprise AI agent platform, based on Constructa scaffold",
-  "repository": "https://github.com/Deeptoai-com/OxyGenie",
+  "repository": "https://github.com/foreveryh/oxygenie",
   "private": true,
   "sideEffects": false,
   "type": "module",

@@ -46,7 +46,7 @@ Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first al
 ### Build from Source
 
 ```bash
-git clone https://github.com/Deeptoai-com/OxyGenie.git
+git clone https://github.com/foreveryh/oxygenie.git
 cd OxyGenie
 pnpm install
 ```
@@ -59,7 +59,7 @@ pnpm install
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   git clone https://github.com/foreveryh/oxygenie.git
    cd OxyGenie
    ```
 
@@ -110,7 +110,7 @@ pnpm install
 
 1. **Clone and install:**
    ```bash
-   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   git clone https://github.com/foreveryh/oxygenie.git
    cd OxyGenie
    pnpm install
    ```
@@ -448,7 +448,7 @@ To report security vulnerabilities, please see [SECURITY.md](SECURITY.md).
 
 ## Links
 
-- **GitHub**: https://github.com/Deeptoai-com/OxyGenie
+- **GitHub**: https://github.com/foreveryh/oxygenie
 - **Claude Agent SDK**: https://github.com/anthropics/claude-agent-sdk
 - **Mastra Docs**: https://mastra.ai
 - **Assistant UI**: https://assistant-ui.com

@@ -8,7 +8,7 @@ We take security seriously. If you discover a security vulnerability in OxyGenie
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please use [GitHub Security Advisories](https://github.com/Deeptoai-com/OxyGenie/security/advisories/new) to report vulnerabilities.
+Instead, please use [GitHub Security Advisories](https://github.com/foreveryh/oxygenie/security/advisories/new) to report vulnerabilities.
 
 Include the following information:
 - Description of the vulnerability

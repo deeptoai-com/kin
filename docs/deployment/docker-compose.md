@@ -13,7 +13,7 @@ Deploy OxyGenie on a single server using Docker Compose. Best for self-hosted, V
 ## Step 1: Clone and Configure
 
 ```bash
-git clone https://github.com/Deeptoai-com/OxyGenie.git
+git clone https://github.com/foreveryh/oxygenie.git
 cd OxyGenie
 pnpm install
 ```

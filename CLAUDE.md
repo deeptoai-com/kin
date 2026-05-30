@@ -32,7 +32,7 @@
 
 本项目基于 **TanStack Start** 构建。
 
-**GitHub 仓库**: https://github.com/Deeptoai-com/OxyGenie
+**GitHub 仓库**: https://github.com/foreveryh/oxygenie
 
 **已完成的功能 (Phase 1-4)**:
 - Phase 1: WebSocket 服务器 + Claude Agent SDK 集成
@@ -89,7 +89,7 @@ docker-compose up -d
 ## Git 工作流
 
 - 主分支: `main`
-- 远程仓库: `origin` → https://github.com/Deeptoai-com/OxyGenie
+- 远程仓库: `origin` → https://github.com/foreveryh/oxygenie
 - 直接在 `main` 分支开发，或创建 feature 分支后合并
 
 ---
@@ -723,12 +723,12 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 ```bash
 # ✅ 正确：指定目标平台为 linux/amd64
 docker buildx build --platform linux/amd64 \
-  -t ghcr.io/Deeptoai-com/OxyGenie/app:latest \
+  -t ghcr.io/foreveryh/oxygenie/app:latest \
   --push .
 
 # ❌ 错误：不指定平台（会构建本机架构 arm64）
-docker build -t ghcr.io/Deeptoai-com/OxyGenie/app:latest .
-docker push ghcr.io/Deeptoai-com/OxyGenie/app:latest
+docker build -t ghcr.io/foreveryh/oxygenie/app:latest .
+docker push ghcr.io/foreveryh/oxygenie/app:latest
 ```
 
 #### 推送前认证
@@ -745,8 +745,8 @@ echo $(gh auth token) | docker login ghcr.io -u USERNAME --password-stdin
 
 ```bash
 # 拉取并检查架构
-docker pull ghcr.io/Deeptoai-com/OxyGenie/app:latest
-docker inspect ghcr.io/Deeptoai-com/OxyGenie/app:latest | jq '.[0].Architecture'
+docker pull ghcr.io/foreveryh/oxygenie/app:latest
+docker inspect ghcr.io/foreveryh/oxygenie/app:latest | jq '.[0].Architecture'
 # 应输出: "amd64"
 ```
 
