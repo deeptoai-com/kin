@@ -145,6 +145,45 @@ pnpm install
 5. **Open the app:**  
    http://localhost:3000/agents/claude-chat
 
+### Option C: One-command hybrid dev (recommended for local) ⭐
+
+Runs the **dependency services in Docker** (Postgres, Redis, MinIO, Meilisearch) and the
+**app as a local Node process** (Nitro :3000 + WebSocket :3001). This is the fastest way
+to a running app and is the recipe verified end-to-end (see `docs/project/WORKLOG.md`).
+
+```bash
+# One-time setup
+cp .env.example .env            # then edit .env (see the LOCAL values below)
+cp .env.docker.example .env.docker
+
+# Bring everything up: deps → migrate → build → start
+./scripts/dev-up.sh             # http://localhost:3000
+
+# Faster iterations (reuse the existing build):
+./scripts/dev-up.sh --no-build
+
+# Only start deps + run migrations (then run the app yourself):
+./scripts/dev-up.sh --deps-only
+
+# Tear down the dependency containers:
+./scripts/dev-down.sh
+```
+
+**Required LOCAL `.env` values** (these differ from the Docker port-mapping defaults):
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/oxygenie"
+BETTER_AUTH_URL="http://localhost:3000"      # must match the local port, NOT :5050
+VITE_BASE_URL="http://localhost:3000"
+VITE_WS_URL="ws://localhost:3001/ws/agent"   # WebSocket server runs on :3001
+ENABLE_EXEC_SANDBOX="0"                        # macOS dev (srt Seatbelt breaks python); Linux prod uses 1
+ANTHROPIC_BASE_URL="https://ark.cn-beijing.volces.com/api/coding"  # or your Anthropic-compatible gateway
+ANTHROPIC_MODEL="ark-code-latest"
+```
+
+> Note: the app runs as a **local Node process**, so only the 4 dependency containers
+> appear in Docker/OrbStack — that's expected for hybrid mode.
+
 ## Why OxyGenie?
 
 ### vs. Generic GPT Products (ChatGPT, 豆包, DeepSeek)
