@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
     bubblewrap \
+    socat \
     ripgrep \
     python3 \
     python3-pip \
