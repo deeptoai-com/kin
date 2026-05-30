@@ -49,7 +49,16 @@ export function buildSafeEnv(overrides = {}) {
 }
 
 function isEnabled() {
-  return process.env.ENABLE_EXEC_SANDBOX !== '0' && SandboxManager != null;
+  if (SandboxManager == null) return false;
+  // Explicit override wins either way.
+  if (process.env.ENABLE_EXEC_SANDBOX === '0') return false;
+  if (process.env.ENABLE_EXEC_SANDBOX === '1') return true;
+  // Default: ON for Linux (the production isolation target, verified with bubblewrap),
+  // OFF for macOS/Windows local dev. On macOS the srt Seatbelt profile denies system
+  // paths (e.g. /private/var/select) and breaks legitimate python; isolation there is
+  // a dev convenience only. NOTE: secret env-stripping (buildSafeEnv) ALWAYS applies,
+  // sandbox on or off — so keys never reach tool code regardless of platform.
+  return process.platform === 'linux';
 }
 
 function buildConfig(workspace) {
