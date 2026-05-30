@@ -13,7 +13,9 @@ We are in **Phase 0: Foundation**, laying groundwork (repo split, CI gates, dev 
 **before** real tuning. The runtime study added **Phase 0.5** (execution-runtime + sandbox
 decision) ahead of Phase 1: adopt Anthropic's `srt` for sandboxing + a TS `ExecutionRuntime`
 abstraction, then a 100→1000-concurrency bake-off (serverless vs self-hosted sandboxes).
-No production tuning / security fixes have started yet.
+**Autonomous sprint in progress** (see `SPRINT-2026-06.md`): first security fixes have landed on
+main — Risk #1 (srt exec sandbox), Risks #3/#4 (cross-tenant scoping), Risk #5 (turn/wall-clock
+bounds). Live end-to-end agent runs remain **blocked on GLM plan renewal** (see `HUMAN-REVIEW.md`).
 
 ## Phase tracker
 
@@ -29,6 +31,12 @@ No production tuning / security fixes have started yet.
 
 ## Done (most recent first)
 
+- ✅ **Risk #5 — agent run bounds** (PR #5): `AGENT_MAX_TURNS` → `maxTurns`, `AGENT_WALLCLOCK_TIMEOUT_MS`
+  → worker watchdog; opt-in (0 = unbounded). Watchdog timing verified in isolation. *(2026-05-30)*
+- ✅ **Risks #3/#4 — cross-tenant access** (PR #4): owner predicates on 8 handlers (files.clientId /
+  agentSession.userId / kb.userId / attachment→session chain), found via subagent sweep. *(2026-05-30)*
+- ✅ **Risk #1 — exec sandbox** (PR #3): srt wraps Python tool exec (deny-net + workspace-fenced FS) +
+  secret env-strip; verified end-to-end in an OrbStack container (seccomp=unconfined). *(2026-05-30)*
 - ✅ **Scalability / runtime research** (deep-read of hermes-agent, deer-flow, ruflo,
   Anthropic `srt`) → target architecture + Plan A/B + **Phase 0.5** added to ROADMAP.
   Key find: adopt `@anthropic-ai/sandbox-runtime` (TS, Apache-2.0) for exec isolation.

@@ -32,6 +32,16 @@ Running log of problems hit and techniques learned while developing OxyGenie, so
 
 ## Git / GitHub
 
+- **`commit.gpgsign=true` hangs `git commit` in this environment** (no gpg agent/tty). Symptom:
+  commit never returns. Fix: `git -c commit.gpgsign=false commit --no-verify -m "..."`.
+- **Heredoc `git commit -F -` (stdin) can also hang** here — prefer repeated `-m` flags.
+- **Terminal echo intermittently garbles/duplicates Bash output** (saw it badly this session).
+  When output looks doubled or truncated mid-line, write results to a file and `Read` it — don't
+  act on the garbled echo (especially before code edits or merges).
+- **Multi-line statements defeat single-line greps**: a subagent reported a `db.delete(...).where(...)`
+  as one line; the real code spanned 3 lines, so one of two identical fixes silently missed. Verify the
+  actual file region before trusting a line-based finding.
+
 - **`git commit -- <pathspec>` commits the WORKING-TREE version of a still-present path.** After
   `git rm --cached .env.docker` (file kept on disk), passing `.env.docker` in the commit pathspec
   re-added it. Fix: stage the removal and commit staged changes (no pathspec), or `--amend`.
