@@ -821,12 +821,33 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // Read responses line by line
     const rl = createInterface({ input: worker.stdout });
 
+    // C4 backpressure (consumer side): when the WS send buffer grows past HIGH,
+    // pause reading the worker's stdout; resume once it drains below LOW (or the
+    // socket closes). Pausing fills the OS pipe, which (via the worker's drain-await)
+    // throttles the producer — so a fast stream + slow client can't grow memory.
+    let bpTimer = null;
+    const applyBackpressure = (buffered) => {
+      if (bpTimer || buffered <= WS_BACKPRESSURE_HIGH) return;
+      try { worker.stdout.pause(); } catch { /* ignore */ }
+      bpTimer = setInterval(() => {
+        if (ws.readyState !== ws.OPEN || ws.bufferedAmount <= WS_BACKPRESSURE_LOW) {
+          clearInterval(bpTimer);
+          bpTimer = null;
+          try { worker.stdout.resume(); } catch { /* ignore */ }
+        }
+      }, 50);
+    };
+    const clearBackpressure = () => {
+      if (bpTimer) { clearInterval(bpTimer); bpTimer = null; }
+    };
+
     // Handle readline errors (e.g., when worker is killed abruptly)
     rl.on('error', (error) => {
       console.log('[WS Server] Readline error (expected on abort):', error.message);
     });
 
     rl.on('close', () => {
+      clearBackpressure();
       // Readline closed, worker output ended
     });
 

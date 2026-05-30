@@ -566,8 +566,14 @@ Example bad operations:
         }
       }
 
-      // Send each event as a JSON line
-      process.stdout.write(JSON.stringify({ type: 'event', event }) + '\n');
+      // Send each event as a JSON line. C4 backpressure (producer side): if the
+      // pipe to the parent is full (parent paused reading because the WS client is
+      // slow), await 'drain' before continuing so the SDK event pump stops instead
+      // of buffering unboundedly in this worker.
+      const ok = process.stdout.write(JSON.stringify({ type: 'event', event }) + '\n');
+      if (!ok) {
+        await new Promise((resolve) => process.stdout.once('drain', resolve));
+      }
     }
 
     // Signal completion (only if not terminating)
