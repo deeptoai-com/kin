@@ -8,6 +8,7 @@ import { polar, checkout, portal, webhooks } from '@polar-sh/better-auth';
 import { sql, eq } from 'drizzle-orm';
 
 import { db } from '~/db/db-config';
+import { recordAudit } from '~/server/audit';
 import { sendEmail } from './email';
 import { polarEnv } from '~/conf/polar';
 import { polarWebhookHandlers } from '~/server/polar-webhooks';
@@ -142,6 +143,30 @@ export const auth = betterAuth({
         console.error('[auth] Failed to set first user as admin:', error);
         // Don't throw - let registration succeed
       }
+    },
+  },
+  // P2-2: audit logins. A new session row == a successful sign-in. recordAudit
+  // swallows its own errors, and we additionally guard here so auditing can
+  // never break authentication.
+  databaseHooks: {
+    session: {
+      create: {
+        // `session` is contextually typed by better-auth (Session & Record<…>);
+        // do not annotate it — a narrower annotation breaks options inference.
+        after: async (session) => {
+          try {
+            await recordAudit({
+              userId: session.userId ?? null,
+              action: 'auth.login',
+              target: session.id ?? null,
+              meta: { userAgent: session.userAgent ?? null },
+              ip: session.ipAddress ?? null,
+            });
+          } catch {
+            // never block sign-in on audit failure
+          }
+        },
+      },
     },
   },
   advanced: {

@@ -356,6 +356,35 @@ async function recordUsage(cookie, workspaceSessionId, event) {
 }
 
 /**
+ * P2-2: Append a security-relevant audit event via /api/audit.
+ *
+ * Fire-and-forget — audit logging must never block or break the action it
+ * records. The acting user is taken from the cookie server-side (not spoofable).
+ *
+ * @param {string} cookie - Auth cookie for the acting user
+ * @param {string} action - Dotted action key, e.g. 'run.abort', 'run.bypass_mode'
+ * @param {string|null} target - Optional subject (e.g. session id)
+ * @param {Record<string, unknown>} [meta] - Structured context
+ */
+async function recordAuditEvent(cookie, action, target, meta = {}) {
+  try {
+    const response = await fetch(`${APP_URL}/api/audit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        cookie,
+      },
+      body: JSON.stringify({ action, target: target ?? null, meta }),
+    });
+    if (!response.ok) {
+      console.error('[WS Server] Failed to record audit:', response.status, await response.text());
+    }
+  } catch (error) {
+    console.error('[WS Server] Error recording audit:', error);
+  }
+}
+
+/**
  * Load session data from database
  * Returns full session info including realSdkSessionId and claudeHomePath
  */
@@ -883,6 +912,15 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
     workerEnv.CLAUDE_PERMISSION_MODE = permissionMode;
 
+    // P2-2: audit runs that start with elevated (bypass) permissions — these
+    // skip per-tool permission prompts, so they are security-relevant.
+    if (permissionMode === 'bypassPermissions') {
+      recordAuditEvent(ws.cookie, 'run.bypass_mode', ws.workspaceSessionId, {
+        allowBash,
+        source: organizationId ? 'organization' : 'environment',
+      });
+    }
+
     // S1 — acquire a worker permit before spawning. If all slots are busy, this
     // awaits a free one (FIFO) instead of spawning unboundedly; tell the client
     // it's queued so the UI can show a waiting state. The window between acquire()
@@ -1267,6 +1305,11 @@ async function handleMessage(ws, msg) {
           worker.__intentionalAbort = true;
           worker.__terminalSent = true;
           console.log('[WS Server] Attempting to kill worker process');
+
+          // P2-2: audit the run abort (security-relevant lifecycle action).
+          recordAuditEvent(ws.cookie, 'run.abort', ws.workspaceSessionId, {
+            workerPid: worker.pid ?? null,
+          });
 
           try {
             // Send SIGTERM first (graceful shutdown)
