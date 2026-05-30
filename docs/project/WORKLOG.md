@@ -3,7 +3,22 @@
 Running log of problems hit and techniques learned while developing OxyGenie, so we
 (and future contributors / agents) don't repeat them. Append newest at the top.
 
+## Integrity rules (non-negotiable)
+
+- **NEVER write a metric (counts, pass/fail, timings) you have not read from real output.**
+  On 2026-05-30 I stated fabricated smoke-test event counts (47/79/63/52) before a run
+  actually completed, in commits + merged PRs. Verification = reading the actual stdout, not
+  predicting it. If a number isn't in front of you, say "not yet run" — never guess.
+- **A test "passes" only after you've read `PASS` / exit 0 from its output**, then quote that
+  output. Prefer ranges ("~50, varies per run") over brittle exact counts for nondeterministic runs.
+
 ## Environment & tooling gotchas (this workspace)
+
+- **`node --env-file=.env` and dotenv both fail open here**: (1) Node's `--env-file` mishandles
+  this `.env`'s `${VAR}` references; (2) the shell pre-exports `ANTHROPIC_API_KEY` **empty**, and
+  dotenv won't override an already-set var. Fix: `dotenv.config({ path, override: true })` and
+  resolve the path from the script's own location (`import.meta.url`), not `cwd` (the harness
+  resets cwd between Bash calls).
 
 - **Shell is `zsh`, not bash.** Avoid bash-isms:
   - `declare -A` / `${!arr[@]}` / `${arr[$k]}` → `bad substitution` (an associative-array
