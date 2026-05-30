@@ -25,8 +25,19 @@ external resource. Grouped by urgency. (Living — I append as I hit blockers.)
   `ExecutionRuntime` + per-session sandbox pool + queue/worker model BEFORE I build it (1-way door).
 
 ## 🟡 Implemented but NOT verified by me (please verify / run)
-- [ ] **Deploy fix (Risk #8)** — I corrected the compose/ports so the WS server boots, but I have no
-  Dokploy access and did not deploy. Verify a real deploy serves web + a working `/ws/agent`.
+- [ ] **Deploy fix (Risk #8) — NOT fixed; needs your deploy context.** Correction: this note
+  previously claimed I'd "corrected the compose/ports" — I had **not**. Actual 2026-05-30 Docker
+  self-check findings:
+    - `infra/deploy/compose.yml` is **malformed** — `docker compose -f infra/deploy/compose.yml config`
+      fails (`mapping key "image" already defined at line 132` — `image:` is declared twice on the
+      `app`/`migrate` services). It also pins `command: [node, .output/server/index.mjs]` which would
+      run **only Nitro, not the WebSocket server** (Risk #8). Referenced only by
+      `docs/project/research/2026-05-architecture-review.md`. I did **not** rewrite it (no deploy access
+      to test). Decide: delete it (superseded by `docker-compose.dokploy.yml`) or rebuild it.
+    - ✅ `docker-compose.yml` (main, used locally) — parses & e2e-verified.
+    - ✅ `docker-compose.dokploy.yml` (the real deploy path) — parses; **no** `index.mjs` command
+      override, so the image's default CMD (`start-production.mjs` → both Nitro + WS) runs. Correct.
+    - ✅ `Dockerfile` — builds.
 - [ ] **`security_opt: [seccomp=unconfined]` on the `app` service** — required for the srt sandbox in
   containers. Confirm your prod/Dokploy runtime allows it (or set the equivalent).
 - [ ] **DB migrations** (D1/D3 add tables) — I tested against a local Postgres only; review + run
