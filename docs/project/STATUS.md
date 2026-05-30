@@ -5,6 +5,15 @@
 
 ## Current position (one-paragraph snapshot)
 
+**🎉 2026-05-30: the app now runs and was VERIFIED IN A BROWSER end-to-end.** Hybrid local mode
+(Docker deps db/redis/minio/meili + `node start-production.mjs` on :3000, WS :3001 — see WORKLOG
+run recipe). A human registered, opened a chat, and ran a Python tool task ("compute 2**10 →
+result.txt"): the full path works — ByteDance Ark (`ark-code-latest`) streaming → multi-step tool
+loop → real Python execution → file written (`1024`). Three real bugs were found *by* this browser
+testing and fixed: Invalid origin (BETTER_AUTH_URL/VITE_BASE_URL 5050→3000), WebSocket couldn't
+connect (VITE_WS_URL → :3001), and the Python tool was killed by srt's macOS Seatbelt (PR #29:
+OS sandbox now Linux-only, secret env-strip always on).
+
 Research is done — the adversarial architecture review + Deep Agents comparison
 ([`research/2026-05-architecture-review.md`](./research/2026-05-architecture-review.md))
 **and** a scalability / execution-runtime study
