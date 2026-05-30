@@ -141,7 +141,7 @@ export const deleteKnowledgeBase = createServerFn({ method: 'POST' })
 
     await db
       .delete(knowledgeBases)
-      .where(eq(knowledgeBases.id, data.id));
+      .where(and(eq(knowledgeBases.id, data.id), eq(knowledgeBases.userId, user.id)));
 
     return { success: true };
   });
