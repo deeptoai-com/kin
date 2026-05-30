@@ -49,14 +49,18 @@ jobs:
         # to Server Functions (tracked as a separate remediation task).
         continue-on-error: true
 
-      - name: Run tests
+      - name: Unit tests (hard gate)
+        run: pnpm test:unit
+        env:
+          NODE_ENV: test
+
+      - name: Integration/e2e tests
         run: pnpm test
-        # Non-blocking for now: the current suite is e2e/integration and needs a
-        # live app server + Postgres (DATABASE_URL). Tracked: split unit vs e2e
-        # and provision service containers so this can become a hard gate.
+        # Non-blocking: the e2e/integration suite needs a live app server +
+        # Postgres (DATABASE_URL). Tracked: provision service containers so it
+        # can become a hard gate too.
         continue-on-error: true
         env:
-          # Minimal env vars for tests (if needed)
           NODE_ENV: test
 
       - name: Build
