@@ -52,18 +52,21 @@ checkpointing, and cost. Deep-read of hermes-agent, deer-flow, ruflo, and Anthro
       abort/snapshot reserved) — pattern from hermes-agent `BaseEnvironment` + deer-flow
       `SandboxProvider`. First backend `LocalProcessBackend` (local-process + srt), behind
       `getExecutionRuntime()` (EXEC_RUNTIME selector). Behavior-identical refactor. *(PR #39, PR-1)*
+- [x] **Second backend `DockerBackend`** — per-exec locked-down container (network none,
+      non-root, read-only rootfs + workspace mount, cpu/mem/pids caps, host env not
+      inherited). Container-grade isolation on any host incl. macOS. `EXEC_RUNTIME=docker`. *(PR #41, PR-2)*
 - [ ] **Move execution off per-message spawn** → per-session sandbox (warm pool,
-      reused across messages) behind that interface.
+      reused across messages) behind that interface. *(needs design + the scale-backend decision)*
 - [ ] **Decouple tiers**: stateless web/WS gateway · shared session state
-      (Postgres/Redis) · object-store workspaces · queue-driven worker pool.
+      (Postgres/Redis) · object-store workspaces · queue-driven worker pool. *(large; human checkpoint)*
 - [ ] **Pick the scale backend** (spike): serverless sandboxes (Modal/Daytona/E2B,
       hibernate-on-idle, Node SDKs) vs self-managed container pool (Docker → K8s
-      provisioner, à la deer-flow). Decide **Plan A (integrate)** vs **B (self-build)**.
-- [ ] **Concurrency spike**: memory/latency curve at 100 → 1000 concurrent sessions.
-- [ ] **(folded from Phase 1) Unify path guards**: the worker's `path-security.js`
-      `canUseTool` vs the route-level `validateFilePath` (5 routes) — share one module. (B3)
-- [ ] **(folded from Phase 1) Backpressure**: honor `ws.bufferedAmount` in `sendMessage`
-      and await stdout `drain` in the worker, so a fast stream + slow client can't OOM. (C4)
+      provisioner, à la deer-flow). Decide **Plan A (integrate)** vs **B (self-build)**. *(needs budget/account — HUMAN)*
+- [ ] **Concurrency spike**: memory/latency curve at 100 → 1000 concurrent sessions. *(after a scale backend exists)*
+- [x] **(folded from Phase 1) Unify path guards**: the 5 routes' duplicated
+      `validateFilePath` → one shared `validateRelativePath` module (+ hardening, unit tests). (B3) *(PR #42)*
+- [x] **(folded from Phase 1) Backpressure**: worker awaits stdout `drain`; ws-server pauses
+      `worker.stdout` on high `ws.bufferedAmount` — a fast stream + slow client can't OOM. (C4) *(PR #43)*
 
 **Exit criteria:** a TS `ExecutionRuntime` abstraction with srt sandboxing live; a
 documented A-vs-B decision + a 1000-concurrent-session benchmark; execution no longer
