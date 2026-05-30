@@ -120,3 +120,6 @@ test-advanced-features.log
 test-advanced-features-results.json
 # Intlayer
 .intlayer
+
+# S5 load-test output (local results, never committed)
+loadtest-results/
