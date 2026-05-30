@@ -61,9 +61,12 @@ concurrency governance (cap + queue + resource limits), not multi-machine distri
       FIFO Semaphore caps simultaneously-active workers, queues the rest, sends a `queued` frame.
       Direct OOM fix (≤8 parallel × ~250MB ≈ 2GB vs 50 × 250MB ≈ 12.5GB). Verified: boots clean,
       env override honored, semaphore unit tests + `test:unit` 20/20. *(PR #48)*
-- [ ] **S2 — Per-worker resource caps** (mem/CPU; reuse `EXEC_DOCKER_MEMORY`/`--max-old-space-size`).
-- [ ] **S3 — Idle WS connection / worker reaping.**
-- [ ] **S5 — Capacity bench** on a 16G/8-core box; calibrate the default cap; document in README.
+- [x] **S2 — Per-worker resource caps**: `WORKER_MAX_OLD_SPACE_MB` → node `--max-old-space-size`;
+      Docker backend reuses `EXEC_DOCKER_MEMORY`. *(PR #51)*
+- [x] **S3 — Idle WS connection reaper**: `WS_IDLE_TIMEOUT_MS` + `shouldReapIdle()` (skips active
+      workers; pong ≠ activity). *(PR #52)*
+- [x] **S5 — Capacity load-test harness** (`scripts/loadtest/`, Phase A local). Calibrate defaults
+      on a real 16G/8-core box + write results to README. *(PR #53)*
 
 **Deferred to a future multi-machine goal (design stored, not executed for single-host 50):**
 - [~] **Move execution off per-message spawn** → per-session warm pool. Not needed for single-host 50.
