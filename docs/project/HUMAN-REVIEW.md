@@ -3,12 +3,16 @@
 Everything I could NOT do autonomously, or that needs your decision / verification /
 external resource. Grouped by urgency. (Living — I append as I hit blockers.)
 
+## ✅ Resolved since last note
+- [x] **Live model wired & verified.** Switched from the expired GLM plan to **ByteDance Ark**
+  (Anthropic-compatible): `ANTHROPIC_BASE_URL=https://ark.cn-beijing.volces.com/api/coding`,
+  `ANTHROPIC_MODEL=ark-code-latest` (key in gitignored `.env`). **Full end-to-end smoke test
+  passes** (`node --env-file=.env scripts/smoke-agent.mjs`): real `query()` → 47 streamed
+  events → 1 tool_use → workspace file written with exact content → `done`. The agent loop is live.
+
 ## 🔴 Blocks live functionality — please action
-- [ ] **Renew the GLM Coding Plan** (key in `.env`; endpoint `open.bigmodel.cn/api/anthropic`,
-  model `glm-5.1`). It returned `1309 套餐已到期`, so **no live agent run has been tested
-  end-to-end**. Wiring is correct; should work on renewal. → then re-run an actual chat.
-- [ ] **Rotate the shared LLM key** if it was ever exposed: `ANTHROPIC/OPENAI/ZHIPU` all used one
-  proxy value. (No git leak found, but it's reused widely.)
+- [ ] **Rotate the LLM key if it was ever exposed.** Current Ark key lives only in `.env`
+  (gitignored, never committed). Prior GLM/ZHIPU values were reused widely — rotate to be safe.
 
 ## 🟠 Decisions only you can make (I implemented sane defaults / left flagged)
 - [ ] **Billing/metering model** (Workstream D2): what one run costs, free tier, per-token vs per-run.

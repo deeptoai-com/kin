@@ -15,7 +15,9 @@ decision) ahead of Phase 1: adopt Anthropic's `srt` for sandboxing + a TS `Execu
 abstraction, then a 100→1000-concurrency bake-off (serverless vs self-hosted sandboxes).
 **Autonomous sprint in progress** (see `SPRINT-2026-06.md`): first security fixes have landed on
 main — Risk #1 (srt exec sandbox), Risks #3/#4 (cross-tenant scoping), Risk #5 (turn/wall-clock
-bounds). Live end-to-end agent runs remain **blocked on GLM plan renewal** (see `HUMAN-REVIEW.md`).
+bounds). **Live model is now wired & verified end-to-end** via ByteDance Ark (`ark-code-latest`,
+Anthropic-compatible) — `scripts/smoke-agent.mjs` drives a real agent run (query → stream → tool →
+file → done). The earlier GLM-plan blocker is resolved.
 
 ## Phase tracker
 
@@ -31,6 +33,9 @@ bounds). Live end-to-end agent runs remain **blocked on GLM plan renewal** (see 
 
 ## Done (most recent first)
 
+- ✅ **Live model wired + end-to-end smoke test** (PR #8): switched to ByteDance Ark
+  (`ark-code-latest`, Anthropic-compatible endpoint); `scripts/smoke-agent.mjs` proves the full
+  agent loop — real query → 47 stream events → tool_use → workspace file written → done. *(2026-05-30)*
 - ✅ **Risk #5 — agent run bounds** (PR #5): `AGENT_MAX_TURNS` → `maxTurns`, `AGENT_WALLCLOCK_TIMEOUT_MS`
   → worker watchdog; opt-in (0 = unbounded). Watchdog timing verified in isolation. *(2026-05-30)*
 - ✅ **Risks #3/#4 — cross-tenant access** (PR #4): owner predicates on 8 handlers (files.clientId /
