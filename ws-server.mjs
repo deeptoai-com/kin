@@ -1091,11 +1091,10 @@ async function handleMessage(ws, msg) {
       console.log('[WS Server] Worker PID:', ws.workerProcess?.pid);
 
       try {
-        // Abort the controller if it exists
-        if (ws.abortController) {
-          console.log('[WS Server] Aborting controller');
-          ws.abortController.abort('user_interrupt');
-        }
+        // Cancellation is process-level: the agent loop runs in an isolated child
+        // process, so SIGTERM (then SIGKILL after 2s) is the cancellation mechanism.
+        // The worker handles SIGTERM gracefully (sets isTerminating, exits the loop).
+        // (Removed dead `ws.abortController` branch — it was never assigned.)
 
         // Gracefully terminate worker process if running
         if (ws.workerProcess) {
@@ -1267,9 +1266,12 @@ wss.on('connection', async (ws, request) => {
 
   ws.on('close', () => {
     console.log(`[WS Server] Client disconnected: ${ws.userId || 'unknown'}`);
-    ws.abortController?.abort();
-    // Kill worker process if running
+    // Kill worker process if running (socket gone -> nowhere to deliver output).
     if (ws.workerProcess) {
+      // Intentional teardown: suppress the close-handler recovery frame (the
+      // socket is already closing, so there is no client left to notify).
+      ws.workerProcess.__intentionalAbort = true;
+      ws.workerProcess.__terminalSent = true;
       ws.workerProcess.kill();
       ws.workerProcess = null;
     }
