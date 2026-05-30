@@ -57,11 +57,10 @@ concurrency governance (cap + queue + resource limits), not multi-machine distri
       non-root, read-only rootfs + workspace mount, cpu/mem/pids caps, host env not
       inherited). Container-grade isolation on any host incl. macOS. `EXEC_RUNTIME=docker`. *(PR #41, PR-2)*
 **Single-host target work (S1–S5) — directly hits "50 on one 16G/8-core box":**
-- [ ] **S1 — Bounded worker concurrency + queue** (`MAX_CONCURRENT_WORKERS`, default = cores):
-      cap simultaneously-active workers, queue the rest, signal "queued" to the client. This is
-      the direct OOM fix (≤8 parallel × ~250MB ≈ 2GB vs 50 × 250MB ≈ 12.5GB). Reference deep-read
-      (claude-agent-server, hermes-agent) confirms the mature pattern is one isolation unit per
-      session, never multiplexing many sessions in one process.
+- [x] **S1 — Bounded worker concurrency + queue** (`MAX_CONCURRENT_WORKERS`, default 8):
+      FIFO Semaphore caps simultaneously-active workers, queues the rest, sends a `queued` frame.
+      Direct OOM fix (≤8 parallel × ~250MB ≈ 2GB vs 50 × 250MB ≈ 12.5GB). Verified: boots clean,
+      env override honored, semaphore unit tests + `test:unit` 20/20. *(PR #48)*
 - [ ] **S2 — Per-worker resource caps** (mem/CPU; reuse `EXEC_DOCKER_MEMORY`/`--max-old-space-size`).
 - [ ] **S3 — Idle WS connection / worker reaping.**
 - [ ] **S5 — Capacity bench** on a 16G/8-core box; calibrate the default cap; document in README.
