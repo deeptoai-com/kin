@@ -36,9 +36,9 @@ file → done). The earlier GLM-plan blocker is resolved.
 | Phase | State |
 |---|---|
 | Research (architecture review, Deep Agents comparison, scalability/runtime) | ✅ Done |
-| **Phase 0 — Foundation** | 🔵 In progress |
-| Phase 0.5 — Execution-runtime & sandbox decision | ⬜ Not started (defined) |
-| Phase 1 — Security hardening | ⬜ Not started |
+| **Phase 0 — Foundation** | ✅ Largely done (repo/CI/dev-stack/live-model) |
+| **Phase 1 — Security hardening** | ✅ Core done (Risks #1/#2/#3/#4/#5/#10); #8 + integ-tests + B3/C4 deferred |
+| **Phase 0.5 — Execution-runtime & sandbox** | 🔵 NEXT (needs human design checkpoint + sandbox-backend budget) |
 | Phase 2 — Observability & accounting | ⬜ Not started |
 | Phase 3 — Catch up to Deep Agents | ⬜ Not started |
 | Phase 4 — Multi-model & scale | ⬜ Not started |

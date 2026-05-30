@@ -59,6 +59,10 @@ checkpointing, and cost. Deep-read of hermes-agent, deer-flow, ruflo, and Anthro
       hibernate-on-idle, Node SDKs) vs self-managed container pool (Docker → K8s
       provisioner, à la deer-flow). Decide **Plan A (integrate)** vs **B (self-build)**.
 - [ ] **Concurrency spike**: memory/latency curve at 100 → 1000 concurrent sessions.
+- [ ] **(folded from Phase 1) Unify path guards**: the worker's `path-security.js`
+      `canUseTool` vs the route-level `validateFilePath` (5 routes) — share one module. (B3)
+- [ ] **(folded from Phase 1) Backpressure**: honor `ws.bufferedAmount` in `sendMessage`
+      and await stdout `drain` in the worker, so a fast stream + slow client can't OOM. (C4)
 
 **Exit criteria:** a TS `ExecutionRuntime` abstraction with srt sandboxing live; a
 documented A-vs-B decision + a 1000-concurrent-session benchmark; execution no longer
@@ -66,22 +70,28 @@ pinned to a single box.
 
 ---
 
-## Phase 1 — Security hardening (gate before real/multi-tenant use)
+## Phase 1 — Security hardening (gate before real/multi-tenant use) — ✅ CORE DONE
 
 **Goal:** close the high-severity risks from the architecture review so the
 product is safe to run with real data / real tenants.
+**Status (2026-05-30):** core risks fixed + merged; app browser-verified end-to-end.
+Remaining hardening items (B3 path-guard unify, C4 backpressure) are folded into
+Phase 0.5 because the execution-runtime rewrite touches the same code.
 
-- [ ] **Sandbox the exec tools** (Python/Bash) — via the Phase-0.5 `ExecutionRuntime`
-      + `srt` (deny-net, workspace-fenced FS); **strip secrets** from the worker/python
-      env to an explicit allowlist. *(Risk #1 — primitive chosen in Phase 0.5)*
-- [ ] Keep `canUseTool` active even in `bypassPermissions` mode. *(Risk #2)*
-- [ ] Add owner predicates to fix **cross-tenant file/attachment access**. *(Risks #3,#4)*
-- [ ] Add `maxTurns` / `maxBudgetUsd` + a server watchdog (turn/cost bounds). *(Risk #5)*
-- [ ] Fix deploy so the WS server actually boots; reconcile ports. *(Risk #8)*
-- [ ] Cooperative abort (AbortController) + remove dead `ws.abortController`. 
-- [ ] Client liveness: heartbeat/timeout + surface worker-crash to UI. *(Risk #10)*
+- [x] **Sandbox the exec tools** (Python/Bash) — `srt` (deny-net, workspace-fenced FS)
+      + secret env-strip; Linux-only OS sandbox, env-strip always on (PR #3, #29). *(Risk #1)*
+- [x] Keep `canUseTool` active even in `bypassPermissions` mode (PR #15). *(Risk #2)*
+- [x] Owner predicates fix **cross-tenant file/attachment access** (PR #4, 8 handlers). *(Risks #3,#4)*
+- [x] `maxTurns` + wall-clock watchdog (PR #5). *(Risk #5; `maxBudgetUsd` deferred to Phase 2 cost work)*
+- [x] Worker-crash terminal frame + removed dead `ws.abortController` (PR #22/#23/#24). *(Risk #10 / C2-C3)*
+- [x] Unit test + CI hard-gate for the path-security guard (PR #26/#27).
+- [ ] Fix deploy so the WS server actually boots; reconcile ports. *(Risk #8 — needs deploy access; HUMAN-REVIEW)*
+- [ ] Multi-user cross-tenant **integration** test (needs DB+auth harness). *(folded into test work)*
+- [→] B3 unify the two path-traversal guards · C4 backpressure → **moved to Phase 0.5** (same code).
 
 **Exit criteria:** every "high"/"critical" review risk has a fix + a regression test.
+**Met for Risks #1/#2/#3/#4/#5/#10** (code + unit/smoke + browser e2e). #8 and full
+multi-user integration tests remain (tracked above / HUMAN-REVIEW).
 
 ---
 
