@@ -40,6 +40,12 @@ const BYPASS_USER_IDS = new Set(
 
 const ALLOW_BASH_IN_BYPASS = process.env.CLAUDE_ALLOW_BASH === 'true';
 
+// Agent-loop safety bounds (review Risk #5: no turn/wall-clock cap let a looping
+// or abandoned run consume spend and hold the worker indefinitely).
+// 0 / unset = unbounded (preserves prior behavior unless explicitly configured).
+const MAX_TURNS = Number(process.env.AGENT_MAX_TURNS) || 0;
+const WALLCLOCK_TIMEOUT_MS = Number(process.env.AGENT_WALLCLOCK_TIMEOUT_MS) || 0;
+
 function normalizePermissionMode(mode) {
   if (!mode) {
     return 'default';
@@ -168,6 +174,8 @@ process.stdin.on('data', (chunk) => {
 });
 
 process.stdin.on('end', async () => {
+  // Declared here (not inside try) so the catch block can clear it.
+  let watchdog = null;
   try {
     const request = JSON.parse(inputData);
     const {
@@ -438,6 +446,8 @@ Example bad operations:
         // Enable skills loading from project (.claude/skills in cwd)
         // Note: We use symlink to share user's skills across sessions, so only 'project' is needed
         settingSources: ['project'],
+        // Cap the agentic loop turns when configured (Risk #5). 0 = unbounded.
+        ...(MAX_TURNS > 0 && { maxTurns: MAX_TURNS }),
         // Use claude_code preset to get all default tools (which includes Skill tool)
         tools: { type: 'preset', preset: 'claude_code' },
         // MCP configuration
