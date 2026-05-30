@@ -43,7 +43,34 @@ export async function ensureDailyRefill(userId: string, client: QueryClient = db
   }
 }
 
-export async function spendOneCredit(userId: string) {
+/** Thrown by spendCredits when the user lacks enough credits to cover the spend. */
+export class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly requested: number,
+    public readonly available: number,
+  ) {
+    super(`Insufficient credits: requested ${requested}, available ${available}`);
+    this.name = 'InsufficientCreditsError';
+  }
+}
+
+/**
+ * Spend `amount` credits for a user (allotment first, then purchased extras).
+ *
+ * Throws InsufficientCreditsError if the combined balance can't cover `amount`
+ * (atomic: nothing is deducted in that case). `meta` is attached to the ledger
+ * row (e.g. usage breakdown). spendOneCredit is the n=1 special case.
+ */
+export async function spendCredits(
+  userId: string,
+  amount: number,
+  meta?: Record<string, unknown>,
+) {
+  const n = Math.trunc(amount);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`spendCredits: amount must be a positive integer (got ${amount})`);
+  }
+
   return db.transaction(async (tx) => {
     await ensureDailyRefill(userId, tx);
 
@@ -55,22 +82,39 @@ export async function spendOneCredit(userId: string) {
 
     if (!balance) throw new Error('No credit balance');
 
+    const fromAllotment = Math.min(n, Math.max(0, balance.monthlyAllotment - balance.allotmentUsed));
+    const fromExtra = n - fromAllotment;
+
+    if (fromExtra > balance.extraCredits) {
+      const available = Math.max(0, balance.monthlyAllotment - balance.allotmentUsed) + balance.extraCredits;
+      throw new InsufficientCreditsError(n, available);
+    }
+
     const now = new Date();
-    if (balance.allotmentUsed < balance.monthlyAllotment) {
+    if (fromAllotment > 0) {
       await tx
         .update(creditBalances)
-        .set({ allotmentUsed: sql`${creditBalances.allotmentUsed} + 1`, updatedAt: now })
+        .set({ allotmentUsed: sql`${creditBalances.allotmentUsed} + ${fromAllotment}`, updatedAt: now })
         .where(eq(creditBalances.userId, userId));
-    } else {
-      if (balance.extraCredits <= 0) throw new Error('No credits left');
+    }
+    if (fromExtra > 0) {
       await tx
         .update(creditBalances)
-        .set({ extraCredits: sql`${creditBalances.extraCredits} - 1`, updatedAt: now })
+        .set({ extraCredits: sql`${creditBalances.extraCredits} - ${fromExtra}`, updatedAt: now })
         .where(eq(creditBalances.userId, userId));
     }
 
-    await tx.insert(creditLedger).values({ userId, delta: -1, kind: 'usage' });
+    await tx.insert(creditLedger).values({
+      userId,
+      delta: -n,
+      kind: 'usage',
+      ...(meta ? { meta } : {}),
+    });
   });
+}
+
+export async function spendOneCredit(userId: string) {
+  return spendCredits(userId, 1);
 }
 
 export async function addPurchasedCredits(userId: string, amount: number, sourceId?: string) {

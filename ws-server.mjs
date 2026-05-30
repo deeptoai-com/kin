@@ -315,25 +315,28 @@ async function persistSession(cookie, workspaceSessionId, realSdkSessionId, clau
 }
 
 /**
- * P2-1: Record per-run usage (observation-only, does NOT charge credits).
+ * P2-1/P2-3: Record per-run usage and (when metering is enabled) charge credits.
  *
  * Extracts token/turn/cost data from the SDK `result` event and posts it to
  * /api/usage. Fire-and-forget — usage logging must never block or break a run.
  *
- * @param {string} cookie - Auth cookie for the run's user
- * @param {string} workspaceSessionId - Our workspace session id
+ * P2-3: when metering is enabled server-side, the response reports whether the
+ * run was charged; if the user is out of credits we forward a non-fatal warning
+ * frame to the client (metering is OFF by default, so this is normally dormant).
+ *
+ * @param {object} ws - The client WebSocket (provides cookie + workspaceSessionId)
  * @param {object} event - The SDK `result` event
  */
-async function recordUsage(cookie, workspaceSessionId, event) {
+async function recordUsage(ws, event) {
   try {
     const response = await fetch(`${APP_URL}/api/usage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        cookie,
+        cookie: ws.cookie,
       },
       body: JSON.stringify({
-        sessionId: workspaceSessionId ?? null,
+        sessionId: ws.workspaceSessionId ?? null,
         usage: event.usage ?? null,
         numTurns: event.num_turns ?? 0,
         totalCostUsd: event.total_cost_usd ?? 0,
@@ -350,6 +353,16 @@ async function recordUsage(cookie, workspaceSessionId, event) {
 
     const result = await response.json();
     console.log(`[WS Server] Usage recorded: run ${result.runId} (${result.recorded} model rows)`);
+
+    // P2-3: metering is gated server-side; warn the client when out of credits.
+    if (result.metering?.enabled && result.metering.insufficient) {
+      sendMessage(ws, {
+        type: 'credit_warning',
+        code: 'insufficient_credits',
+        credits: result.metering.credits,
+        message: 'You are out of credits — this run was not charged. Top up to continue.',
+      });
+    }
   } catch (error) {
     console.error('[WS Server] Error recording usage:', error);
   }
@@ -1055,7 +1068,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           // P2-1: record per-run usage on the terminal `result` event. Fire-and-
           // forget; applies to silent runs too (they still consume tokens).
           if (event.type === 'result') {
-            recordUsage(ws.cookie, ws.workspaceSessionId, event);
+            recordUsage(ws, event);
           }
           if (!silentInit) {
             applyBackpressure(sendMessage(ws, { type: 'message', event }));
