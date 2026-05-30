@@ -78,6 +78,15 @@ isn't supported on macOS — it was fine. Rules so I never repeat this:
   predicting it. If a number isn't in front of you, say "not yet run" — never guess.
 - **A test "passes" only after you've read `PASS` / exit 0 from its output**, then quote that
   output. Prefer ranges ("~50, varies per run") over brittle exact counts for nondeterministic runs.
+- **Verify every Edit before committing (learned the hard way 2026-05-30).** The Edit tool can
+  *silently no-op* when `old_string` doesn't match exactly (whitespace, unread file, etc.). I
+  shipped PR #32 and #35 whose commit messages described doc changes that **never actually landed** —
+  caught only by later self-check. RULE: after every Edit, immediately `grep -c` the new marker text;
+  only write a commit message describing what grep confirmed. Empty diff ⇒ the change did not happen,
+  so do not commit a message claiming it did. (This very lesson's first edit no-op'd; grep caught it.)
+- **Never `git add -A` / `git add .`** — it swept the user's in-flight untracked drafts into PR #35.
+  Always `git add <explicit paths>`, then confirm `git diff --cached --name-only` equals exactly the
+  intended file set before committing.
 
 ## Environment & tooling gotchas (this workspace)
 
