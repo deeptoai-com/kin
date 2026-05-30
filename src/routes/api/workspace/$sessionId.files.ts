@@ -9,6 +9,7 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
+import { validateRelativePath } from '~/server/security/validate-relative-path';
 
 /**
  * System files to exclude from workspace listings
@@ -95,24 +96,6 @@ async function listFilesRecursive(dirPath: string, basePath: string = ''): Promi
   return files;
 }
 
-/**
- * Validate file path to prevent path traversal attacks
- */
-function validateFilePath(filePath: string): boolean {
-  // Reject paths with path traversal patterns
-  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
-    return false;
-  }
-
-  // Normalize and check again
-  const normalized = path.normalize(filePath);
-  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
-    return false;
-  }
-
-  return true;
-}
-
 export const Route = createFileRoute('/api/workspace/$sessionId/files')({
   server: {
     handlers: {
@@ -166,7 +149,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           );
         }
 
-        if (!validateFilePath(filePath)) {
+        if (!validateRelativePath(filePath)) {
           return new Response(
             JSON.stringify({ error: 'Invalid file path' }),
             { status: 400, headers: { 'content-type': 'application/json' } }

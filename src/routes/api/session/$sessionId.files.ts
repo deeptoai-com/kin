@@ -137,22 +137,6 @@ async function scanSessionFiles(
   return files;
 }
 
-/**
- * Validate file path to prevent path traversal attacks
- */
-function validateFilePath(filePath: string): boolean {
-  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
-    return false;
-  }
-
-  const normalized = path.normalize(filePath);
-  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
-    return false;
-  }
-
-  return true;
-}
-
 export const Route = createFileRoute('/api/session/$sessionId/files')({
   server: {
     handlers: {

@@ -14,6 +14,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
+import { validateRelativePath } from '~/server/security/validate-relative-path';
 
 /**
  * Get MIME type from file extension
@@ -54,22 +55,6 @@ function isBinaryExtension(filePath: string): boolean {
 }
 
 /**
- * Validate file path to prevent path traversal attacks
- */
-function validateFilePath(filePath: string): boolean {
-  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
-    return false;
-  }
-
-  const normalized = path.normalize(filePath);
-  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Decode URL-encoded file path
  */
 function decodeFilePath(encodedPath: string): string {
@@ -95,7 +80,7 @@ export const Route = createFileRoute('/api/session/$sessionId/file/$filePath')({
         // Decode URL-encoded file path
         const filePath = decodeFilePath(encodedFilePath);
 
-        if (!validateFilePath(filePath)) {
+        if (!validateRelativePath(filePath)) {
           return new Response(
             JSON.stringify({ error: 'Invalid file path' }),
             { status: 400, headers: { 'content-type': 'application/json' } }

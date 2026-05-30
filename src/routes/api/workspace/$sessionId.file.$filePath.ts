@@ -9,33 +9,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
-
-/**
- * Validate file path to prevent path traversal attacks
- */
-function validateFilePath(filePath: string): boolean {
-  if (!filePath || filePath.trim().length === 0) {
-    return false;
-  }
-
-  // Reject paths with path traversal patterns
-  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
-    return false;
-  }
-
-  // Normalize and check again
-  const normalized = path.normalize(filePath);
-  if (
-    normalized === '.' ||
-    normalized.includes('..') ||
-    normalized.startsWith('/') ||
-    normalized.startsWith('\\')
-  ) {
-    return false;
-  }
-
-  return true;
-}
+import { validateRelativePath } from '~/server/security/validate-relative-path';
 
 function resolveFilePathFromRequest(
   request: Request,
@@ -112,7 +86,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
         const { raw, download } = parseRawOptions(request);
 
         // Validate file path
-        if (!validateFilePath(filePath)) {
+        if (!validateRelativePath(filePath)) {
           return new Response(
             JSON.stringify({ error: 'Invalid file path' }),
             { status: 400, headers: { 'content-type': 'application/json' } }

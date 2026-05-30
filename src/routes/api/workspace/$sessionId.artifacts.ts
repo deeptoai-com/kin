@@ -14,6 +14,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
+import { validateRelativePath } from '~/server/security/validate-relative-path';
 
 // P16: Version tracking types
 type ArtifactVersion = {
@@ -58,19 +59,6 @@ const MAX_VERSIONS = 10; // P16: Maximum versions to keep per artifact
  * Keep in sync with frontend flag in artifact-registry.ts
  */
 const ENABLE_VERSION_RECORDING = false;
-
-function validateFilePath(filePath: string): boolean {
-  if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
-    return false;
-  }
-
-  const normalized = path.normalize(filePath);
-  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
-    return false;
-  }
-
-  return true;
-}
 
 async function readRegistry(workspacePath: string): Promise<RegistryPayload> {
   const registryPath = path.join(workspacePath, REGISTRY_FILENAME);
@@ -134,7 +122,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/artifacts')({
           );
         }
 
-        if (!validateFilePath(payload.filePath)) {
+        if (!validateRelativePath(payload.filePath)) {
           return new Response(
             JSON.stringify({ error: 'Invalid file path' }),
             { status: 400, headers: { 'content-type': 'application/json' } }
