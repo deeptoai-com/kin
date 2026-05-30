@@ -134,6 +134,13 @@
       "when": 1780181052742,
       "tag": "0018_acoustic_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780182741571,
+      "tag": "0019_certain_jazinda",
+      "breakpoints": true
     }
   ]
 }
