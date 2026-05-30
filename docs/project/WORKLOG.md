@@ -3,6 +3,49 @@
 Running log of problems hit and techniques learned while developing OxyGenie, so we
 (and future contributors / agents) don't repeat them. Append newest at the top.
 
+## ✅ HOW TO RUN THE APP LOCALLY (hybrid: Docker deps + local node) — added 2026-05-30
+
+First time the app actually ran end-to-end. Reproducible recipe:
+
+1. **Start dependency services only** (NOT the app container):
+   `set -a; . ./.env; . ./.env.docker; set +a`
+   `docker compose --env-file .env.docker --env-file .env up -d db create-db redis minio provision-minio meilisearch`
+   → containers ex0-db / ex0-redis / ex0-minio / ex0-meili become healthy.
+2. **`.env` must match the local run, not Docker port mapping:**
+   - `DATABASE_URL` db name must be **oxygenie** (compose's `POSTGRES_DB`), host `localhost:5432`.
+     (It was wrongly `constructa` → "database does not exist".)
+   - `BETTER_AUTH_URL` and `VITE_BASE_URL` must be **http://localhost:3000** (the local port),
+     NOT `:5050` (the Docker host mapping). Wrong value → **"Invalid origin"** on sign-up,
+     because better-auth's baseURL/trustedOrigins are derived from BETTER_AUTH_URL.
+     (NOTE: `.env` is gitignored/local; these are local-run values, not committed.)
+3. **Migrate DB:** `pnpm db:migrate` → 21 tables.
+4. **Build once:** `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`
+   (wait for `.output/server/index.mjs` to exist — ~2-3 min; do NOT start the app before it does).
+5. **Start app:** `PORT=3000 APP_URL=http://localhost:3000 node start-production.mjs`
+   → Nitro on :3000, WS server on :3001. Verify: `curl localhost:3000/api/health` → 200.
+- **You will NOT see an app container in OrbStack** — the app runs as a local node process;
+  only the 4 dependency containers appear. That's expected for hybrid mode.
+- First registered user becomes **system admin** (auth.server.ts onCreate). Don't waste it on a test user.
+- **Repeat of the parallel-build mistake**: I again ran multiple `pnpm build` concurrently; they
+  overwrite `.output` and the app started before SSR finished (ERR_MODULE_NOT_FOUND on index.mjs).
+  ONE build at a time; confirm `.output/server/index.mjs` before `start-production.mjs`.
+
+## Verification gap — the app has never actually run (added 2026-05-30, MUST FIX NEXT)
+
+As of PR #27, ~11 security/quality PRs are merged, but **the OxyGenie app has never
+been started end-to-end** — not in OrbStack, not locally. The only running container
+is `oxy-srt-sandbox` (a throwaway test box), NOT the app. All "verification" so far is
+*component-level* (node --check, vitest unit, curl to the model, srt script in a box).
+Consequence: **the human cannot see or click anything** — there is no running UI to open.
+
+Rule going forward:
+- **"Running and human-viewable" is the real bar.** Component checks are necessary but
+  do not count as "it works". A feature isn't validated until the app is up and a human
+  can exercise it in a browser.
+- **Get the app running before writing more fixes.** Stop accumulating unverifiable code.
+- The human's role is: (1) provide resources, (2) **manually verify in a browser**,
+  (3) co-plan the roadmap. So the priority is to produce something they can open in a browser.
+
 ## Long-running / Docker / parallelism rules (non-negotiable) — added 2026-05-30
 
 Lesson (cost ~1 hour, multiple failed builds): I burned a long stretch trying to rebuild the
