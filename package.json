@@ -1,5 +1,7 @@
 {
   "name": "oxygenie",
+  "description": "OxyGenie - Extensible enterprise AI agent platform, based on Constructa scaffold",
+  "repository": "https://github.com/Deeptoai-com/OxyGenie",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -11,6 +13,7 @@
     "build": "vite build",
     "heroku-postbuild": "pnpm run build",
     "start": "node .output/server/index.mjs",
+    "start:hybrid": "PORT=3000 APP_URL=http://localhost:3000 node start-production.mjs",
     "worker": "node --import tsx/loader src/worker/index.ts",
     "search:sync": "node --import tsx/loader src/scripts/search-sync.ts",
     "test": "vitest",
@@ -29,6 +32,8 @@
     "ex0": "tsx cli/index.ts",
     "rules:apply": "ruler apply --nested",
     "webhook:ngrok": "ngrok http 3000",
+    "docker:up": "docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build",
+    "docker:down": "docker compose --profile selfhost down",
     "tunnel:up": "docker compose --profile tunnel up -d cloudflared",
     "tunnel:down": "docker compose --profile tunnel down cloudflared"
   },
@@ -36,6 +41,7 @@
     "@ai-sdk/openai": "2.0.32",
     "@ai-sdk/react": "^3.0.11",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "@anthropic-ai/sandbox-runtime": "^0.0.52",
     "@assistant-ui/react": "^0.11.15",
     "@assistant-ui/react-ai-sdk": "^1.1.0",
     "@assistant-ui/react-data-stream": "^0.11.0",

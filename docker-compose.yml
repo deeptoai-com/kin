@@ -102,6 +102,8 @@ services:
     command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
     volumes:
       - ex0-redis-data:/data
+    ports:
+      - '6379:6379'  # 暴露给本地 dev（Docker 基础设施 + pnpm dev）
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -118,6 +120,8 @@ services:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?changeme}
     volumes:
       - ex0-meili-data:/meili_data
+    ports:
+      - '7700:7700'  # 暴露给本地 dev（Docker 基础设施 + pnpm dev）
     healthcheck:
       test: ['CMD', 'curl', '-sSf', 'http://localhost:7700/health']
       interval: 5s
@@ -209,6 +213,9 @@ services:
     # Note: Dokploy ignores the build section and uses the pre-built image from registry
     # Local development uses: docker compose --profile selfhost up -d --build
     container_name: ex0-app
+    # Required so bubblewrap (srt exec sandbox) can create user namespaces in-container.
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       db:
         condition: service_healthy

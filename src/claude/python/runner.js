@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { buildSafeEnv, ensureSandbox, wrapCommand, cleanupAfterCommand, shQuote } from '../execution/sandbox.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.PYTHON_RUNNER_TIMEOUT_MS) || 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES = Number(process.env.PYTHON_RUNNER_MAX_OUTPUT_BYTES) || 512_000;
@@ -192,15 +193,27 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
   const startedAt = Date.now();
   const timeout = Number(timeoutMs) || DEFAULT_TIMEOUT_MS;
 
+  // Risk #1 mitigation: always strip secrets from the child env; where the OS
+  // sandbox is available, also wrap execution with srt (deny-net + fs fenced to cwd).
+  const safeEnv = buildSafeEnv({
+    HOME: resolvedCwd,
+    PYTHONUNBUFFERED: '1',
+    PYTHONDONTWRITEBYTECODE: '1',
+    MPLBACKEND: process.env.MPLBACKEND || 'Agg',
+  });
+  const sandboxActive = await ensureSandbox(resolvedCwd);
+  let spawnFile = 'python3';
+  let spawnArgs = ['-u', filePath];
+  if (sandboxActive) {
+    const wrapped = await wrapCommand(`python3 -u ${shQuote(filePath)}`);
+    spawnFile = '/bin/sh';
+    spawnArgs = ['-c', wrapped];
+  }
+
   return await new Promise((resolve) => {
-    const child = spawn('python3', ['-u', filePath], {
+    const child = spawn(spawnFile, spawnArgs, {
       cwd: resolvedCwd,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-        PYTHONDONTWRITEBYTECODE: '1',
-        MPLBACKEND: process.env.MPLBACKEND || 'Agg',
-      },
+      env: safeEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -230,6 +243,7 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
 
     child.on('error', async (error) => {
       clearTimeout(timer);
+      cleanupAfterCommand();
       const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
       await fs.unlink(filePath).catch(() => {});
       resolve({
@@ -247,6 +261,7 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
 
     child.on('close', async (code, signal) => {
       clearTimeout(timer);
+      cleanupAfterCommand();
       const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
       await fs.unlink(filePath).catch(() => {});
       resolve({
