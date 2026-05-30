@@ -784,6 +784,11 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     ws.workerProcess = worker;
+    // Risk #10: track whether this run already delivered a terminal frame
+    // (done/error/aborted). If the worker dies without one (e.g. a crash), the
+    // close handler emits a terminal error so the client never hangs "running".
+    worker.__terminalSent = false;
+    worker.__intentionalAbort = false;
 
     // Send query request to worker
     // Pass sdkResumeId for SDK conversation resume
@@ -861,10 +866,12 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
             sendMessage(ws, { type: 'message', event });
           }
         } else if (msg.type === 'done') {
+          worker.__terminalSent = true;
           if (!silentInit) {
             sendMessage(ws, { type: 'done' });
           }
         } else if (msg.type === 'error') {
+          worker.__terminalSent = true;
           sendMessage(ws, {
             type: 'error',
             code: 'worker_error',
@@ -907,6 +914,22 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           console.error(`[WS Server] Worker exited with non-zero code ${code}`);
         } else {
           console.log('[WS Server] Worker exited normally');
+        }
+
+        // Risk #10: if the worker ended WITHOUT delivering a terminal frame and
+        // this was not an intentional abort, the client would otherwise hang
+        // "running" forever. Emit a terminal error so the UI can recover.
+        if (!worker.__terminalSent && !worker.__intentionalAbort && !silentInit) {
+          console.error('[WS Server] Worker closed with no terminal frame; emitting recovery error');
+          sendMessage(ws, {
+            type: 'error',
+            code: 'worker_exited',
+            message: signal
+              ? `The agent process was terminated (signal ${signal}) before completing.`
+              : `The agent process exited unexpectedly (code ${code}) before completing.`,
+            retriable: true,
+          });
+          worker.__terminalSent = true;
         }
 
         ws.workerProcess = null;
