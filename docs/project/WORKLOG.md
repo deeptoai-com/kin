@@ -87,6 +87,16 @@ isn't supported on macOS — it was fine. Rules so I never repeat this:
 - **Never `git add -A` / `git add .`** — it swept the user's in-flight untracked drafts into PR #35.
   Always `git add <explicit paths>`, then confirm `git diff --cached --name-only` equals exactly the
   intended file set before committing.
+- **`node --check` is NOT verification for runtime code — and a smoke test that doesn't exercise the
+  changed path isn't either (P0, 2026-05-30).** PR #43 (C4) merged a half-applied change: ws-server
+  called `applyBackpressure()`/`clearBackpressure()` that were never defined. `node --check` passed
+  (syntax is valid) and smoke-agent passed (it runs the *worker* only, never the ws-server path), so
+  both green checks were meaningless for this bug — the first real chat would `ReferenceError` and
+  crash. RULE: when you change runtime code, *run the thing that runs that code*: boot the actual
+  server/process and confirm it loads + handles one real request (here: `WS_PORT=3199 node
+  ws-server.mjs` → "listening" + `/health` ok + no ReferenceError). If a referenced symbol is new,
+  grep that its **definition** exists, not just the call site. A passing test only counts if it
+  actually executes the lines you changed.
 
 ## Environment & tooling gotchas (this workspace)
 
