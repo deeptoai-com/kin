@@ -5,11 +5,10 @@
  * Avoids shell execution to reduce attack surface.
  */
 
-import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { buildSafeEnv, ensureSandbox, wrapCommand, cleanupAfterCommand, shQuote } from '../execution/sandbox.js';
+import { getExecutionRuntime } from '../execution/index.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.PYTHON_RUNNER_TIMEOUT_MS) || 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES = Number(process.env.PYTHON_RUNNER_MAX_OUTPUT_BYTES) || 512_000;
@@ -119,42 +118,6 @@ function ensureAbsoluteDir(value) {
   return path.resolve(String(value || process.cwd()));
 }
 
-function createCollector(limitBytes) {
-  let total = 0;
-  let truncated = false;
-  let content = '';
-
-  const append = (chunk) => {
-    if (truncated) return;
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-    const remaining = limitBytes - total;
-    if (remaining <= 0) {
-      truncated = true;
-      return;
-    }
-
-    if (buffer.length > remaining) {
-      content += buffer.subarray(0, remaining).toString('utf-8');
-      total += remaining;
-      truncated = true;
-      return;
-    }
-
-    content += buffer.toString('utf-8');
-    total += buffer.length;
-  };
-
-  return {
-    append,
-    get content() {
-      return content;
-    },
-    get truncated() {
-      return truncated;
-    },
-  };
-}
-
 export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeBytes } = {}) {
   const resolvedCwd = ensureAbsoluteDir(cwd);
   const outputLimit = Number(maxOutputBytes) || DEFAULT_MAX_OUTPUT_BYTES;
@@ -184,97 +147,41 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
 
   await fs.writeFile(filePath, code, 'utf-8');
 
-  const stdoutCollector = createCollector(outputLimit);
-  const stderrCollector = createCollector(outputLimit);
-
-  let timedOut = false;
-  let killedByLimit = false;
-
-  const startedAt = Date.now();
   const timeout = Number(timeoutMs) || DEFAULT_TIMEOUT_MS;
 
-  // Risk #1 mitigation: always strip secrets from the child env; where the OS
-  // sandbox is available, also wrap execution with srt (deny-net + fs fenced to cwd).
-  const safeEnv = buildSafeEnv({
-    HOME: resolvedCwd,
-    PYTHONUNBUFFERED: '1',
-    PYTHONDONTWRITEBYTECODE: '1',
-    MPLBACKEND: process.env.MPLBACKEND || 'Agg',
-  });
-  const sandboxActive = await ensureSandbox(resolvedCwd);
-  let spawnFile = 'python3';
-  let spawnArgs = ['-u', filePath];
-  if (sandboxActive) {
-    const wrapped = await wrapCommand(`python3 -u ${shQuote(filePath)}`);
-    spawnFile = '/bin/sh';
-    spawnArgs = ['-c', wrapped];
-  }
-
-  return await new Promise((resolve) => {
-    const child = spawn(spawnFile, spawnArgs, {
+  // Execution backend (Phase 0.5): how/where the process runs is pluggable.
+  // The backend strips secrets from the child env (buildSafeEnv) and applies the
+  // OS sandbox (srt: deny-net + fs fenced to cwd) where available. Structured
+  // {file,args} runs without a shell when the sandbox is inactive. See
+  // src/claude/execution/.
+  const runtime = getExecutionRuntime();
+  const result = await runtime.exec(
+    { file: 'python3', args: ['-u', filePath] },
+    {
       cwd: resolvedCwd,
-      env: safeEnv,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+      timeoutMs: timeout,
+      maxOutputBytes: outputLimit,
+      env: {
+        HOME: resolvedCwd,
+        PYTHONUNBUFFERED: '1',
+        PYTHONDONTWRITEBYTECODE: '1',
+        MPLBACKEND: process.env.MPLBACKEND || 'Agg',
+      },
+    },
+  );
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, timeout);
+  const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
+  await fs.unlink(filePath).catch(() => {});
 
-    const maybeKillForLimit = () => {
-      if (stdoutCollector.truncated || stderrCollector.truncated) {
-        if (!killedByLimit) {
-          killedByLimit = true;
-          child.kill('SIGKILL');
-        }
-      }
-    };
-
-    child.stdout?.on('data', (chunk) => {
-      stdoutCollector.append(chunk);
-      maybeKillForLimit();
-    });
-
-    child.stderr?.on('data', (chunk) => {
-      stderrCollector.append(chunk);
-      maybeKillForLimit();
-    });
-
-    child.on('error', async (error) => {
-      clearTimeout(timer);
-      cleanupAfterCommand();
-      const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
-      await fs.unlink(filePath).catch(() => {});
-      resolve({
-        stdout: stdoutCollector.content,
-        stderr: `${stderrCollector.content}${stderrCollector.content ? '\n' : ''}${error.message}`,
-        exitCode: 127,
-        signal: null,
-        durationMs: Date.now() - startedAt,
-        timedOut: false,
-        truncated: stdoutCollector.truncated || stderrCollector.truncated,
-        killedByLimit,
-        ...fileTracking,
-      });
-    });
-
-    child.on('close', async (code, signal) => {
-      clearTimeout(timer);
-      cleanupAfterCommand();
-      const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
-      await fs.unlink(filePath).catch(() => {});
-      resolve({
-        stdout: stdoutCollector.content,
-        stderr: stderrCollector.content,
-        exitCode: code,
-        signal,
-        durationMs: Date.now() - startedAt,
-        timedOut,
-        truncated: stdoutCollector.truncated || stderrCollector.truncated,
-        killedByLimit,
-        ...fileTracking,
-      });
-    });
-  });
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode,
+    signal: result.signal,
+    durationMs: result.durationMs,
+    timedOut: result.timedOut,
+    truncated: result.truncated,
+    killedByLimit: result.killedByLimit,
+    ...fileTracking,
+  };
 }
