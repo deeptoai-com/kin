@@ -11,6 +11,7 @@
  * @see ./types.js, ./local-process-backend.js
  */
 import { LocalProcessBackend } from './local-process-backend.js';
+import { DockerBackend } from './docker-backend.js';
 
 let singleton = null;
 let resolvedName = null;
@@ -24,11 +25,11 @@ export function getExecutionRuntime() {
     case 'local':
       singleton = new LocalProcessBackend();
       break;
-    // case 'docker':  // PR-2: DockerBackend
+    case 'docker':
+      singleton = new DockerBackend();
+      break;
     default:
-      if (requested !== 'local') {
-        console.warn(`[execution] EXEC_RUNTIME='${requested}' not available; falling back to 'local'.`);
-      }
+      console.warn(`[execution] EXEC_RUNTIME='${requested}' not available; falling back to 'local'.`);
       singleton = new LocalProcessBackend();
       break;
   }
