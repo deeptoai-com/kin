@@ -8,6 +8,11 @@
  * - Clickable links and file paths
  *
  * Aligned with Craft's Markdown.tsx implementation.
+ *
+ * Phase 3 (D3.1): colours use semantic design tokens (text-muted-foreground /
+ * border-border / bg-muted …) instead of the old hardcoded Craft hex palette,
+ * so the final answer follows the warm theme + dark mode. See
+ * docs/project/research/2026-05-conversation-ux-tree.md (Check 日志 D3.1).
  */
 
 import * as React from 'react';
@@ -117,7 +122,7 @@ export function createMarkdownComponents(
       p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
       // Styled lists
       ul: ({ children }) => (
-        <ul className="my-2 space-y-1 pl-4 list-disc marker:text-[#6b6a68] dark:marker:text-[#9a9893]">
+        <ul className="my-2 space-y-1 pl-4 list-disc marker:text-muted-foreground">
           {children}
         </ul>
       ),
@@ -131,12 +136,12 @@ export function createMarkdownComponents(
           <table className="min-w-full text-sm">{children}</table>
         </div>
       ),
-      thead: ({ children }) => <thead className="border-b border-[#e5e4df] dark:border-[#3a3938]">{children}</thead>,
+      thead: ({ children }) => <thead className="border-b border-border">{children}</thead>,
       th: ({ children }) => (
-        <th className="text-left py-2 px-3 font-semibold text-[#6b6a68] dark:text-[#9a9893]">{children}</th>
+        <th className="text-left py-2 px-3 font-semibold text-muted-foreground">{children}</th>
       ),
       td: ({ children }) => (
-        <td className="py-2 px-3 border-b border-[#e5e4df]/50 dark:border-[#3a3938]/50">{children}</td>
+        <td className="py-2 px-3 border-b border-border/50">{children}</td>
       ),
       // Headings
       h1: ({ children }) => <h1 className="font-sans text-lg font-bold mt-5 mb-3">{children}</h1>,
@@ -144,12 +149,12 @@ export function createMarkdownComponents(
       h3: ({ children }) => <h3 className="font-sans text-base font-semibold mt-4 mb-2">{children}</h3>,
       // Blockquotes
       blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-[#6b6a68]/30 dark:border-[#9a9893]/30 pl-3 my-2 text-[#6b6a68] dark:text-[#9a9893] italic">
+        <blockquote className="border-l-2 border-muted-foreground/30 pl-3 my-2 text-muted-foreground italic">
           {children}
         </blockquote>
       ),
       // Horizontal rules
-      hr: () => <hr className="my-4 border-[#e5e4df] dark:border-[#3a3938]" />,
+      hr: () => <hr className="my-4 border-border" />,
       // Strong/emphasis
       strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
       em: ({ children }) => <em className="italic">{children}</em>,
@@ -176,7 +181,7 @@ export function createMarkdownComponents(
     p: ({ children }) => <p className="my-3 leading-relaxed">{children}</p>,
     // Styled lists
     ul: ({ children }) => (
-      <ul className="my-3 space-y-1.5 pl-4 list-disc marker:text-[#6b6a68] dark:marker:text-[#9a9893]">
+      <ul className="my-3 space-y-1.5 pl-4 list-disc marker:text-muted-foreground">
         {children}
       </ul>
     ),
@@ -186,12 +191,12 @@ export function createMarkdownComponents(
     li: ({ children }) => <li className="leading-relaxed">{children}</li>,
     // Beautiful tables
     table: ({ children }) => (
-      <div className="my-4 overflow-x-auto rounded-md border border-[#e5e4df] dark:border-[#3a3938]">
-        <table className="min-w-full divide-y divide-[#e5e4df] dark:divide-[#3a3938]">{children}</table>
+      <div className="my-4 overflow-x-auto rounded-md border border-border">
+        <table className="min-w-full divide-y divide-border">{children}</table>
       </div>
     ),
-    thead: ({ children }) => <thead className="bg-[#f8f8f6] dark:bg-[#1f1e1b]">{children}</thead>,
-    tbody: ({ children }) => <tbody className="divide-y divide-[#e5e4df] dark:divide-[#3a3938]">{children}</tbody>,
+    thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+    tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
     th: ({ children }) => (
       <th className="text-left py-3 px-4 font-semibold text-sm">{children}</th>
     ),
@@ -199,7 +204,7 @@ export function createMarkdownComponents(
       <td className="py-3 px-4 text-sm">{children}</td>
     ),
     tr: ({ children }) => (
-      <tr className="hover:bg-[#f0f0eb] dark:hover:bg-[#2a2928] transition-colors">{children}</tr>
+      <tr className="hover:bg-muted/60 transition-colors">{children}</tr>
     ),
     // Rich headings
     h1: ({ children }) => (
@@ -216,7 +221,7 @@ export function createMarkdownComponents(
     ),
     // Styled blockquotes
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-[#333]/30 dark:border-[#e5e4df]/30 bg-[#f8f8f6] dark:bg-[#1f1e1b] pl-4 pr-3 py-2 my-3 rounded-r-md">
+      <blockquote className="border-l-4 border-muted-foreground/30 bg-muted pl-4 pr-3 py-2 my-3 rounded-r-md">
         {children}
       </blockquote>
     ),
@@ -228,18 +233,18 @@ export function createMarkdownComponents(
             type="checkbox"
             checked={checked}
             readOnly
-            className="mr-2 rounded border-[#6b6a68]"
+            className="mr-2 rounded border-muted-foreground"
           />
         );
       }
       return <input type={type} />;
     },
     // Horizontal rules
-    hr: () => <hr className="my-6 border-[#e5e4df] dark:border-[#3a3938]" />,
+    hr: () => <hr className="my-6 border-border" />,
     // Strong/emphasis
     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
     em: ({ children }) => <em className="italic">{children}</em>,
-    del: ({ children }) => <del className="line-through text-[#6b6a68] dark:text-[#9a9893]">{children}</del>,
+    del: ({ children }) => <del className="line-through text-muted-foreground">{children}</del>,
   };
 }
 
