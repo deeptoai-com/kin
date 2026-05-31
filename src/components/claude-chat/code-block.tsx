@@ -165,19 +165,19 @@ export function CodeBlock({ code, language = 'text', className, mode = 'full' }:
 
   // Full mode: rich styling with header and copy button
   return (
-    <div className={cn('relative group rounded-lg overflow-hidden border border-[#e5e4df] dark:border-[#3a3938] bg-[#f8f8f6] dark:bg-[#1f1e1b]', className)}>
+    <div className={cn('relative group rounded-lg overflow-hidden border bg-muted/30', className)}>
       {/* Language label + copy button */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#eeeee8] dark:bg-[#2a2928] border-b border-[#e5e4df] dark:border-[#3a3938] text-xs">
-        <span className="text-[#6b6a68] dark:text-[#9a9893] font-medium uppercase tracking-wide">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b text-xs">
+        <span className="text-muted-foreground font-medium uppercase tracking-wide">
           {resolvedLang !== 'text' ? resolvedLang : 'plain text'}
         </span>
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#6b6a68] dark:text-[#9a9893] hover:text-[#333] dark:hover:text-[#e5e4df]"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
           aria-label={toLocalizedString(content.message.copyCode)}
         >
           {copied ? (
-            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           ) : (
@@ -211,7 +211,7 @@ export function CodeBlock({ code, language = 'text', className, mode = 'full' }:
 export function InlineCode({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <code className={cn(
-      'px-1.5 py-0.5 rounded bg-[#f0f0eb] dark:bg-[#2a2928] border border-[#e5e4df] dark:border-[#3a3938] font-mono text-sm text-[#333] dark:text-[#e5e4df]',
+      'px-1 py-0.5 rounded bg-foreground/[0.04] font-mono text-[13px]',
       className
     )}>
       {children}

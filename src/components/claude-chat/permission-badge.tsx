@@ -46,45 +46,45 @@ const getModeDisplay = (mode: PermissionMode, bashEnabled: boolean) => {
         icon: ShieldCheckIcon,
         label: 'Standard',
         description: '安全模式：需要权限确认',
-        color: 'text-green-600 dark:text-green-400',
-        bgColor: 'bg-green-50 dark:bg-green-950',
-        borderColor: 'border-green-200 dark:border-green-800',
+        color: 'text-success',
+        bgColor: 'bg-success/10',
+        borderColor: 'border-success/30',
       };
     case 'plan':
       return {
         icon: ShieldCheckIcon,
         label: 'Plan',
         description: '规划模式：优先使用 EnterPlanMode',
-        color: 'text-blue-600 dark:text-blue-400',
-        bgColor: 'bg-blue-50 dark:bg-blue-950',
-        borderColor: 'border-blue-200 dark:border-blue-800',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
       };
     case 'dontAsk':
       return {
         icon: ShieldCheckIcon,
         label: 'Dont Ask',
         description: '自动模式：自动执行安全操作',
-        color: 'text-cyan-600 dark:text-cyan-400',
-        bgColor: 'bg-cyan-50 dark:bg-cyan-950',
-        borderColor: 'border-cyan-200 dark:border-cyan-800',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
       };
     case 'acceptEdits':
       return {
         icon: ShieldCheckIcon,
         label: 'Accept Edits',
         description: '编辑模式：自动接受文件编辑',
-        color: 'text-indigo-600 dark:text-indigo-400',
-        bgColor: 'bg-indigo-50 dark:bg-indigo-950',
-        borderColor: 'border-indigo-200 dark:border-indigo-800',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
       };
     case 'delegate':
       return {
         icon: ShieldCheckIcon,
         label: 'Delegate',
         description: '委托模式：允许委派任务',
-        color: 'text-purple-600 dark:text-purple-400',
-        bgColor: 'bg-purple-50 dark:bg-purple-950',
-        borderColor: 'border-purple-200 dark:border-purple-800',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
       };
     case 'bypassPermissions':
       if (bashEnabled) {
@@ -92,27 +92,27 @@ const getModeDisplay = (mode: PermissionMode, bashEnabled: boolean) => {
           icon: ShieldAlertIcon,
           label: 'Bypass + Bash',
           description: '高级模式：无确认 + Bash 命令',
-          color: 'text-red-600 dark:text-red-400',
-          bgColor: 'bg-red-50 dark:bg-red-950',
-          borderColor: 'border-red-200 dark:border-red-800',
+          color: 'text-destructive',
+          bgColor: 'bg-destructive/10',
+          borderColor: 'border-destructive/30',
         };
       }
       return {
         icon: ShieldIcon,
         label: 'Bypass',
         description: '高级模式：无权限确认',
-        color: 'text-yellow-600 dark:text-yellow-400',
-        bgColor: 'bg-yellow-50 dark:bg-yellow-950',
-        borderColor: 'border-yellow-200 dark:border-yellow-800',
+        color: 'text-destructive',
+        bgColor: 'bg-destructive/10',
+        borderColor: 'border-destructive/30',
       };
     default:
       return {
         icon: ShieldCheckIcon,
         label: 'Standard',
         description: '安全模式：需要权限确认',
-        color: 'text-green-600 dark:text-green-400',
-        bgColor: 'bg-green-50 dark:bg-green-950',
-        borderColor: 'border-green-200 dark:border-green-800',
+        color: 'text-success',
+        bgColor: 'bg-success/10',
+        borderColor: 'border-success/30',
       };
   }
 };
@@ -253,7 +253,7 @@ export const PermissionBadge: FC<PermissionBadgeProps> = ({ permissionInfo }) =>
             {/* Bash Status */}
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Bash 工具</span>
-              <span className={`font-semibold ${info.bashEnabled ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              <span className={`font-semibold ${info.bashEnabled ? 'text-success' : 'text-destructive'}`}>
                 {info.bashEnabled ? '✅ 已启用' : '❌ 已禁用'}
               </span>
             </div>
@@ -262,7 +262,7 @@ export const PermissionBadge: FC<PermissionBadgeProps> = ({ permissionInfo }) =>
             {info.mode === 'bypassPermissions' && (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">白名单用户</span>
-                <span className={`font-semibold ${info.isWhitelisted ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                <span className={`font-semibold ${info.isWhitelisted ? 'text-success' : 'text-destructive'}`}>
                   {info.isWhitelisted ? '✅ 是' : '❌ 否'}
                 </span>
               </div>
