@@ -401,7 +401,7 @@ export function ChatComposer({
   return (
     <ComposerPrimitive.Root
       data-composer-root="true"
-      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow"
+      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-border/70 bg-card p-0.5 shadow-md transition-shadow duration-200 focus-within:shadow-lg hover:shadow-lg"
       onSubmit={handleSend}
     >
       <div className="m-3.5 flex flex-col gap-3.5">
