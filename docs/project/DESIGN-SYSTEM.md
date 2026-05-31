@@ -103,3 +103,14 @@ src/lib/*                      ← 纯逻辑（turn-builder、linkify、selector
 - `code-block.tsx` 疑似硬编码色 → 待 check + token 化。
 - 富代码块只有单一 CodeBlock（缺 diff/json/mermaid）→ 分阶段补，保持统一封装。
 - 字体文件方向未定 → owner 拍板后统一加载（§1.5）。
+
+---
+
+## 5. 反过度设计（克制即设计）
+
+**默认给用户「够用且克制」，不要一屏全抛。** 我们是终端用户产品（非开发者控制台）：
+- 工程/调试信息（cwd、session-id、全量工具列表、MCP 内部状态、原始 token / 精确成本 / per-model 账本）
+  **不直接铺给用户**；藏进二级（折叠「技术细节」/开发者模式/右侧 Context tab）。
+- 计费按 Coze 锁定方向：**简洁「积分/用量」概念**，不是 token 账本。
+- 每加一个信息块/选项前自问：**终端用户此刻需要它吗？** 不需要就降级或不放。
+- 已标记的过度设计候选见 `research/2026-05-conversation-ux-tree.md` 的「过度设计观察」（owner 决策）。

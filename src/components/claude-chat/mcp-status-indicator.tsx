@@ -38,7 +38,7 @@ export const McpStatusIndicator: FC<McpStatusIndicatorProps> = ({ className = ''
       <TooltipTrigger asChild>
         <div className={`flex items-center gap-1.5 text-xs ${className}`}>
           <span className="text-emerald-500 animate-pulse" aria-hidden="true">●</span>
-          <span className="text-[#6b6a68] dark:text-[#9a9893]">MCP</span>
+          <span className="text-muted-foreground">MCP</span>
         </div>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-xs">
@@ -87,12 +87,12 @@ export const McpStatusPopover: FC<McpStatusPopoverProps> = ({ className = '' }) 
           : '';
 
         return (
-          <div key={server.name} className="flex items-center gap-1.5 text-xs text-[#6b6a68] dark:text-[#9a9893]">
+          <div key={server.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{statusIndicator}</span>
             <span>{server.name}</span>
-            <span className="text-[#8a8985]">{toolCount}</span>
+            <span className="text-muted-foreground">{toolCount}</span>
             {server.error && (
-              <span className="text-red-500" title={server.error}>⚠️</span>
+              <span className="text-destructive" title={server.error}>⚠️</span>
             )}
           </div>
         );
