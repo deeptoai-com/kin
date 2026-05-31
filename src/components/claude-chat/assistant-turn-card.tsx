@@ -88,14 +88,14 @@ function ActivityStatusIcon({ status }: { status: StepActivityStatus }) {
     return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--assistant-accent)]" />;
   }
   if (status === 'error') {
-    return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+    return <XCircle className="h-3.5 w-3.5 text-destructive" />;
   }
-  return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
+  return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
 }
 
 function TimelineDot({ status }: { status?: StepActivityStatus }) {
   if (status === 'error') {
-    return <span className="h-2 w-2 rounded-full bg-red-400" />;
+    return <span className="h-2 w-2 rounded-full bg-destructive" />;
   }
   if (status === 'running' || status === 'backgrounded') {
     return <span className="h-2 w-2 rounded-full bg-[var(--assistant-accent)]" />;
