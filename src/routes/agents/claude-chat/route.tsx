@@ -45,6 +45,7 @@ import { ImagePreviewOverlay } from '~/components/claude-chat/overlay/image-prev
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
+import { WorkbenchPanel } from '~/components/claude-chat/workbench-panel';
 import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
@@ -532,18 +533,23 @@ function RouteComponent() {
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
           </div>
           <div
-            className={cn('h-full shrink-0 overflow-hidden', activeArtifactId && 'border-l')}
-            style={{
-              flexBasis: 0,
-              flexGrow: activeArtifactId ? 1 - artifactSplitRatio : 0,
-              maxWidth: activeArtifactId ? 'none' : 0,
-            }}
+            className={cn(
+              'h-full shrink-0 overflow-hidden border-l',
+              !activeArtifactId && 'hidden lg:block'
+            )}
+            style={
+              activeArtifactId
+                ? { flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }
+                : { width: 360 }
+            }
           >
-            {activeArtifactId && (
+            {activeArtifactId ? (
               <ArtifactsPanel
                 artifactId={activeArtifactId}
                 onClose={() => setActiveArtifact(null)}
               />
+            ) : (
+              <WorkbenchPanel currentSessionId={currentSessionId} />
             )}
           </div>
         </div>
@@ -801,18 +807,23 @@ const MainContent: FC<{
           <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         </div>
         <div
-          className={cn('h-full shrink-0 overflow-hidden', activeArtifactId && 'border-l')}
-          style={{
-            flexBasis: 0,
-            flexGrow: activeArtifactId ? 1 - artifactSplitRatio : 0,
-            maxWidth: activeArtifactId ? 'none' : 0,
-          }}
+          className={cn(
+            'h-full shrink-0 overflow-hidden border-l',
+            !activeArtifactId && 'hidden lg:block'
+          )}
+          style={
+            activeArtifactId
+              ? { flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }
+              : { width: 360 }
+          }
         >
-          {activeArtifactId && (
+          {activeArtifactId ? (
             <ArtifactsPanel
               artifactId={activeArtifactId}
               onClose={() => setActiveArtifact(null)}
             />
+          ) : (
+            <WorkbenchPanel currentSessionId={currentSessionId} />
           )}
         </div>
       </div>

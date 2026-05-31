@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OxyGenie · Phase 3 · Wave 0 风格方向预览 (A 暖 / B 冷)</title>
+<style>
+/* ============================================================
+   这是 Wave 0 的设计预览 — 完全独立，不依赖项目代码、不碰 app.css。
+   每个 board 用一组 CSS 变量模拟未来 app.css 的 token 值。
+   两个方向：A = 暖雾奶油 (Coze-leaning) / B = 晨雾克制 (Cowork-leaning)
+   每个方向各出 亮 + 暗 两版。
+   ============================================================ */
+
+/* ---------- 方向 A · 暖雾奶油 · 亮 ---------- */
+.A.light{
+  --bg: oklch(0.992 0.008 80);
+  --surface: oklch(1 0 0);
+  --fg: oklch(0.26 0.02 60);
+  --fg-muted: oklch(0.52 0.02 60);
+  --primary: oklch(0.62 0.14 48);
+  --primary-fg: oklch(0.99 0.01 80);
+  --accent-soft: oklch(0.95 0.035 62);
+  --muted: oklch(0.955 0.008 70);
+  --border: oklch(0.905 0.01 70);
+  --ring: oklch(0.62 0.14 48);
+  --ok: oklch(0.62 0.13 150);
+  --warn: oklch(0.75 0.14 70);
+  --danger: oklch(0.60 0.20 28);
+  --radius: 20px;
+  --radius-sm: 12px;
+  --shadow: 0 4px 18px -6px rgba(120,72,36,.16), 0 1px 3px -1px rgba(120,72,36,.10);
+  --shadow-sm: 0 1px 2px rgba(120,72,36,.08);
+  --font: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-serif: "Source Serif 4",Georgia,"Songti SC",serif;
+}
+/* ---------- 方向 A · 暖雾奶油 · 暗 ---------- */
+.A.dark{
+  --bg: oklch(0.205 0.012 60);
+  --surface: oklch(0.245 0.014 60);
+  --fg: oklch(0.93 0.012 70);
+  --fg-muted: oklch(0.70 0.015 65);
+  --primary: oklch(0.72 0.13 52);
+  --primary-fg: oklch(0.20 0.02 60);
+  --accent-soft: oklch(0.30 0.04 55);
+  --muted: oklch(0.28 0.012 60);
+  --border: oklch(0.34 0.012 60);
+  --ring: oklch(0.72 0.13 52);
+  --ok: oklch(0.72 0.12 150);
+  --warn: oklch(0.80 0.13 72);
+  --danger: oklch(0.68 0.17 28);
+  --radius: 20px;
+  --radius-sm: 12px;
+  --shadow: 0 6px 22px -8px rgba(0,0,0,.55);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --font: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-serif: "Source Serif 4",Georgia,"Songti SC",serif;
+}
+/* ---------- 方向 B · 晨雾克制 · 亮 ---------- */
+.B.light{
+  --bg: oklch(0.990 0.003 240);
+  --surface: oklch(1 0 0);
+  --fg: oklch(0.23 0.014 250);
+  --fg-muted: oklch(0.50 0.015 250);
+  --primary: oklch(0.55 0.10 250);
+  --primary-fg: oklch(0.99 0.005 250);
+  --accent-soft: oklch(0.955 0.018 250);
+  --muted: oklch(0.962 0.005 250);
+  --border: oklch(0.908 0.006 250);
+  --ring: oklch(0.55 0.10 250);
+  --ok: oklch(0.58 0.11 160);
+  --warn: oklch(0.74 0.12 75);
+  --danger: oklch(0.58 0.18 25);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 2px 10px -3px rgba(28,40,64,.12), 0 1px 2px -1px rgba(28,40,64,.08);
+  --shadow-sm: 0 1px 2px rgba(28,40,64,.07);
+  --font: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-serif: "Source Serif 4",Georgia,"Songti SC",serif;
+}
+/* ---------- 方向 B · 晨雾克制 · 暗 ---------- */
+.B.dark{
+  --bg: oklch(0.175 0.012 250);
+  --surface: oklch(0.215 0.014 250);
+  --fg: oklch(0.93 0.008 250);
+  --fg-muted: oklch(0.68 0.012 250);
+  --primary: oklch(0.66 0.11 250);
+  --primary-fg: oklch(0.16 0.02 250);
+  --accent-soft: oklch(0.27 0.03 250);
+  --muted: oklch(0.25 0.012 250);
+  --border: oklch(0.31 0.012 250);
+  --ring: oklch(0.66 0.11 250);
+  --ok: oklch(0.68 0.10 160);
+  --warn: oklch(0.78 0.12 75);
+  --danger: oklch(0.66 0.16 25);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 4px 16px -6px rgba(0,0,0,.55);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --font: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-serif: "Source Serif 4",Georgia,"Songti SC",serif;
+}
+
+/* ============================================================
+   页面骨架 + 组件（消费上面的 token 变量）
+   ============================================================ */
+*{box-sizing:border-box}
+html,body{margin:0;background:#e9eaee;font-family:"Inter","PingFang SC",system-ui,sans-serif;color:#1c2024}
+.page{max-width:1320px;margin:0 auto;padding:28px 24px 64px}
+.page>h1{font-size:20px;margin:0 0 4px}
+.page>p.sub{margin:0 0 22px;color:#5b6068;font-size:13px}
+
+.board{margin:0 0 30px;border-radius:18px;overflow:hidden;border:1px solid #d8dade;box-shadow:0 8px 30px -12px rgba(0,0,0,.18)}
+.board-head{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #e3e5e9;font-size:13px;font-weight:600}
+.board-head .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+.tag.warm{background:#fbe7d8;color:#a3521f}
+.tag.cool{background:#e1e8f7;color:#3a5aa6}
+.tag.mode{background:#eceef2;color:#5b6068}
+.board-head .desc{font-weight:400;color:#6b7078}
+
+.app{display:flex;background:var(--bg);color:var(--fg);font-family:var(--font);height:560px}
+
+/* ---- 色板条 ---- */
+.swatches{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border)}
+.sw{display:flex;flex-direction:column;gap:4px;align-items:center;font-size:9.5px;color:var(--fg-muted);width:74px}
+.sw .chip{width:100%;height:30px;border-radius:8px;border:1px solid var(--border)}
+.sw code{font-size:8.5px;color:var(--fg-muted);opacity:.8}
+.meta-row{display:flex;gap:18px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--border);font-size:10.5px;color:var(--fg-muted)}
+.meta-row b{color:var(--fg)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+
+/* ---- 左：图标导航 + 会话列表 ---- */
+.nav{width:60px;flex:0 0 60px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:14px}
+.icon3d{width:38px;height:38px;border-radius:12px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--fg-muted);background:linear-gradient(160deg,var(--accent-soft),transparent)}
+.icon3d.active{border-style:solid;border-color:var(--primary);color:var(--primary);background:var(--accent-soft)}
+.nav .spacer{flex:1}
+.nav .avatar{width:34px;height:34px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+
+.sessions{width:230px;flex:0 0 230px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sessions .s-head{padding:14px 16px 8px;display:flex;align-items:center;justify-content:space-between}
+.sessions .s-head .title{font-weight:700;font-size:15px}
+.newbtn{background:var(--primary);color:var(--primary-fg);border:none;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:600;cursor:default}
+.s-search{margin:0 16px 10px;background:var(--muted);border:1px solid var(--border);border-radius:10px;padding:7px 10px;font-size:11px;color:var(--fg-muted)}
+.s-list{padding:0 10px;display:flex;flex-direction:column;gap:4px;overflow:hidden}
+.s-item{display:flex;gap:9px;padding:9px 10px;border-radius:12px;align-items:flex-start}
+.s-item.active{background:var(--accent-soft)}
+.s-item .ic{width:30px;height:30px;border-radius:9px;flex:0 0 30px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:7px;color:var(--fg-muted);background:linear-gradient(160deg,var(--accent-soft),transparent)}
+.s-item.active .ic{border-style:solid;border-color:var(--primary);color:var(--primary)}
+.s-item .tx{min-width:0;flex:1}
+.s-item .tx .l1{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-item .tx .l2{font-size:10.5px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+
+/* ---- 中：对话流 ---- */
+.chat{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.chat-head{padding:14px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.chat-head .agentface{width:30px;height:30px;border-radius:10px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:7px;color:var(--fg-muted);background:linear-gradient(160deg,var(--accent-soft),transparent)}
+.chat-head h2{font-family:var(--font-serif);font-size:16px;margin:0;font-weight:600}
+.chat-head .status{font-size:10.5px;color:var(--ok);margin-left:auto;display:flex;align-items:center;gap:5px}
+.chat-head .status::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.stream{flex:1;padding:22px 26px;display:flex;flex-direction:column;gap:18px;overflow:hidden}
+.msg{max-width:78%;font-size:13px;line-height:1.6}
+.msg.user{align-self:flex-end;background:var(--accent-soft);padding:11px 15px;border-radius:var(--radius);border-bottom-right-radius:6px}
+.msg.bot{align-self:flex-start;color:var(--fg)}
+.msg.bot .who{font-size:10.5px;color:var(--fg-muted);margin-bottom:5px;font-weight:600}
+/* 工具调用 = 可展开卡片 */
+.toolcard{align-self:flex-start;width:78%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);overflow:hidden}
+.toolcard .tc-head{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:11.5px}
+.toolcard .tc-head .chev{color:var(--fg-muted)}
+.toolcard .tc-head .nm{font-weight:600;font-family:var(--font)}
+.toolcard .tc-head .badge{font-size:9.5px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--primary);font-weight:600}
+.toolcard .tc-head .ms{margin-left:auto;font-size:10px;color:var(--fg-muted)}
+.toolcard .tc-body{border-top:1px solid var(--border);padding:9px 12px;font-family:"SF Mono",ui-monospace,monospace;font-size:10.5px;color:var(--fg-muted);background:var(--muted)}
+/* 底部输入框 = 焦点 */
+.composer{margin:14px 26px 22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px}
+.composer .ci{font-size:13px;color:var(--fg-muted);min-height:30px}
+.composer .crow{display:flex;align-items:center;gap:8px;margin-top:10px}
+.pill{border:1px solid var(--border);border-radius:999px;padding:5px 11px;font-size:10.5px;color:var(--fg-muted);display:flex;align-items:center;gap:5px;background:var(--bg)}
+.pill.plus{font-size:14px;padding:4px 10px}
+.modeswitch{display:flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;font-size:10.5px}
+.modeswitch span{padding:5px 11px;color:var(--fg-muted)}
+.modeswitch span.on{background:var(--primary);color:var(--primary-fg);font-weight:600}
+.composer .credits{margin-left:auto;font-size:10px;color:var(--fg-muted)}
+.sendbtn{background:var(--primary);color:var(--primary-fg);border:none;border-radius:999px;width:32px;height:32px;font-size:14px;display:flex;align-items:center;justify-content:center}
+
+/* ---- 右：常驻工作台 ---- */
+.work{width:312px;flex:0 0 312px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
+.work .tabs{display:flex;gap:2px;padding:10px 12px 0;border-bottom:1px solid var(--border)}
+.work .tabs .t{font-size:11px;padding:7px 10px;color:var(--fg-muted);border-bottom:2px solid transparent;display:flex;gap:5px;align-items:center}
+.work .tabs .t.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.work .wbody{padding:14px;overflow:hidden;flex:1}
+.wsec-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-muted);margin:0 0 10px;font-weight:700}
+/* Progress / Todo */
+.todo{display:flex;flex-direction:column;gap:9px}
+.todo .ti{display:flex;gap:9px;align-items:flex-start;font-size:12px}
+.todo .ck{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--border);flex:0 0 16px;margin-top:1px}
+.todo .ti.done .ck{background:var(--ok);border-color:var(--ok);position:relative}
+.todo .ti.done .ck::after{content:"✓";color:#fff;font-size:11px;position:absolute;left:2.5px;top:-1px}
+.todo .ti.done .lbl{color:var(--fg-muted);text-decoration:line-through}
+.todo .ti.now .ck{border-color:var(--primary)}
+.todo .ti.now .lbl{font-weight:600}
+.todo .ti .lbl{line-height:1.4}
+.progbar{height:6px;border-radius:999px;background:var(--muted);margin:14px 0 4px;overflow:hidden}
+.progbar i{display:block;height:100%;width:60%;background:var(--primary)}
+.progcap{font-size:10px;color:var(--fg-muted)}
+/* Sub-agents tree */
+.tree{font-size:12px;display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.tree .node{display:flex;gap:8px;align-items:center}
+.tree .node .ic{width:22px;height:22px;border-radius:7px;border:1.5px dashed var(--border);flex:0 0 22px;display:flex;align-items:center;justify-content:center;font-size:6px;color:var(--fg-muted)}
+.tree .child{margin-left:16px;padding-left:12px;border-left:1.5px solid var(--border);display:flex;flex-direction:column;gap:7px}
+.tree .node .nm{font-weight:600}
+.tree .node .st{margin-left:auto;font-size:9.5px;color:var(--ok)}
+.tree .node .st.run{color:var(--warn)}
+/* Context */
+.ctx{display:flex;flex-direction:column;gap:12px}
+.ctx .card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 12px}
+.ctx .card .k{font-size:10px;color:var(--fg-muted)}
+.ctx .card .v{font-size:18px;font-weight:700;margin-top:2px}
+.ctx .card .v small{font-size:11px;font-weight:500;color:var(--fg-muted)}
+.usagebar{height:6px;border-radius:999px;background:var(--muted);margin-top:8px;overflow:hidden}
+.usagebar i{display:block;height:100%;width:38%;background:var(--primary)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>OxyGenie · Phase 3 · Wave 0 风格方向预览</h1>
+  <p class="sub">同一个三栏工作台布局，两套 design token。A=暖雾奶油（Coze 暖玩具感）/ B=晨雾克制（Cowork 专业可观测）。每方向亮+暗各一版。虚线圆角方块=3D 拟物图标的预留槽位（素材到位后替换）。</p>
+
+  <!-- 用脚本生成 4 个 board，避免重复 HTML -->
+  <div id="mount"></div>
+</div>
+
+<script>
+const SW_KEYS = [
+  ['--bg','background'],['--surface','card'],['--fg','foreground'],['--primary','primary'],
+  ['--accent-soft','accent'],['--muted','muted'],['--border','border'],['--danger','destructive']
+];
+
+function boardMarkup(){return `
+  <div class="meta-row">
+    <span><span class="dot" style="background:var(--primary)"></span><b>圆角</b> var(--radius)</span>
+    <span><b>字体</b> Inter / PingFang（标题可衬线）</span>
+    <span><b>阴影</b> 柔和扩散</span>
+    <span><b>密度</b> 对话低 · 工作台中高</span>
+  </div>
+  <div class="swatches">
+    ${SW_KEYS.map(([v,n])=>`<div class="sw"><div class="chip" style="background:var(${v})"></div><span>${n}</span></div>`).join('')}
+  </div>
+  <div class="app">
+    <!-- 左：图标导航 -->
+    <div class="nav">
+      <div class="icon3d active">3D<br>chat</div>
+      <div class="icon3d">3D<br>skill</div>
+      <div class="icon3d">3D<br>files</div>
+      <div class="icon3d">3D<br>kb</div>
+      <div class="spacer"></div>
+      <div class="avatar">P</div>
+    </div>
+    <!-- 左：会话列表 -->
+    <div class="sessions">
+      <div class="s-head"><span class="title">会话</span><button class="newbtn">+ 新建</button></div>
+      <div class="s-search">🔍 搜索会话…</div>
+      <div class="s-list">
+        <div class="s-item active"><div class="ic">3D</div><div class="tx"><div class="l1">数据清洗与图表生成</div><div class="l2">已生成 result.csv · 2 分钟前</div></div></div>
+        <div class="s-item"><div class="ic">3D</div><div class="tx"><div class="l1">爬取竞品定价</div><div class="l2">等待审批 1 个工具调用</div></div></div>
+        <div class="s-item"><div class="ic">3D</div><div class="tx"><div class="l1">周报草稿</div><div class="l2">昨天</div></div></div>
+        <div class="s-item"><div class="ic">3D</div><div class="tx"><div class="l1">PDF 摘要</div><div class="l2">5月28日</div></div></div>
+      </div>
+    </div>
+    <!-- 中：对话流 -->
+    <div class="chat">
+      <div class="chat-head">
+        <div class="agentface">3D</div>
+        <h2>Genie 工作台</h2>
+        <div class="status">在线 · Act 模式</div>
+      </div>
+      <div class="stream">
+        <div class="msg user">帮我把 data.csv 清洗后算出每个品类的均价，画成柱状图。</div>
+        <div class="msg bot"><div class="who">Genie</div>好的，我先读取文件、清洗缺失值，再按品类聚合并绘图。</div>
+        <div class="toolcard">
+          <div class="tc-head"><span class="chev">▾</span><span class="nm">python · 运行脚本</span><span class="badge">成功</span><span class="ms">1.8s</span></div>
+          <div class="tc-body">df = pd.read_csv("data.csv").dropna()<br>g = df.groupby("category")["price"].mean()<br># → 写出 chart.png</div>
+        </div>
+        <div class="msg bot"><div class="who">Genie</div>已生成 <b>chart.png</b> 与 <b>summary.csv</b>，结果在右侧 Files 面板。</div>
+      </div>
+      <div class="composer">
+        <div class="ci">继续提问，或拖入文件…</div>
+        <div class="crow">
+          <span class="pill plus">＋</span>
+          <div class="modeswitch"><span>Ask</span><span class="on">Act</span></div>
+          <span class="pill">模型 Auto ▾</span>
+          <span class="credits">本月已用 1,240 / 5,000 积分</span>
+          <button class="sendbtn">↑</button>
+        </div>
+      </div>
+    </div>
+    <!-- 右：常驻工作台 -->
+    <div class="work">
+      <div class="tabs">
+        <div class="t on">◷ Progress</div>
+        <div class="t">⌥ Sub-agents</div>
+        <div class="t">⎘ Files</div>
+        <div class="t">◧ Context</div>
+      </div>
+      <div class="wbody">
+        <p class="wsec-title">当前任务 · Todo</p>
+        <div class="todo">
+          <div class="ti done"><span class="ck"></span><span class="lbl">读取并校验 data.csv</span></div>
+          <div class="ti done"><span class="ck"></span><span class="lbl">清洗缺失值与异常行</span></div>
+          <div class="ti now"><span class="ck"></span><span class="lbl">按品类聚合计算均价</span></div>
+          <div class="ti"><span class="ck"></span><span class="lbl">绘制柱状图并导出 PNG</span></div>
+          <div class="ti"><span class="ck"></span><span class="lbl">汇总写出 summary.csv</span></div>
+        </div>
+        <div class="progbar"><i></i></div>
+        <div class="progcap">3 / 5 已完成</div>
+
+        <p class="wsec-title" style="margin-top:20px">子 Agent</p>
+        <div class="tree">
+          <div class="node"><div class="ic">3D</div><span class="nm">主任务</span><span class="st run">运行中</span></div>
+          <div class="child">
+            <div class="node"><div class="ic">3D</div><span class="nm">data-cleaner</span><span class="st">完成</span></div>
+            <div class="node"><div class="ic">3D</div><span class="nm">chart-maker</span><span class="st run">运行中</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+const defs = [
+  {cls:'A light', tag:'warm', tagtx:'A · 暖雾奶油', mode:'亮 Light', desc:'Coze-leaning · 奶油暖白 + 杏陶土品牌色 + 大圆角 + 柔暖阴影'},
+  {cls:'A dark',  tag:'warm', tagtx:'A · 暖雾奶油', mode:'暗 Dark',  desc:'暖炭底（非纯黑），保持温度'},
+  {cls:'B light', tag:'cool', tagtx:'B · 晨雾克制', mode:'亮 Light', desc:'Cowork-leaning · 近纸白冷中性 + 收敛靛蓝 + 发丝边框 + 轻阴影'},
+  {cls:'B dark',  tag:'cool', tagtx:'B · 晨雾克制', mode:'暗 Dark',  desc:'冷石板底，专业可观测'},
+];
+const ONLY = parseInt(localStorage.getItem('b')||'-1',10);
+const shown = (ONLY>=0 && ONLY<defs.length) ? [defs[ONLY]] : defs;
+document.getElementById('mount').innerHTML = shown.map(d=>`
+  <div class="board ${d.cls}">
+    <div class="board-head">
+      <span class="tag ${d.tag}">${d.tagtx}</span>
+      <span class="tag mode">${d.mode}</span>
+      <span class="desc">${d.desc}</span>
+    </div>
+    ${boardMarkup()}
+  </div>`).join('');
+</script>
+</body>
+</html>
