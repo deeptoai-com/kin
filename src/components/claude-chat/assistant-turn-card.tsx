@@ -552,11 +552,15 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<DetailTarget | null>(null);
 
+  // D1.4 注意力策略：running 时展开过程区(实时进度可见)；turn 完成且已有最终答案时
+  // 自动折叠成一行摘要，让 final answer 主导视线(用户仍可手动点开看过程)。
   useEffect(() => {
     if (isRunning && hasActivities) {
       setIsExpanded(true);
+    } else if (!isRunning && hasResponse) {
+      setIsExpanded(false);
     }
-  }, [isRunning, hasActivities]);
+  }, [isRunning, hasActivities, hasResponse]);
 
   const handleOpenDetail = (target: DetailTarget) => {
     setSelectedDetail(target);

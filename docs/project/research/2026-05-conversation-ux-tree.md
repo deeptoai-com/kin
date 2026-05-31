@@ -310,3 +310,9 @@ B. 分阶段抄② diff/json/mermaid 富块 → 待 owner 圈选。
   需逐个判断(diff 增删→success/destructive？文件类型色保留？)，放专门一批做。⬜
 - 仍属结构/行为(非纯色)的 ⬜：用户气泡(C,对标 craft UserMessageBubble)、消息操作条(D4,对标 TurnCardActionsMenu)、
   streaming 不破版(D3.3,对标 CollapsibleMarkdownContext)、linkify(D3.4)。
+
+### D1.4 — 过程区完成即折叠（注意力回到答案）✅改 (2026-05-31)
+↳ 我方 `assistant-turn-card.tsx`：原 useEffect 只在 running 时 setExpanded(true)，完成后状态停在展开 → 过程步骤一直占屏、压住 final answer。
+  修复：`else if (!isRunning && hasResponse) setIsExpanded(false)` —— running 看实时进度、done 收成一行摘要、答案主导；用户仍可手动点开看过程。
+  对标 craft TurnCard 的 expand 策略(它也是完成后收起 + 可展开)。验证：真实工具任务完成瞬间 eval 确认 expandedTimelines=0(过程已折叠)且答案存在；build ✓。
+  这是 D1.4「让注意力回到 final answer」的核心结构改动，呼应注意力优先级 #2。
