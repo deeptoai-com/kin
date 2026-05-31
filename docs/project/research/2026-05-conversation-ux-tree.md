@@ -1,0 +1,161 @@
+# 对话 / 信息展示区 — 优化点结构树
+
+> 日期：2026-05-31 · 目的：把"用户注意力最重的对话/输出区"能优化的交互点**结构化穷举**，
+> 作为后续视觉/交互打磨的"套路地图"。**不要求全做**，先有结构再挑优先级。
+> 每个节点尽量锚定真实代码（行号会漂移，用 grep 定位）。
+>
+> **★ = 注意力重灾区**（用户大部分时间在读 AI 输出，这些直接决定体感）。
+
+## 0. 真实数据/渲染骨架（先对齐事实）
+
+- 一条消息 = `ThreadMessage { role, content: ContentPart[] }`（`chat-session-store.ts`）。
+- `ContentPart = TextPart | ReasoningPart | ToolCallPart`。
+- AI 消息被 `buildAssistantTurn()`（`lib/turn-builder.ts`）组装成一个 **AssistantTurn**：
+  - `activities: StepActivity[]`，`kind ∈ {reasoning(思考过程) | intermediate(中间过程) | tool(工具调用)}`，
+    `status ∈ {running | completed | error | backgrounded}`；
+  - `renderItems`：`activity` 或 `search-group`（连续搜索类工具聚合，带 `sources`）；
+  - 最终答案文本（final answer）。
+- 渲染：`assistant-turn-card.tsx`（时间线 dot / 状态图标 / running 标签 / 预览文本 / `ActivityDetailDrawer` 详情抽屉）、
+  `streaming-markdown.tsx` + `markdown-components.tsx` + `code-block.tsx` + `linkify.ts`（最终答案排版）、
+  `claude-status.tsx`（InlineStatus 思考/工具态）、`artifact-button.tsx`（触发右侧面板）、
+  `inline-image-preview.tsx`、`context-badges.tsx`、`usage-card.tsx`、`permission-badge.tsx`。
+
+---
+
+## 0.5 这是一份「活的 checklist」——怎么用 & 怎么更新
+
+**用途**：one-by-one 地 check 每个节点。check 的方式 = **对标参考产品**：读对方同类组件怎么实现，
+和我们对比，判断"谁更好"，得出结论与动作。这样把"凭感觉打磨"变成"模块/组件级的工程化评审"。
+
+**状态图例**（在每个节点前标记，随进度更新）：
+`⬜ 未 check` · `🔄 进行中` · `✅ 已 check（下接一行**对标结论**：参考产品/文件 → 差距 → 决定）` · `⏭️ 暂不做`。
+
+> 更新约定：每完成一个节点的对标，就把该节点标记改成 ✅，并在其下补一行
+> `↳ 对标 <产品/文件>：<对方做法> ｜ 我方：<现状> ｜ 结论：<采纳/保留/改进点>`。
+> 这份文件**长期留存、持续更新**，是对话区打磨的唯一事实来源。
+
+### 对标产品映射（references/ 内，按节点群指定主对标）
+
+| 节点群 | 主对标产品 · 关键文件 | 备选对标 |
+|---|---|---|
+| D1 Turn 整体 / D2 过程时间线 | **craft-agents-oss** `packages/ui/src/components/chat/TurnCard.tsx` + `turn-utils.ts`（我们本就 Craft-aligned，直接逐行比） | deep-agents-ui `ChatMessage.tsx` |
+| D2.3 工具调用步骤卡 | **deep-agents-ui** `src/app/components/ToolCallBox.tsx` + craft `lib/tool-parsers.ts` | deer-flow `frontend/src`（research 步骤流） |
+| D2.4 搜索分组/来源 | **deer-flow** `frontend/src`（深研来源呈现） | open-webui |
+| D3.1 Markdown 排版 | **craft-agents-oss** `components/markdown/Markdown.tsx` + deep-agents-ui `MarkdownContent.tsx` | lobe-chat / LibreChat |
+| D3.2 代码块 / diff / json | **craft-agents-oss** `markdown/MarkdownDiffBlock.tsx` `MarkdownJsonBlock.tsx` `MarkdownMermaidBlock.tsx` | open-webui |
+| D3.3 流式渲染不破版 | **craft-agents-oss** `markdown/CollapsibleMarkdownContext.tsx` + 我方 `streaming-markdown.tsx` | lobe-chat |
+| D4 消息操作条 | **craft-agents-oss** `chat/TurnCardActionsMenu.tsx` | open-webui / LibreChat |
+| C1 用户气泡 | **craft-agents-oss** `chat/UserMessageBubble.tsx` | lobe-chat |
+| E5 HITL 审批 | **deep-agents-ui** `src/app/components/ToolApprovalInterrupt.tsx` | — |
+| A/B 布局·滚动·分组 | **lobe-chat** / **open-webui**（成熟会话流） | LibreChat |
+| F1 排版/字体 · F2 密度 | Claude Design 截图（owner 提供）+ craft Markdown | lobe-chat |
+
+### Check 单元模板（每个节点照此填）
+
+```
+节点 Dx.y ✅
+↳ 对标 <product/file:line>：<对方关键做法（数据结构/交互/视觉）>
+   我方 <our file:line>：<现状做法>
+   差距：<列差异点>
+   结论：<采纳对方X / 保留我方Y / 新增Z>，落到 <issue/commit>
+```
+
+### 推进顺序（建议，呼应注意力优先级）
+F1/F2 底座 → D3.1/D3.2/D3.3 答案区 → D1.1/D1.4 过程↔答案层级+折叠 → D2.3/D2.5/D2.6 过程时间线 → 其余。
+**每 check 一个节点：读对标 → 填模板 → 真实对话截图验收 → 标 ✅。**
+
+---
+
+## A. 容器 / 布局层（conversation viewport）
+- A1 ★ 阅读宽度与左右留白（最终答案的行宽是否在 ~65–80 字符舒适区；过宽伤可读）。
+- A2 ★ 垂直节奏（turn 间距 / 段落间距 / 过程区与答案区的间隔层级）。
+- A3 滚动行为：自动跟随流式、到底判定、滚动锚定（流式时不跳动）、**"回到底部"浮标**、新消息提示。
+- A4 顶/底渐隐遮罩（内容滚到 composer 后有柔和边界，而非硬切）。
+- A5 过程信息的"搬运边界"：哪些过程留在对话流、哪些进右侧工作台（Progress/Sub-agents/Files）——
+  避免对话流被过程噪声淹没（护城河式信息架构）。
+- A6 长对话性能：虚拟化 / 懒渲染（历史消息多时不卡）。
+
+## B. 消息流层（message list）
+- B1 ★ 用户消息 vs AI 消息的视觉区分（对齐 / 气泡 vs 无气泡 / 背景浓淡）。
+- B2 turn 之间的分隔（留白 / 极淡分隔线 / 时间分组"今天/昨天"）。
+- B3 连续同源消息的合并（同一 turn 内不重复头像/署名）。
+- B4 锚点与定位（长答案生成时页面跳动控制；turn 可被右侧"它在干什么"点击定位）。
+
+## C. 用户消息（user message）
+- C1 气泡样式（圆角/背景/对齐，配合暖色 token）。
+- C2 附件展示（图片/文件缩略，`message-attachments` / `inline-image-preview`）。
+- C3 可编辑 / 重发 / 引用某段再问。
+- C4 长输入折叠（超长粘贴内容默认折叠 + 展开）。
+
+## D. AI 消息 = 一个 Turn（★ 重中之重）
+
+### D1 Turn 整体
+- D1.1 ★ **过程区 vs 最终答案的层级对比**：过程"轻"（小字/灰/紧凑/可折叠），答案"重"（正文字阶/舒适）。
+  现状两者层级区分不够，是核心优化点。
+- D1.2 turn 容器形态（卡片 vs 无卡片融入背景；Coze/Cowork 取舍）。
+- D1.3 头像 / 署名 / 时间戳的克制呈现。
+- D1.4 ★ **折叠策略**：过程区在 running 时展开、完成后自动折叠成一行摘要（"用了 3 个工具 · 12s"），
+  点开看细节 —— 让注意力回到 final answer。
+
+### D2 过程区 = StepActivity 时间线（turn-builder / assistant-turn-card）
+- D2.1 reasoning 思考过程：展示/隐藏开关、灰度弱化、可展开（`showThinking` 已在 store）。
+- D2.2 intermediate 中间文本：与思考/答案区分，避免和 final answer 混淆。
+- D2.3 ★ tool 工具调用步骤卡：图标 + 工具名 + **参数摘要**(`formatArgsSummary`) + 状态 + **耗时** + 结果预览。
+  现状是"关键组件不够细致"的主战场（边框/圆角/内距/状态色/hover/可展开）。
+- D2.4 search-group 搜索分组：来源卡片、favicon、引用编号、来源去重。
+- D2.5 ★ 时间线视觉：dot + 连线 + running 旋转（`TimelineDot`/`ActivityStatusIcon`），让"进行到哪"一眼可读。
+- D2.6 ★ running 实时标签（`getRunningLabel`："正在搜索…/正在写 X…"）——降低等待焦虑。
+- D2.7 状态语义色统一：running=强调色 / done=绿 / error=红 / backgrounded（现混用 text-red-500/green-500 等硬编码色，应归一到 token）。
+- D2.8 ActivityDetailDrawer 详情抽屉：打开方式、内容排版（JSON/文本/图片）、关闭。
+- D2.9 错误步骤的呈现（失败原因、重试入口）。
+
+### D3 最终答案 / Final Answer（★ 用户读得最久）
+- D3.1 ★ Markdown 排版系统：标题/段落/列表/引用/表格的**字阶 + 行高 + 间距**（`markdown-components.tsx`）——
+  中英文混排的可读性是第一要务。
+- D3.2 ★ 代码块（`code-block.tsx`）：语法高亮主题、复制按钮、文件名/语言标签、行号、长代码折叠、**diff 高亮**、水平滚动。
+- D3.3 ★ 流式渲染（`streaming-markdown.tsx`）：打字机顺滑度、**partial markdown 不破版**（半个表格/代码块不闪烁）、光标、节流。
+- D3.4 内联元素：链接（`linkify.ts` 安全 + 样式）、内联代码、加粗、数学公式（KaTeX 已在）。
+- D3.5 图片 / 媒体：`inline-image-preview` 的尺寸、点开大图、懒加载。
+- D3.6 ★ Artifacts 触发：`artifact-button` → 右侧面板；正文里"卡片化"引用产物（图表/HTML/CSV/SVG/React）。
+- D3.7 引用 / 脚注 / 来源标注（答案里嵌可点来源角标）。
+- D3.8 长答案可读性：自动小标题锚点 / 目录 / 折叠超长 section / "展开全部"。
+- D3.9 表格的横向滚动 + 斑马纹 + 紧凑/舒适切换。
+
+### D4 消息级操作（action bar）
+- D4.1 复制（整条 / 某代码块 / 某段）。
+- D4.2 重新生成 / 继续 / 编辑后重发。
+- D4.3 ★ 反馈：点赞/点踩（已有 ThumbsUp/Down）→ 视觉与落库。
+- D4.4 引用此段再问、分享单条。
+- D4.5 操作条出现策略：hover 浮现 vs 常驻（移动端必须常驻）。
+
+## E. 状态 / 反馈层
+- E1 ★ 思考中 / 工具中 / 流式中（`claude-status.tsx` InlineStatus + `AgentStatusType`）——
+  态与态之间的过渡、文案、动效克制。
+- E2 空态（已改衬线标题）、初始化（"Initializing session"）、排队（queueCount）。
+- E3 被中断 / 停止（EscapeInterruptHandler）后的呈现与续跑入口。
+- E4 错误态（网络/模型/工具失败）的统一卡片 + 重试。
+- E5 HITL 权限审批在流里的呈现（Wave 2，`permission-badge` 扩展）。
+- E6 token / 用量提示（`usage-card` / context-badges）在流里/底部的克制展示。
+
+## F. 跨切面（cross-cutting，影响以上所有）
+- F1 ★ 排版系统：字体方向（衬线标题 + 无衬线正文 + 中文字体）、字阶表、行高、字距、中英文混排间距。
+- F2 ★ 密度刻度：过程区紧凑 / 答案区舒适 —— 两套节奏，别一刀切。
+- F3 颜色语义：状态色 + 强调色克制，清掉硬编码（如 `text-red-500`）归一到 token。
+- F4 动效：流式、展开/折叠、状态切换——顺滑且克制，支持 `prefers-reduced-motion`。
+- F5 可访问性：对比度（WCAG）、键盘可达、屏读 aria、focus 环。
+- F6 响应式：窄屏对话区与右侧工作台的降级（抽屉/底部 tab）。
+- F7 暗色：过程区/代码块/状态色在暗色下的可读性。
+- F8 一致性：圆角刻度（已收敛 6/8/10/14）、阴影、边框在以上所有组件统一。
+
+---
+
+## 注意力优先级（若要排序，建议这样切）
+
+1. **D3 Final answer 可读性**（D3.1 排版 / D3.2 代码块 / D3.3 流式不破版）—— 读得最久。
+2. **D1.1 + D1.4 过程/答案层级 + 过程折叠** —— 让注意力聚焦到答案，过程退为"可查"。
+3. **D2.3 + D2.5 + D2.6 工具步骤卡 + 时间线 + running 标签** —— "它在干什么"一眼可读，降焦虑。
+4. **A1/A2 阅读宽度与垂直节奏** + **F1 排版系统/字体** + **F2 密度** —— 全局底座。
+5. 其余（操作条、来源标注、长答案目录、性能虚拟化）按需。
+
+> 套路：先定 **F1 排版 + F2 密度**（底座）→ 再做 **D3 答案区** → 再做 **D2 过程区/时间线** →
+> 最后 **D1 折叠策略 + D4 操作条**。每步真实对话截图验收。
