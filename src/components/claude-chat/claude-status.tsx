@@ -31,35 +31,37 @@ const STATUS_CONFIG: Record<AgentStatusType, {
   color: string;
   bgColor: string;
 }> = {
+  // Unified palette (DESIGN-SYSTEM §1.2): active states = primary tint, idle = muted.
+  // The emoji icon + label differentiate the state, so colour stays on-brand (no rainbow).
   idle: {
     icon: '✓',
     baseText: '就绪',
-    color: 'text-gray-500',
-    bgColor: 'bg-gray-100 dark:bg-gray-800',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted',
   },
   thinking: {
     icon: '💭',
     baseText: '正在思考',
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-50 dark:bg-blue-950/30',
+    color: 'text-primary',
+    bgColor: 'bg-accent',
   },
   reasoning: {
     icon: '🧠',
     baseText: '正在推理',
-    color: 'text-purple-500',
-    bgColor: 'bg-purple-50 dark:bg-purple-950/30',
+    color: 'text-primary',
+    bgColor: 'bg-accent',
   },
   toolUse: {
     icon: '🔧',
     baseText: '工具执行中',
-    color: 'text-amber-500',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
+    color: 'text-primary',
+    bgColor: 'bg-accent',
   },
   streaming: {
     icon: '✨',
     baseText: '正在生成',
-    color: 'text-green-500',
-    bgColor: 'bg-green-50 dark:bg-green-950/30',
+    color: 'text-primary',
+    bgColor: 'bg-accent',
   },
 };
 
@@ -159,7 +161,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
   if (compact) {
     return (
       <div className="flex items-center gap-2 text-xs">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-[#ae5630]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
         <span className={`${config.color} opacity-80`}>
           {statusText}...
         </span>
@@ -171,7 +173,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
   return (
     <div className="mb-3 animate-in slide-in-from-bottom duration-300">
       <div
-        className={`flex items-center justify-between rounded-lg border px-3 py-2 ${config.bgColor} border-[#e5e4df] dark:border-[#3a3938]`}
+        className={`flex items-center justify-between rounded-lg border px-3 py-2 ${config.bgColor} border-border`}
       >
         <div className="flex items-center gap-3">
           {/* Animated spinner */}
@@ -188,14 +190,14 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
             <span className={`font-medium text-sm ${config.color}`}>
               {statusText}...
             </span>
-            <span className="text-xs text-[#6b6a68] dark:text-[#9a9893]">
+            <span className="text-xs text-muted-foreground">
               ({elapsedTime}s)
             </span>
           </div>
 
           {/* Tool name badge */}
           {status === 'toolUse' && toolName && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground dark:bg-accent dark:text-accent-foreground">
               {formatToolName(toolName, 'compact')}
             </span>
           )}
@@ -205,7 +207,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
         {onAbort && (
           <button
             onClick={onAbort}
-            className="flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+            className="flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20 dark:bg-destructive/15 dark:text-destructive dark:hover:bg-destructive/25"
             title={toLocalizedString(content.status.stopEsc)}
           >
           <Cross2Icon className="h-3 w-3" />
@@ -235,7 +237,7 @@ export const InlineStatus: FC<{
 
   return (
     <div className="mb-2 flex items-center gap-2 text-xs">
-      <span className="h-2 w-2 animate-pulse rounded-full bg-[#ae5630]" />
+      <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
       <span className={`${config.color} opacity-80`}>{text}</span>
     </div>
   );
@@ -308,7 +310,7 @@ export const ToolbarStatus: FC<{
     <div className="flex h-8 items-center gap-2 animate-in fade-in duration-200">
       {/* Status indicator */}
       <div
-        className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 ${config.bgColor} border-[#e5e4df] dark:border-[#3a3938]`}
+        className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 ${config.bgColor} border-border`}
       >
         {/* Animated spinner */}
         <span
@@ -325,18 +327,18 @@ export const ToolbarStatus: FC<{
         </span>
 
         {/* Elapsed time */}
-        <span className="text-[10px] text-[#6b6a68] dark:text-[#9a9893]">
+        <span className="text-[10px] text-muted-foreground">
           {elapsedTime}s
         </span>
 
         {/* Stoppable hint */}
-        <span className="hidden sm:inline text-[10px] text-[#9a9893] dark:text-[#6b6a68]">
+        <span className="hidden sm:inline text-[10px] text-muted-foreground">
           · 可停止 (Esc)
         </span>
 
         {/* Queue count badge */}
         {queueCount > 0 && (
-          <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          <span className="ml-1 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground dark:bg-accent dark:text-accent-foreground">
             +{queueCount} 等待
           </span>
         )}
