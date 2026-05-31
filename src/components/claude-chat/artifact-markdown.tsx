@@ -41,13 +41,13 @@ export const MarkdownArtifact: FC<MarkdownArtifactProps> = ({ content }) => {
   }, [])
 
   return (
-    <div className="artifact-markdown-content h-full w-full overflow-auto bg-white p-6 dark:bg-[#1a1a18]">
+    <div className="artifact-markdown-content h-full w-full overflow-auto bg-card p-6 dark:bg-card">
       <div className="prose prose-slate max-w-none dark:prose-invert">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
             p: ({ children }) => (
-              <p className="mb-4 leading-relaxed text-[#1a1a18] last:mb-0 dark:text-[#eee]">
+              <p className="mb-4 leading-relaxed text-foreground last:mb-0 dark:text-foreground">
                 {children}
               </p>
             ),
@@ -56,7 +56,7 @@ export const MarkdownArtifact: FC<MarkdownArtifactProps> = ({ content }) => {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[#ae5630] underline underline-offset-2 hover:text-[#c4633a] dark:text-[#d4825e]"
+                className="text-primary underline underline-offset-2 hover:text-primary/80 dark:text-primary"
               >
                 {children}
               </a>
@@ -94,7 +94,7 @@ export const MarkdownArtifact: FC<MarkdownArtifactProps> = ({ content }) => {
               // Inline code
               return (
                 <code
-                  className="rounded bg-[#e5e4df] px-1.5 py-0.5 font-mono text-sm text-[#1a1a18] dark:bg-[#3a3938] dark:text-[#eee]"
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-foreground dark:bg-muted dark:text-foreground"
                   {...props}
                 >
                   {children}
@@ -103,58 +103,58 @@ export const MarkdownArtifact: FC<MarkdownArtifactProps> = ({ content }) => {
             },
             pre: ({ children }) => <>{children}</>,
             blockquote: ({ children }) => (
-              <blockquote className="mb-4 border-l-4 border-[#ae5630] pl-4 italic text-[#6b6a68] last:mb-0 dark:border-[#d4825e] dark:text-[#9a9893]">
+              <blockquote className="mb-4 border-l-4 border-primary pl-4 italic text-muted-foreground last:mb-0 dark:border-primary dark:text-muted-foreground">
                 {children}
               </blockquote>
             ),
             h1: ({ children }) => (
-              <h1 className="mb-4 text-3xl font-bold text-[#1a1a18] dark:text-[#eee]">
+              <h1 className="mb-4 text-3xl font-bold text-foreground dark:text-foreground">
                 {children}
               </h1>
             ),
             h2: ({ children }) => (
-              <h2 className="mb-3 text-2xl font-bold text-[#1a1a18] dark:text-[#eee]">
+              <h2 className="mb-3 text-2xl font-bold text-foreground dark:text-foreground">
                 {children}
               </h2>
             ),
             h3: ({ children }) => (
-              <h3 className="mb-2 text-xl font-semibold text-[#1a1a18] dark:text-[#eee]">
+              <h3 className="mb-2 text-xl font-semibold text-foreground dark:text-foreground">
                 {children}
               </h3>
             ),
             h4: ({ children }) => (
-              <h4 className="mb-2 text-lg font-semibold text-[#1a1a18] dark:text-[#eee]">
+              <h4 className="mb-2 text-lg font-semibold text-foreground dark:text-foreground">
                 {children}
               </h4>
             ),
             h5: ({ children }) => (
-              <h5 className="mb-2 font-semibold text-[#1a1a18] dark:text-[#eee]">{children}</h5>
+              <h5 className="mb-2 font-semibold text-foreground dark:text-foreground">{children}</h5>
             ),
             h6: ({ children }) => (
-              <h6 className="mb-2 font-semibold text-[#1a1a18] dark:text-[#eee]">{children}</h6>
+              <h6 className="mb-2 font-semibold text-foreground dark:text-foreground">{children}</h6>
             ),
-            hr: () => <hr className="my-6 border-[#e5e4df] dark:border-[#3a3938]" />,
+            hr: () => <hr className="my-6 border-border dark:border-border" />,
             table: ({ children }) => (
               <div className="mb-4 overflow-x-auto last:mb-0">
-                <table className="min-w-full border-collapse border border-[#e5e4df] dark:border-[#3a3938]">
+                <table className="min-w-full border-collapse border border-border dark:border-border">
                   {children}
                 </table>
               </div>
             ),
             thead: ({ children }) => (
-              <thead className="bg-[#f5f4f0] dark:bg-[#2b2a27]">{children}</thead>
+              <thead className="bg-muted dark:bg-muted">{children}</thead>
             ),
             tbody: ({ children }) => <tbody>{children}</tbody>,
             tr: ({ children }) => (
-              <tr className="border-b border-[#e5e4df] dark:border-[#3a3938]">{children}</tr>
+              <tr className="border-b border-border dark:border-border">{children}</tr>
             ),
             th: ({ children }) => (
-              <th className="border border-[#e5e4df] px-4 py-2 text-left font-semibold dark:border-[#3a3938]">
+              <th className="border border-border px-4 py-2 text-left font-semibold dark:border-border">
                 {children}
               </th>
             ),
             td: ({ children }) => (
-              <td className="border border-[#e5e4df] px-4 py-2 dark:border-[#3a3938]">
+              <td className="border border-border px-4 py-2 dark:border-border">
                 {children}
               </td>
             ),

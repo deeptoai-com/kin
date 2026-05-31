@@ -70,17 +70,17 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={onClose}>
       <div
-        className="w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl"
+        className="w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-border dark:border-border bg-card dark:bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border dark:border-border">
+        <h3 className="text-sm font-semibold text-foreground dark:text-foreground">
           🔧 Skills 管理
         </h3>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          className="text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
           aria-label="关闭"
         >
           <Cross2Icon width={16} height={16} />
@@ -91,12 +91,12 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
       <div className="px-4 py-3 space-y-3">
         {/* Loading State */}
         {isLoading && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">加载中...</p>
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground">加载中...</p>
         )}
 
         {/* Empty State */}
         {!isLoading && availableSkills.length === 0 && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground italic">
             暂无可用的 Skills
           </p>
         )}
@@ -119,11 +119,11 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
         )}
 
         {/* Footer Info */}
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="pt-2 border-t border-border dark:border-border">
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground">
             已启用: {enabledSkills.length} / {availableSkills.length}
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
             提示：开启后需重新发起对话才能使用新 Skills
           </p>
         </div>
@@ -142,13 +142,13 @@ interface SkillToggleItemProps {
 
 const SkillToggleItem: FC<SkillToggleItemProps> = ({ skill, isEnabled, onToggle }) => {
   return (
-    <div className="flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50">
+    <div className="flex items-start justify-between gap-3 p-2 rounded hover:bg-muted dark:hover:bg-muted/50">
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <p className="text-sm font-medium text-foreground dark:text-foreground">
           {skill.name}
         </p>
         {skill.description && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-0.5">
             {skill.description}
           </p>
         )}
@@ -160,14 +160,14 @@ const SkillToggleItem: FC<SkillToggleItemProps> = ({ skill, isEnabled, onToggle 
         className={`
           relative inline-flex h-5 w-9 items-center rounded-full transition-colors
           ${isEnabled
-            ? 'bg-blue-600 dark:bg-blue-500'
-            : 'bg-gray-300 dark:bg-gray-600'}
+            ? 'bg-primary dark:bg-primary'
+            : 'bg-muted dark:bg-muted'}
         `}
         aria-label={isEnabled ? '关闭' : '开启'}
       >
         <span
           className={`
-            inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+            inline-block h-4 w-4 transform rounded-full bg-card transition-transform
             ${isEnabled ? 'translate-x-5' : 'translate-x-0.5'}
           `}
         />
