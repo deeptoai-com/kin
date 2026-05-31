@@ -195,15 +195,27 @@ process.stdin.on('end', async () => {
     );
     // Risk #2 fix: the SDK's bypassPermissions mode auto-allows every tool and
     // never consults canUseTool, which disables our cross-user/path-security guard.
-    // So we DON'T pass raw bypassPermissions to the SDK — we run in 'default' mode
-    // where canUseTool IS consulted (it's a programmatic allow/deny callback, so the
-    // worker stays non-interactive). Bash allowance is still governed by
-    // disallowedTools. Set CLAUDE_DANGEROUS_DISABLE_GUARD=true to restore the old
-    // (unsafe) behavior for debugging only.
+    // So we DON'T pass raw bypassPermissions to the SDK.
+    //
+    // We have NO interactive HITL round-trip yet, so SDK 'default' mode is unusable:
+    // it pauses to "ask" on every tool, and with no responder the run aborts
+    // (verified: default -> error_during_execution, file never written). Instead we
+    // map our 3 product modes to NON-INTERACTIVE SDK modes that keep canUseTool active:
+    //   - 'plan'  (Explore) -> SDK 'plan'        : read-only, no edits
+    //   - everything else   -> SDK 'acceptEdits' : file edits auto-allowed, but
+    //                                              canUseTool STILL runs (path/tenant
+    //                                              guard intact; Bash governed by
+    //                                              disallowedTools). No abort.
+    //   - bypass + CLAUDE_DANGEROUS_DISABLE_GUARD=true -> raw 'bypassPermissions' (debug only).
+    // True interactive "Ask" mode arrives with Phase 3 Wave 2 (HITL round-trip).
     const dangerousDisableGuard =
       permissionMode === 'bypassPermissions' &&
       process.env.CLAUDE_DANGEROUS_DISABLE_GUARD === 'true';
-    const sdkPermissionMode = dangerousDisableGuard ? 'bypassPermissions' : 'default';
+    const sdkPermissionMode = dangerousDisableGuard
+      ? 'bypassPermissions'
+      : permissionMode === 'plan'
+        ? 'plan'
+        : 'acceptEdits';
     const { canUseTool, debugInfo } = createPathSecurity({
       workspace: config.cwd,
       userId,
