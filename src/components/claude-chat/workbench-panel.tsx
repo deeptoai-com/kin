@@ -81,7 +81,7 @@ const TodoRow: FC<{ item: TodoItem }> = ({ item }) => {
     <li className="flex items-start gap-2.5 text-sm">
       <span
         className={cn(
-          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border',
+          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border',
           done && 'border-primary bg-primary text-primary-foreground',
           running && 'border-primary text-primary',
           !done && !running && 'border-border',

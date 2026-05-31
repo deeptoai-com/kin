@@ -423,7 +423,7 @@ function RouteComponent() {
             <MessageSquare className="h-8 w-8 text-muted-foreground" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h1 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
               {content.emptyState.title}
             </h1>
             <p className="text-muted-foreground max-w-md">
@@ -650,7 +650,7 @@ const EmptyStateContent: FC<{
           <MessageSquare className="h-8 w-8 text-muted-foreground" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">
+          <h1 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
             {content.emptyState.title}
           </h1>
           <p className="text-muted-foreground max-w-md">
@@ -1398,7 +1398,7 @@ function ClaudeChatSurface({
               {!hasHistoricalMessages && !isInitializingSession && (
                 <ThreadPrimitive.Empty>
                   <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                    <div className="text-4xl font-semibold text-foreground">
+                    <div className="font-serif text-4xl font-semibold tracking-tight text-foreground">
                       {content.emptyState.title}
                     </div>
                     <p className="max-w-md text-muted-foreground">

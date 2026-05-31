@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OxyGenie · v2 · Claude-Design-calibrated</title>
+<style>
+/* ============================================================
+   v2 — calibrated to the Claude Design screenshots.
+   Fixes: consistent RADIUS SCALE, compact density, refined
+   components (tactile terracotta button, colored icon badges,
+   serif display headings, pill chips, hairline borders).
+   ============================================================ */
+:root{
+  --bg:#F4F1EA;                 /* warm ivory, less yellow than v1 */
+  --surface:#FFFFFF;
+  --surface-2:#FBFAF6;
+  --fg:#2A2620;
+  --fg-muted:#8C857A;
+  --fg-soft:#B4ACA0;
+  --border:#E7E1D6;             /* warm hairline */
+  --border-strong:#DCD5C8;
+  --primary:#C0603D;            /* terracotta — PRIMARY ACTION only */
+  --primary-top:#CE6E4B;        /* button highlight */
+  --primary-bottom:#B5552F;
+  --primary-fg:#FFFFFF;
+  --green:#6E8B5E; --blue:#5B7DB1; --magenta:#A65A86; --amber:#C79A3E;
+  --ok:#5E8A57;
+
+  /* RADIUS SCALE — the fix for "inconsistent corners" */
+  --r-pill:999px;   /* chips, tags, toggles, status, filter buttons */
+  --r-sm:6px;       /* checkbox, inner chip */
+  --r:10px;         /* buttons, inputs, icon badges */
+  --r-card:14px;    /* cards, panels */
+  --r-lg:18px;      /* large containers / composer */
+
+  --sh-card:0 1px 2px rgba(60,48,34,.04), 0 1px 3px rgba(60,48,34,.05);
+  --sh-pop:0 4px 16px -4px rgba(60,48,34,.12);
+  --sh-btn:0 1px 2px rgba(150,70,40,.30), inset 0 1px 0 rgba(255,255,255,.28);
+
+  --sans:"Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --serif:"Tiempos Text","Source Serif 4",Georgia,"Songti SC",serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#E6E3DB;font-family:var(--sans);color:var(--fg);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 20px 60px}
+.wrap h1{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 2px}
+.wrap .sub{color:var(--fg-muted);font-size:13px;margin:0 0 18px}
+
+/* ---------- component / radius detail strip ---------- */
+.detail{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-card);padding:16px 18px;margin-bottom:18px;box-shadow:var(--sh-card)}
+.detail h2{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--fg-muted);font-weight:700;margin:0 0 12px}
+.row{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end}
+.spec{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.spec .lbl{font-size:10px;color:var(--fg-muted)}
+/* radius scale samples */
+.rsample{width:56px;height:40px;background:var(--surface);border:1px solid var(--border-strong)}
+/* buttons */
+.btn{font-family:var(--sans);font-size:13px;font-weight:500;border:none;cursor:default;padding:8px 16px;border-radius:var(--r)}
+.btn-primary{color:var(--primary-fg);background:linear-gradient(180deg,var(--primary-top),var(--primary-bottom));box-shadow:var(--sh-btn)}
+.btn-ghost{background:var(--surface);border:1px solid var(--border-strong);color:var(--fg);box-shadow:var(--sh-card)}
+.btn-dark{background:#23201B;color:#fff}
+/* pill chip */
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r-pill);border:1px solid var(--border-strong);background:var(--surface);padding:5px 12px;font-size:12px;color:var(--fg);box-shadow:var(--sh-card)}
+.chip .x{color:var(--fg-soft);font-size:13px}
+/* input */
+.inp{border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r);padding:8px 12px;font-size:13px;color:var(--fg-muted);width:200px;box-shadow:var(--sh-card)}
+/* icon badge */
+.badge{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+
+/* ---------- app shell ---------- */
+.app{display:flex;height:600px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--sh-card)}
+
+/* icon rail */
+.rail{width:54px;flex:0 0 54px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.rail .ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--fg-muted);font-size:15px}
+.rail .ic.on{background:#F1E7E0;color:var(--primary)}
+.rail .grow{flex:1}
+.rail .me{width:30px;height:30px;border-radius:var(--r-pill);background:#EDE7DC;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--fg)}
+
+/* session list */
+.list{width:212px;flex:0 0 212px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.list .lh{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 10px}
+.list .lh .t{font-size:13px;font-weight:600}
+.list .new{width:26px;height:26px;border-radius:var(--r);background:linear-gradient(180deg,var(--primary-top),var(--primary-bottom));color:#fff;border:none;font-size:15px;box-shadow:var(--sh-btn);display:flex;align-items:center;justify-content:center}
+.list .search{margin:0 12px 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r);padding:7px 10px;font-size:11.5px;color:var(--fg-soft);display:flex;gap:6px;align-items:center}
+.list .items{padding:0 8px;display:flex;flex-direction:column;gap:2px}
+.li{display:flex;gap:9px;padding:8px 8px;border-radius:var(--r);align-items:center}
+.li.on{background:var(--surface);box-shadow:var(--sh-card);border:1px solid var(--border)}
+.li .bdg{width:26px;height:26px;border-radius:8px;flex:0 0 26px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px}
+.li .tx{min-width:0}
+.li .tx .a{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .tx .b{font-size:10.5px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+
+/* center stage */
+.stage{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.topbar{height:46px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--surface)}
+.topbar .nm{font-size:13px;font-weight:600}
+.topbar .steps{display:flex;gap:6px;margin-left:14px}
+.step{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fg-muted)}
+.step .d{width:15px;height:15px;border-radius:var(--r-pill);border:1.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center;font-size:8px}
+.step.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.now{color:var(--primary)} .step.now .d{border-color:var(--primary)}
+.topbar .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.stagebody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:20px}
+.hero{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:-.01em;text-align:center}
+.herosub{color:var(--fg-muted);font-size:13.5px;text-align:center;margin-top:6px}
+.stagebody .hero+.herosub{margin-top:6px}
+.stagebody>div:first-child{display:flex;flex-direction:column;gap:6px}
+/* composer */
+.composer{width:560px;max-width:100%;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);box-shadow:var(--sh-pop);padding:14px 16px}
+.composer .ph{font-size:13.5px;color:var(--fg-soft);min-height:24px}
+.composer .chips{display:flex;gap:6px;margin:10px 0}
+.composer .crow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.circle{width:30px;height:30px;border-radius:var(--r-pill);border:1px solid var(--border-strong);background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--fg-muted);font-size:14px}
+.composer .send{margin-left:auto;display:flex;align-items:center;gap:6px;color:#fff;font-size:12.5px;font-weight:500;padding:7px 14px;border-radius:var(--r-pill);background:linear-gradient(180deg,var(--primary-top),var(--primary-bottom));box-shadow:var(--sh-btn)}
+.composer .model{font-size:11px;color:var(--fg-muted)}
+
+/* right copilot */
+.cop{width:300px;flex:0 0 300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
+.cop .ch{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.cop .ch .av{width:24px;height:24px;border-radius:8px;background:#EDE7DC;display:flex;align-items:center;justify-content:center;font-size:11px}
+.cop .ch .t{font-size:13px;font-weight:600}
+.cop .ch .st{margin-left:auto;font-size:10px;color:var(--ok);display:flex;align-items:center;gap:4px}
+.cop .ch .st::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.cop .body{flex:1;overflow:hidden;padding:14px}
+.seclbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-muted);font-weight:700;margin:0 0 10px;display:flex;justify-content:space-between}
+.todo{display:flex;flex-direction:column;gap:8px}
+.titem{display:flex;gap:9px;align-items:flex-start;font-size:12.5px}
+.ck{width:15px;height:15px;border-radius:var(--r-sm);border:1.5px solid var(--border-strong);flex:0 0 15px;margin-top:1px;display:flex;align-items:center;justify-content:center}
+.titem.done .ck{background:var(--ok);border-color:var(--ok);color:#fff;font-size:10px}
+.titem.done .l{color:var(--fg-muted);text-decoration:line-through}
+.titem.now .ck{border-color:var(--primary)} .titem.now .l{font-weight:600}
+.titem .l{line-height:1.45}
+.bar{height:5px;border-radius:var(--r-pill);background:#EDE7DC;margin:14px 0 4px;overflow:hidden}
+.bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,var(--primary-top),var(--primary-bottom))}
+.cap{font-size:10px;color:var(--fg-muted)}
+/* activity feed (它在干什么) */
+.feed{margin-top:18px;display:flex;flex-direction:column;gap:11px}
+.fitem{display:flex;gap:9px;font-size:11.5px}
+.fitem .dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong);margin-top:4px;flex:0 0 7px}
+.fitem.live .dot{background:var(--primary)}
+.fitem .ft{color:var(--fg)} .fitem .fm{color:var(--fg-soft);font-size:10px;margin-top:1px}
+.cop .foot{border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:6px}
+.cop .foot .mini{font-size:10.5px;border:1px solid var(--border-strong);border-radius:var(--r-pill);padding:4px 10px;color:var(--fg-muted);background:var(--surface-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OxyGenie · v2 — 校准到 Claude Design</h1>
+  <p class="sub">紧凑 · 圆角分层(胶囊/10px/14px) · 衬线大标题 · 质感陶土主按钮 · 彩色图标徽章 · 发丝边框。对比 v1 的"松散 + 一刀切大圆角"。</p>
+
+  <!-- detail strip -->
+  <div class="detail">
+    <h2>组件 & 圆角刻度</h2>
+    <div class="row">
+      <div class="spec"><div class="rsample" style="border-radius:999px;width:80px"></div><span class="lbl">pill · chips/状态</span></div>
+      <div class="spec"><div class="rsample" style="border-radius:6px"></div><span class="lbl">6px · 小元件</span></div>
+      <div class="spec"><div class="rsample" style="border-radius:10px"></div><span class="lbl">10px · 按钮/输入</span></div>
+      <div class="spec"><div class="rsample" style="border-radius:14px"></div><span class="lbl">14px · 卡片</span></div>
+      <div class="spec"><div class="rsample" style="border-radius:18px"></div><span class="lbl">18px · 大容器</span></div>
+      <div class="spec" style="margin-left:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary">＋ Create</button>
+          <button class="btn btn-ghost">Wireframe</button>
+          <button class="btn btn-dark">Share</button>
+        </div>
+        <span class="lbl">按钮:陶土主操作(高光渐变+投影) / 幽灵 / 深色</span>
+      </div>
+      <div class="spec">
+        <div style="display:flex;gap:6px">
+          <span class="chip">Hi-fi design <span class="x">×</span></span>
+          <span class="chip">Interactive prototype <span class="x">×</span></span>
+        </div>
+        <span class="lbl">胶囊 chip(带 ×)</span>
+      </div>
+      <div class="spec">
+        <div style="display:flex;gap:6px">
+          <span class="badge" style="background:var(--primary)">◑</span>
+          <span class="badge" style="background:var(--green)">▣</span>
+          <span class="badge" style="background:var(--blue)">▤</span>
+          <span class="badge" style="background:var(--magenta)">◆</span>
+        </div>
+        <span class="lbl">彩色图标徽章(占位=未来 3D)</span>
+      </div>
+      <div class="spec"><div class="inp">🔍 Search…</div><span class="lbl">输入框</span></div>
+    </div>
+  </div>
+
+  <!-- app -->
+  <div class="app">
+    <div class="rail">
+      <div class="ic on">◑</div>
+      <div class="ic">▣</div>
+      <div class="ic">▤</div>
+      <div class="ic">◆</div>
+      <div class="grow"></div>
+      <div class="me">P</div>
+    </div>
+
+    <div class="list">
+      <div class="lh"><span class="t">会话</span><button class="new">＋</button></div>
+      <div class="search">🔍 搜索会话…</div>
+      <div class="items">
+        <div class="li on"><span class="bdg" style="background:var(--primary)">◑</span><div class="tx"><div class="a">数据清洗与图表生成</div><div class="b">渲染中 · 第 4/12 步</div></div></div>
+        <div class="li"><span class="bdg" style="background:var(--green)">▣</span><div class="tx"><div class="a">爬取竞品定价</div><div class="b">等待审批 1 个工具</div></div></div>
+        <div class="li"><span class="bdg" style="background:var(--blue)">▤</span><div class="tx"><div class="a">周报草稿</div><div class="b">昨天</div></div></div>
+        <div class="li"><span class="bdg" style="background:var(--magenta)">◆</span><div class="tx"><div class="a">PDF 摘要</div><div class="b">5月28日</div></div></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="topbar">
+        <span class="badge" style="width:24px;height:24px;background:var(--primary);font-size:11px">◑</span>
+        <span class="nm">数据清洗与图表生成</span>
+        <div class="steps">
+          <span class="step done"><span class="d">✓</span>输入</span>
+          <span class="step done"><span class="d">✓</span>大纲</span>
+          <span class="step now"><span class="d">●</span>渲染</span>
+          <span class="step"><span class="d"></span>完成</span>
+        </div>
+        <div class="right"><button class="btn btn-ghost" style="padding:6px 12px;font-size:12px">分享</button><button class="btn btn-dark" style="padding:6px 14px;font-size:12px">Share</button></div>
+      </div>
+      <div class="stagebody">
+        <div>
+          <div class="hero">开始和 Genie 协作</div>
+          <div class="herosub">把任务交给它,过程都在右侧工作台实时可见。</div>
+        </div>
+        <div class="composer">
+          <div class="ph">描述你想做的事,或拖入文件…</div>
+          <div class="chips">
+            <span class="chip">数据分析 <span class="x">×</span></span>
+            <span class="chip">生成图表 <span class="x">×</span></span>
+          </div>
+          <div class="crow">
+            <span class="circle">＋</span>
+            <span class="circle">⚙</span>
+            <span class="model">模型 Auto · 1,240/5,000 积分</span>
+            <span class="send">↑ 发送</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cop">
+      <div class="ch"><span class="av">◑</span><span class="t">副驾</span><span class="st">渲染中</span></div>
+      <div class="body">
+        <p class="seclbl"><span>当前任务 · Todo</span><span>3/5</span></p>
+        <div class="todo">
+          <div class="titem done"><span class="ck">✓</span><span class="l">读取并校验 data.csv</span></div>
+          <div class="titem done"><span class="ck">✓</span><span class="l">清洗缺失值</span></div>
+          <div class="titem now"><span class="ck"></span><span class="l">按品类聚合计算均价</span></div>
+          <div class="titem"><span class="ck"></span><span class="l">绘制柱状图并导出 PNG</span></div>
+          <div class="titem"><span class="ck"></span><span class="l">写出 summary.csv</span></div>
+        </div>
+        <div class="bar"><i></i></div>
+        <div class="cap">3 / 5 已完成</div>
+
+        <p class="seclbl" style="margin-top:18px"><span>它在干什么</span></p>
+        <div class="feed">
+          <div class="fitem live"><span class="dot"></span><div><div class="ft">渲染第 4 页 · 配图双栏</div><div class="fm">09:42:11</div></div></div>
+          <div class="fitem"><span class="dot"></span><div><div class="ft">为第 3 页选配图占位 · 折线图</div><div class="fm">09:42:03</div></div></div>
+          <div class="fitem"><span class="dot"></span><div><div class="ft">套用模板「素白」到全部正文页</div><div class="fm">09:41:50</div></div></div>
+        </div>
+      </div>
+      <div class="foot"><span class="mini">把这页改成三栏</span><span class="mini">配色再素一点</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
