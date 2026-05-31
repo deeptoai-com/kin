@@ -5,18 +5,23 @@
 
 ## Current position (one-paragraph snapshot)
 
-**2026-05-31 — Phases 0/1/0.5/2 are DONE; Phase 3 (capabilities + UI/UX overhaul) is NEXT and
-design-locked.** Phase 0.5 delivered the execution-runtime abstraction + single-host concurrency
+**2026-05-31 — Phases 0/1/0.5/2 are DONE; Phase 3 (capabilities + UI/UX overhaul) is IN PROGRESS —
+Wave 0 + Wave 1 merged (#60).** Phase 0.5 delivered the execution-runtime abstraction + single-host concurrency
 governance (target: one 16G/8-core VPS ~50 concurrent sessions): `ExecutionRuntime`+`LocalProcessBackend`
 (#39), `DockerBackend` (#41), unified path guard B3 (#42), WS backpressure C4 (#43/#45), bounded
 worker concurrency S1 (#48), per-worker heap cap S2 (#51), idle-connection reaper S3 (#52), load-test
 harness S5 (#53). Phase 2 delivered observability+accounting: per-run `usage_record` (#55), `audit_log`
 (#56), token metering + quota mechanism **OFF by default** (#57, rate stays config-driven, calibrate
-from real usage data later — see `research/2026-05-billing-design.md`). **Phase 3 is planned but not
-started** — read `PHASE3-PLAN.md` + `research/2026-05-phase3-ui-ux-design.md`; decisions locked (Coze
-shell aesthetic + Cowork workbench depth, redo design tokens keeping shadcn/Radix, 3D icons via
-owner-supplied assets); begin at Wave 0 (design tokens + 3-column workbench skeleton, owner signs off
-on style before Wave 1). Historical note below (kept for context).
+from real usage data later — see `research/2026-05-billing-design.md`). **Phase 3 Wave 0 + Wave 1 are
+merged (#60)**: design tokens redone to Direction A "暖雾奶油" (warm-cream + terracotta, 换皮不换骨 —
+only `app.css` token values, shadcn/Radix kept), a three-column `WorkbenchPanel` skeleton (Progress /
+Sub-agents / Files / Context, placeholder 3D-icon slots), and the front-end line ① Progress = live
+TodoWrite checklist + ② Sub-agents = flat Task list (pure store selectors in
+`src/lib/hooks/use-session-workbench.ts`, no adapter change, unit-tested 11/11). **Next: Wave 2**
+(Ask/Act mode + ③ HITL tool approval — backend-heavy, needs a small design sub-doc per PHASE3-PLAN §5
+before implementing). Follow-ups: nested sub-agent tree (needs `parent_tool_use_id` on tool-call parts),
+responsive workbench drawer below `lg`, Inter/Source-Serif font files, owner-supplied 3D icons.
+Historical note below (kept for context).
 
 ### Historical snapshot (2026-05-30, first browser-verified run)
 
@@ -55,10 +60,18 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Phase 1 — Security hardening** | ✅ Core done (Risks #1/#2/#3/#4/#5/#10) |
 | **Phase 0.5 — Execution-runtime + single-host concurrency** | ✅ Done (ExecutionRuntime #39, DockerBackend #41, B3 #42, C4 #43/#45, S1 #48, S2 #51, S3 #52, S5 #53) — single 16G/8-core ~50 concurrent target |
 | **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
-| **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🔵 NEXT — planned & design-locked (see `PHASE3-PLAN.md` + `research/2026-05-phase3-ui-ux-design.md`); start at Wave 0 |
+| **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 (tokens A "暖雾奶油" + 3-col workbench skeleton) + Wave 1 (① Todo, ② Sub-agents) merged (#60); next: Wave 2 (Ask/Act + ③ HITL) |
 | Phase 4 — Multi-model & scale | ⬜ Not started |
 
 ## Done (most recent first)
+
+- ✅ **Phase 3 Wave 0 + Wave 1** (PR #60): redo design tokens → Direction A "暖雾奶油" (warm-cream +
+  terracotta primary, radius 1.25rem, soft warm shadows; only `app.css`, shadcn/Radix kept) + new
+  three-column `WorkbenchPanel` skeleton (Progress/Sub-agents/Files/Context, placeholder 3D-icon slots,
+  hidden below `lg`) + ① Progress live TodoWrite checklist + ② Sub-agents flat Task list (pure store
+  selectors, no adapter change). Verified: `pnpm build` ✓, `test:unit` 11/11, real app light/dark/mobile +
+  panels rendered (injected data via a temporary, reverted store-exposure). Direction preview:
+  `docs/project/wave0-design/preview.html`. *(2026-05-31)*
 
 - ✅ **Phase 0.5 PR-4 — WebSocket backpressure (C4)** (PR #43): worker `send()` awaits stdout
   `drain`; ws-server pauses `worker.stdout` above 8MB `ws.bufferedAmount`, resumes below 1MB.
