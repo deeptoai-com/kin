@@ -108,7 +108,7 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`group flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-all duration-200 ${meta.bgColor} ${meta.borderColor} ${meta.color} cursor-pointer hover:opacity-80`}
+        className={`group flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition-all duration-200 ${meta.bgColor} ${meta.borderColor} ${meta.color} cursor-pointer hover:opacity-80`}
         title={meta.desc}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -122,7 +122,7 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
       {open && (
         <div
           role="listbox"
-          className="absolute bottom-full left-0 z-50 mb-2 w-68 rounded-lg border border-border bg-popover p-1.5 shadow-lg"
+          className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border border-border bg-popover p-1.5 shadow-lg"
         >
           {PERMISSION_TIERS.map((tier) => {
             const m = TIER_META[tier];
@@ -135,7 +135,7 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
                 role="option"
                 aria-selected={isCurrent}
                 onClick={() => handlePick(tier)}
-                className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer hover:bg-accent transition"
+                className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer transition hover:bg-accent ${isCurrent ? 'bg-accent' : ''}`}
               >
                 <TierIcon className={`mt-0.5 h-4 w-4 shrink-0 ${m.color}`} />
                 <span className="min-w-0 flex-1">
