@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import type { UsageData } from '~/components/claude-chat/usage-card';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
+import type { PermissionTier } from '~/lib/permission-tier';
 
 // Define our own message types that are compatible with @assistant-ui/react
 export type TextContentPart = {
@@ -138,6 +139,10 @@ interface ChatSessionState {
   // Skills auto-enabled for current session (from templates)
   temporarySkills: string[];
 
+  // Selected product permission tier (ephemeral, per-session UI choice).
+  // Clamped to the org ceiling server-side; undefined → server uses org default.
+  selectedTier?: PermissionTier;
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -154,6 +159,7 @@ interface ChatSessionState {
   clearMessages: () => void;
   addTemporarySkill: (skillSlug: string) => void;
   clearTemporarySkills: () => void;
+  setSelectedTier: (tier: PermissionTier | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -306,6 +312,11 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
   temporarySkills: [],
+  selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
+
+  setSelectedTier: (selectedTier) => {
+    set({ selectedTier });
+  },
 
   setSessionId: (sessionId) => {
     set({ currentSessionId: sessionId });

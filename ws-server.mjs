@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Semaphore } from './src/server/concurrency/semaphore.js';
 import { shouldReapIdle } from './src/server/concurrency/idle-reaper.js';
+import { resolveEffectivePermission } from './src/lib/permission-tier.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -811,7 +812,7 @@ async function handleCreateSession(ws) {
  * Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
  */
 async function handleChat(ws, prompt, resumeSessionId, options = {}) {
-  const { silentInit = false, skillSlug = null } = options;
+  const { silentInit = false, skillSlug = null, permissionTier = null } = options;
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -920,6 +921,18 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       organizationId = null;
       role = null;
       console.log(`[WS Server] Using environment-based permissions: mode=${permissionMode}, bash=${allowBash}`);
+    }
+
+    // PR-B: apply the client-requested product tier.
+    // Security lives in the sandbox — tiers are a UX preference (how much to interrupt).
+    // Falls back to DEFAULT_TIER ('act') when absent/unrecognised (no behaviour change
+    // for legacy clients that send no tier). Single source: src/lib/permission-tier.js.
+    const effective = resolveEffectivePermission({ requestedTier: permissionTier });
+    permissionMode = effective.permissionMode;
+    // wantsBash: tier's preference; actual bash availability gated by sandbox in PR-C.
+    // For now keeps existing allowBash logic (native Bash still in disallowedTools).
+    if (permissionTier) {
+      console.log(`[WS Server] Permission tier: ${effective.tier} → mode=${permissionMode}`);
     }
 
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
@@ -1235,7 +1248,10 @@ async function handleMessage(ws, msg) {
         });
         return;
       }
-      await handleChat(ws, message.content, message.sessionId, { skillSlug: message.skillSlug });
+      await handleChat(ws, message.content, message.sessionId, {
+        skillSlug: message.skillSlug,
+        permissionTier: message.permissionTier,
+      });
       break;
 
     case 'resume':

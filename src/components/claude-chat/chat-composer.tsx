@@ -44,6 +44,7 @@ import { KnowledgeBasePanel } from './knowledge-base-panel';
 import { SessionFilesPanel } from './session-files-panel';
 import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
 import { PermissionBadge, type PermissionInfo } from './permission-badge';
+import { PermissionTierSelector } from './permission-tier-selector';
 import { ToolbarStatus, type AgentStatusType } from './claude-status';
 import { McpStatusIndicator } from './mcp-status-indicator';
 import { useIntlayer } from 'react-intlayer';
@@ -192,6 +193,8 @@ export function ChatComposer({
   const agentStatus = useChatSessionStore((state) => state.agentStatus);
   const currentToolName = useChatSessionStore((state) => state.currentToolName);
   const queueCount = useChatSessionStore((state) => state.queueCount);
+  const selectedTier = useChatSessionStore((state) => state.selectedTier);
+  const setSelectedTier = useChatSessionStore((state) => state.setSelectedTier);
   const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
 
   // Draft auto-save: persist unsent input to localStorage
@@ -564,7 +567,13 @@ export function ChatComposer({
               </div>
             )}
 
-            {/* Permission Badge - only show when not running */}
+            {/* Permission Tier Selector - only show when not running */}
+            {!isRunning && (
+              <PermissionTierSelector
+                selectedTier={selectedTier}
+                onSelect={setSelectedTier}
+              />
+            )}
             {!isRunning && (
               <PermissionBadge permissionInfo={permissionInfo} />
             )}

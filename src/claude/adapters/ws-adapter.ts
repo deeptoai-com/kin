@@ -101,7 +101,7 @@ type StreamEvent = {
 type InboundMessage =
   | { type: 'create_session' }
   | { type: 'init_session'; sessionId: string }
-  | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string }
+  | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'ping' };
@@ -748,6 +748,8 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
           content: fullPrompt,
           sessionId: currentSessionId,
           skillSlug: selectedSkill?.slug,
+          // PR-B: client-preferred permission tier (server clamps to org ceiling).
+          permissionTier: useChatSessionStore.getState().selectedTier,
         });
         console.log('[WS Adapter] ✅ Message sent successfully');
       } catch (connectError) {
