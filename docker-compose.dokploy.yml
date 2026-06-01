@@ -213,6 +213,13 @@ services:
   app:
     <<: *app_build
     container_name: ${APP_NAME:-OxyGenie}-app
+    # PR-C Step 0: enable srt (bubblewrap) sandbox for tool execution.
+    # srt requires unprivileged user namespaces → seccomp=unconfined.
+    # bubblewrap/socat/ripgrep are already installed in the Dockerfile (line 72-74).
+    # Verify active: docker logs <app-container> | grep '\[sandbox\]'
+    # Should show "srt: initialized" not "env-strip only".
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       db:
         condition: service_healthy
@@ -277,7 +284,10 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
       APP_URL: http://localhost:5000
-      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      # srt sandbox: explicitly ON (requires seccomp=unconfined above).
+      # SANDBOX_ENABLED was a legacy unused var; ENABLE_EXEC_SANDBOX is what the
+      # code actually reads (src/claude/execution/sandbox.js isEnabled()).
+      ENABLE_EXEC_SANDBOX: '1'
       CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}
       MCP_STORE_DIR: ${MCP_STORE_DIR:-src/mcp-store}
       # Skills Store (must use persistent volume; otherwise installed skills are lost on redeploy)
