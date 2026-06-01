@@ -15,6 +15,8 @@ import { createPathSecurity } from './src/claude/path-security.js';
 import { resolveMcpServerConfigs } from './src/claude/mcp/manager.js';
 import { runPython } from './src/claude/python/runner.js';
 import { generateImage } from './src/claude/glm-image/runner.js';
+import { runBash } from './src/claude/bash/runner.js';
+import { sandboxStatus } from './src/claude/execution/sandbox.js';
 
 // Read configuration from environment
 const config = {
@@ -351,12 +353,87 @@ process.stdin.on('end', async () => {
       tools: [glmImageGenerateTool],
     });
 
+    // PR-C: Sandboxed Bash tool — only registered when the sandbox is confirmed active.
+    // SECURITY: we check sandboxStatus() here (already initialised by Python runner or
+    // ensureSandbox() in the bash runner itself). If inactive → tool is NOT registered,
+    // so Claude cannot call it at all. Never falls back to bare-host execution.
+    // Tiers that want bash (auto/act) have permissionMode=acceptEdits; Explore (plan)
+    // will not benefit since plan mode doesn't execute tools anyway.
+    const { state: sandboxState } = sandboxStatus();
+    const sandboxReady = sandboxState === 'active';
+
+    const bashSdkServers = {};
+    if (sandboxReady) {
+      const bashRunTool = tool(
+        'run',
+        'Execute a shell (bash) command inside the session workspace sandbox. ' +
+        'Network is disabled. Filesystem is fenced to the workspace. ' +
+        'Resources are limited (2 CPU / 2 GiB RAM / 512 processes / 300 s timeout). ' +
+        'Use for: npm/pnpm install, build commands, git operations, file manipulation. ' +
+        'Do NOT use for: network requests (use fetch/axios in code instead).',
+        {
+          command: z.string().min(1).describe(
+            'Shell command to execute. Use relative paths. Absolute paths must be under the workspace.'
+          ),
+          timeoutMs: z.number().int().positive().max(300_000).optional()
+            .describe('Timeout in ms (max 300000 = 5 min). Default: 300000.'),
+          maxOutputBytes: z.number().int().positive().optional()
+            .describe('Max output bytes. Default: 512000.'),
+        },
+        async (args) => {
+          try {
+            const result = await runBash({
+              command: args.command,
+              cwd: config.cwd,
+              timeoutMs: args.timeoutMs,
+              maxOutputBytes: args.maxOutputBytes,
+            });
+
+            const isError = Boolean(
+              result.timedOut ||
+              result.killedByLimit ||
+              (typeof result.exitCode === 'number' && result.exitCode !== 0)
+            );
+
+            let text = '';
+            if (result.stdout) text += result.stdout;
+            if (result.stderr) text += (text ? '\n[stderr]\n' : '') + result.stderr;
+            if (result.timedOut) text += '\n[bash-runner] Command timed out.';
+            if (result.diskWarning) text += `\n⚠️ ${result.diskWarning}`;
+            if (!text) text = '(no output)';
+
+            return {
+              content: [{ type: 'text', text, isError }],
+            };
+          } catch (error) {
+            return {
+              content: [{
+                type: 'text',
+                text: error instanceof Error ? error.message : String(error),
+                isError: true,
+              }],
+            };
+          }
+        }
+      );
+
+      const bashMcpServer = createSdkMcpServer({
+        name: 'bash',
+        tools: [bashRunTool],
+      });
+      bashSdkServers['bash'] = bashMcpServer;
+      console.error('[Worker] Sandbox bash tool: REGISTERED (sandbox active)');
+    } else {
+      console.error(`[Worker] Sandbox bash tool: NOT registered (sandbox state=${sandboxState ?? 'null'} — srt inactive or unavailable)`);
+    }
+
     const { mcpServers, allowedTools } = await resolveMcpServerConfigs({
       userId,
       userHome: process.env.CLAUDE_HOME,
       sdkServers: {
         python: pythonMcpServer,
         'glm-image': glmImageMcpServer,
+        ...bashSdkServers,
       },
     });
 
