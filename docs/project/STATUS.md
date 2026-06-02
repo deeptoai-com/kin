@@ -23,6 +23,18 @@ before implementing). Follow-ups: nested sub-agent tree (needs `parent_tool_use_
 responsive workbench drawer below `lg`, Inter/Source-Serif font files, owner-supplied 3D icons.
 Historical note below (kept for context).
 
+## 🔴 Release blockers (must fix before multi-user / public release)
+
+> Acceptable to defer during single-user / local dev; **must be closed before opening to multiple
+> tenants or the public internet.**
+
+- **R4 — Bash tier-gating gap** ([Issue #69](https://github.com/foreveryh/oxygenie/issues/69),
+  labels: `security` `release-blocker`). `wantsBash` is not threaded front-end → ws-server → worker,
+  so the permission tiers (Explore/Auto/Act) don't fully gate Bash; a tier could reach Bash it
+  shouldn't, or the gate is bypassed. Fix = thread `wantsBash` so the worker's `resolveDisallowedTools`
+  gates by tier + wantsBash; verify on real runs across all three tiers. ~2-line core fix, but it's a
+  **security boundary** — do not ship multi-user with it open.
+
 ### Historical snapshot (2026-05-30, first browser-verified run)
 
 **🎉 2026-05-30: the app now runs and was VERIFIED IN A BROWSER end-to-end.** Hybrid local mode
