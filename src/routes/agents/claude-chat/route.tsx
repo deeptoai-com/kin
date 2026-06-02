@@ -28,7 +28,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery } from '@tanstack/react-query';
-import { ThumbsDown, ThumbsUp, Layers, Paperclip, FolderOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Layers, Paperclip, PanelLeftClose, PanelLeftOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
@@ -460,17 +460,15 @@ function RouteComponent() {
         {/* Floating action buttons - only show when no artifact */}
         {!activeArtifactId && (
           <div className="absolute top-4 left-4 z-10 flex gap-2">
-            {hasAnySessions && (
-              <button
-                type="button"
-                onClick={() => setSessionListExpanded(!sessionListExpanded)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-                aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-                title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-              >
-                <FolderOpen className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setSessionListExpanded(!sessionListExpanded)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
+              aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+              title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+            >
+              {sessionListExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
             {!sessionListExpanded && (
               <button
                 type="button"
@@ -500,7 +498,7 @@ function RouteComponent() {
       <div className="h-full">
         <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
           {/* Session List - only show when no artifact AND user has sessions */}
-          {!activeArtifactId && hasAnySessions && (
+          {!activeArtifactId && (
             <SessionList
               currentSessionId={currentSessionId}
               onSelectSession={handleSelectSession}
@@ -734,17 +732,15 @@ const MainContent: FC<{
       {/* Floating action buttons - only show when no artifact */}
       {!activeArtifactId && (
         <div className="absolute top-4 left-4 z-10 flex gap-2">
-          {hasAnySessions && (
-            <button
-              type="button"
-              onClick={() => setSessionListExpanded(!sessionListExpanded)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-              aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-              title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-            >
-              <FolderOpen className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setSessionListExpanded(!sessionListExpanded)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
+            aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+            title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+          >
+            {sessionListExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </button>
           {!sessionListExpanded && (
             <button
               type="button"
@@ -774,7 +770,7 @@ const MainContent: FC<{
     <>
       <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
         {/* Session List - only show when no artifact AND user has sessions */}
-        {!activeArtifactId && hasAnySessions && (
+        {!activeArtifactId && (
           <SessionList
             currentSessionId={currentSessionId}
             onSelectSession={handleSelectSession}
