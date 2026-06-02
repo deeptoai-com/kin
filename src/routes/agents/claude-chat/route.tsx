@@ -458,7 +458,7 @@ function RouteComponent() {
     const chatPanel = (
       <>
         {/* Floating action buttons - only show when no artifact */}
-        {!activeArtifactId && (
+        {!activeArtifactId && !sessionListExpanded && (
           <div className="absolute top-4 left-4 z-10 flex gap-2">
             <button
               type="button"
@@ -730,7 +730,7 @@ const MainContent: FC<{
   const chatPanel = (
     <>
       {/* Floating action buttons - only show when no artifact */}
-      {!activeArtifactId && (
+      {!activeArtifactId && !sessionListExpanded && (
         <div className="absolute top-4 left-4 z-10 flex gap-2">
           <button
             type="button"

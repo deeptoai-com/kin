@@ -9,7 +9,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, MessageSquare } from 'lucide-react';
+import { Plus, Loader2, MessageSquare, PanelLeftClose } from 'lucide-react';
 import { useIntlayer } from 'react-intlayer';
 import { SessionItem, type SessionItemData } from './session-item';
 import { cn, toLocalizedString } from '~/lib/utils';
@@ -105,19 +105,19 @@ export function SessionList({
   return (
     <div
       className={cn(
-        'flex h-full flex-col transition-all duration-300 ease-in-out border-r bg-background/50',
+        'flex h-full flex-col transition-all duration-300 ease-in-out border-r border-sidebar-border bg-sidebar',
         isExpanded ? 'w-64' : 'w-0 overflow-hidden'
       )}
     >
       {isExpanded ? (
         <>
-          {/* Header with New Chat button */}
-          <div className="shrink-0 border-b p-3">
+          {/* Header: New Chat (primary) + collapse toggle (sidebar owns its own collapse) */}
+          <div className="flex shrink-0 items-center gap-2 border-b p-3">
             <button
               type="button"
               onClick={onNewSession}
               className={cn(
-                'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5',
+                'flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5',
                 'bg-primary text-primary-foreground text-sm font-medium',
                 'transition-colors hover:bg-primary/90',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
@@ -125,6 +125,15 @@ export function SessionList({
             >
               <Plus className="h-4 w-4" />
               <span>{content.sessionList.newChat}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sidebar-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label={toLocalizedString(content.sidebar.collapse)}
+              title={toLocalizedString(content.sidebar.collapse)}
+            >
+              <PanelLeftClose className="h-4 w-4" />
             </button>
           </div>
 
