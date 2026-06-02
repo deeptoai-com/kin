@@ -5,7 +5,6 @@ const PERMISSION_MODES: PermissionMode[] = [
   'plan',
   'dontAsk',
   'acceptEdits',
-  'delegate',
   'bypassPermissions',
 ];
 

@@ -1121,7 +1121,7 @@ async function generateSchemaFromContentOnce(
         debugLog('Assistant event:', JSON.stringify(event).slice(0, 2000));
         traceLog('Assistant event raw', event);
 
-        const content = (event as { message?: { content?: Array<Record<string, unknown>> } }).message?.content;
+        const content = (event as unknown as { message?: { content?: Array<Record<string, unknown>> } }).message?.content;
         if (Array.isArray(content)) {
           for (const block of content) {
             // Check for StructuredOutput tool_use

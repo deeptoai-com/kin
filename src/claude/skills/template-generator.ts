@@ -285,7 +285,7 @@ export async function generateTemplateFromSchema(
       }
 
       if (event.type === 'assistant') {
-        const content = (event as { message?: { content?: Array<Record<string, unknown>> } }).message?.content;
+        const content = (event as unknown as { message?: { content?: Array<Record<string, unknown>> } }).message?.content;
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block?.type === 'text' && typeof block.text === 'string') {

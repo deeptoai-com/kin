@@ -19,7 +19,6 @@ export type PermissionMode =
   | 'plan'
   | 'dontAsk'
   | 'acceptEdits'
-  | 'delegate'
   | 'bypassPermissions';
 
 // Permission info interface
@@ -73,15 +72,6 @@ const getModeDisplay = (mode: PermissionMode, bashEnabled: boolean) => {
         icon: ShieldCheckIcon,
         label: 'Accept Edits',
         description: '编辑模式：自动接受文件编辑',
-        color: 'text-muted-foreground',
-        bgColor: 'bg-muted',
-        borderColor: 'border-border',
-      };
-    case 'delegate':
-      return {
-        icon: ShieldCheckIcon,
-        label: 'Delegate',
-        description: '委托模式：允许委派任务',
         color: 'text-muted-foreground',
         bgColor: 'bg-muted',
         borderColor: 'border-border',
@@ -318,15 +308,6 @@ export const PermissionBadge: FC<PermissionBadgeProps> = ({ permissionInfo }) =>
                 <>
                   <p className="mb-2">🟣 <strong>Accept Edits 模式</strong></p>
                   <p className="mb-1">• 自动接受文件编辑</p>
-                  <p className="mb-1">• Bash 工具默认禁用</p>
-                  <p>• 路径级安全边界已启用</p>
-                </>
-              )}
-
-              {info.mode === 'delegate' && (
-                <>
-                  <p className="mb-2">🟪 <strong>Delegate 模式</strong></p>
-                  <p className="mb-1">• 允许委派任务执行</p>
                   <p className="mb-1">• Bash 工具默认禁用</p>
                   <p>• 路径级安全边界已启用</p>
                 </>
