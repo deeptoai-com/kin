@@ -106,3 +106,51 @@
 4. 设计「DB→FS 运行时投影」：会话初始化/启用时按需物化到 `.claude/skills/`。
 5. 统一能力中心前端（分 tab）+ 复用现有 skills-page/manager-panel 组件。
 6. 迁移脚本：现有 FS skills + sidecar + 状态文件 → DB。
+
+---
+
+## 九、SDK 升级的影响（2026-06）：版本天花板、MCP 解锁、Skills 限制
+
+> 本会话把 `@anthropic-ai/claude-agent-sdk` 从 **0.1.76 → 0.1.77 → 0.2.112** 升级，并探明了版本天花板。以下结论直接修订 §五/§六 的实现假设。
+
+### 9.1 版本天花板：为何停在 0.2.112（而非最新 0.3.160）
+
+- **0.2.113 起**，SDK 从「内置 `cli.js`（JS）」改为 **spawn 原生二进制**（bunfs / `manifest.zst.json` 解出）。
+- **原生二进制 + Claude Code 2.x 协议与 ARK（火山 `…/api/coding`）网关不兼容**：实测 `query()` 陷入 `api_retry` 死循环 —— 二进制能启动、`system.init` 认证识别正常，但**每个模型 API 请求被网关退回重试**直到超时。换 `ANTHROPIC_AUTH_TOKEN`（Bearer）、指向真实 `claude 2.1.160` 二进制、`settingSources:['user']` 加载配置，均无效。属 **API 协议层不兼容，改我们代码救不了**。
+- 我们的嵌入方式也依赖内置 JS：`schema-generator.ts`/`template-generator.ts` 硬编码 `/app/…/cli.js`；Docker 内只 `pnpm install`，无独立原生 `claude`。
+- **结论：在 ARK 网关下，drop-in 上限 = 0.2.112（最后一个内置-JS 版本）。** 已实测 0.2.112 在 ARK 上 chat-like `query()` 4/4 成功、effortLevel 崩溃消失、真实 skill schema 生成成功。
+- **版本已用精确钉死 `"0.2.112"`（非 `^`）**：`^0.2.112` / `~0.2.112` 都会让未来安装漂移到 0.2.113–0.2.141（原生二进制区）从而**破坏 ARK**。改版本前务必确认 ARK 兼容性。
+
+### 9.2 升级对我们的直接影响（已落地）
+
+- **修复**：effortLevel flaky 崩溃（0.1.76 上 schema 生成约 50–75% 直接崩）自 **0.1.77 起从 SDK 层根治**。PR #76 的「preset 配置 + 重试」防御保留（现在很少触发）。
+- **移除 `delegate` 权限模式**（owner 拍板）：新 SDK 的 `PermissionMode` 已不含它（且 tier 系统在 query 时已架空它）；已存的 `delegate` 配置归一化为 `default`。涉及 `permissions.ts`、`permissions.server.ts`、`PermissionSettings.tsx`、`permission-badge.tsx`、`api/auth/permission-info`。
+- 修复两处 `SDKAssistantMessage.content` 的纯类型 cast（经 `unknown`，无运行时变化）。
+- PR 轨迹：#76（重试防御）→ #77（0.1.77 根治崩溃）→ #78（0.2.112，ARK 上限）。
+
+### 9.3 MCP：用 0.2.112 就能做（**修订 §六/§七 的 MCP 实现假设**）
+
+**0.2.112 已含完整的 MCP 运行时管理 API**（已在本地 `sdk.d.ts` 确认）：
+- `toggleMcpServer(name, enabled)`、`reconnectMcpServer(name)`、`mcpServerStatus() → McpServerStatus[]`、`setMcpServers({...})`；
+- `McpServerToolPolicy`（**按工具**策略）；config 类型 `stdio / sse / http / sdk`（`headers` / `timeout` / `alwaysLoad`）；
+- 健壮性修复：Streamable HTTP 406（0.2.70）、失败态自动重试（0.2.89）、子进程清理（0.2.94）等，均 ≤0.2.112。
+- 缺：后台连接默认（0.2.142, `status:'pending'`）在天花板之后，没有；可手动管理状态。
+
+**→ 实现假设修订**：MCP tab **不需要自研连接管理**，直接**包一层 SDK 原语**（toggle / status / per-tool policy）；DB 只存「服务器配置 + 启用态」，运行时连接由 SDK 托管。**MCP 这条线不再被任何迁移阻塞，用当前 0.2.112 即可做。**
+
+### 9.4 Skills：更优的原生机制被天花板挡住（**维持 §六约束 B 的 FS 投影**）
+
+- **主会话 `skills` 选项**（`string[] | 'all'`，直接声明启用哪些技能、可替代 copy-on-enable）= **0.2.120**，差 8 个版本，**ARK 上够不到**。
+- `reloadSkills`（SessionStart hook 动态重扫）= **0.3.152**，够不到。
+- 0.2.112 能用的：`SDKSystemMessage.skills`（init 列出可用技能）、`getContextUsage().skills`（技能 token 成本明细）、`AgentDefinition.skills`（给**子代理**预载技能）。
+- **→ 维持 DB 编目 + copy-on-enable/symlink + `settingSources:['project']` 的 FS 投影**（§六约束 B 依然成立）。**设计要点**：把「启用集 → 运行时」做成**可替换抽象**，未来若切到原生二进制 + 原生 Anthropic，可无痛换成 `skills` 选项 + `reloadSkills`。
+
+### 9.5 一句话定调（供 PRD）
+
+- **MCP**：用当前 0.2.112 SDK 原语即可实现，PRD 中 MCP 从「自管连接」改为「SDK 托管 + 我们做 UI/配置/DB」。**不卡迁移。**
+- **Skills**：维持 DB 编目 + FS 投影，留好 `skills`-option 切换口；唯一卡点仍是**上游 skills-api 契约**。
+- 再次印证：**统一发现/UI 层，但运行时模型不同** —— MCP=SDK 托管连接（不走 FS），Skills=FS 扫描（走 DB→FS 投影）。
+
+### 9.6 备忘：我们**没有**升级到最新版（0.3.160）
+
+当前固定 **0.2.112**。要用 0.3.x（及其 `skills` 选项 / `reloadSkills` / 后台 MCP / Opus 4.7 等）必须满足前置：**切到原生 Anthropic 网关**（放弃 ARK 多模型：doubao/glm/deepseek/kimi/minimax）**+ 原生二进制集成迁移**（去硬编码 `cli.js`、Docker 内置 `claude`）**+ `TodoWrite`→Task 迁移**（影响 Todo 面板）**+ 权限模式适配**。属独立项目，需单独评估，非本阶段范围。

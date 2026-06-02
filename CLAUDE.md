@@ -97,7 +97,7 @@ docker-compose up -d
 ## Claude Agent SDK 集成
 
 ### 版本信息
-- `@anthropic-ai/claude-agent-sdk`: `^0.1.76`
+- `@anthropic-ai/claude-agent-sdk`: `0.2.112`（精确钉死；**勿用 `^`/`~`** —— 0.2.113+ 改为原生二进制，与 ARK 网关不兼容会卡死。详见 `docs/project/research/2026-06-skills-existing-architecture-and-redesign.md` §九）
 
 ### 核心文件
 
