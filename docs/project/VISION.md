@@ -6,9 +6,38 @@
 
 ## 1. What OxyGenie is
 
-OxyGenie is a **web-based, multi-tenant, autonomous Claude-agent platform** —
-think "Claude Desktop as a deployable SaaS." It is built on **TanStack Start**
-(SSR + Nitro) and deliberately runs **two agent runtimes side by side**:
+OxyGenie is a **self-hosted, team-scale, autonomous Claude-agent workspace** —
+a deployable Claude-Desktop-class platform that a team runs on its own
+infrastructure. It is built on **TanStack Start** (SSR + Nitro) and deliberately
+runs **two agent runtimes side by side**:
+
+> ### ⭐ Intended use & audience — settled 2026-06 (the north star; check every design against this to avoid drift)
+>
+> OxyGenie is built for **private deployment by small-to-midsize teams**.
+> Typical scenarios: **company-internal** and **team-internal** use, run for a
+> **trusted small circle** of colleagues — this is the usage we actively
+> encourage. It is **self-hosted, single-organization, multi-user** (multiple
+> *trusted* users inside one org), **NOT** a public-internet, multi-tenant SaaS
+> serving anonymous/untrusted users at scale.
+>
+> **Design implications (do not drift from these):**
+> 1. **Threat model = semi-trusted colleagues, not anonymous attackers.** Security
+>    is defense-in-depth for *mistakes* + shared-host/secret hygiene + intra-org
+>    user isolation — **not** anti-anonymous-attack lockdown. Server-touching power
+>    features (stdio MCP, connecting to internal/LAN tools, code execution) are
+>    **legitimate core uses**, guarded by sandboxing + warnings, never forbidden.
+> 2. **Capabilities are curated for the team, not a public marketplace.** Skills/MCP
+>    are a relatively fixed, curated set for the org's own work — no ratings /
+>    payments / public market (an upstream API may *source* candidates; the team
+>    curates).
+> 3. **Must run on the team's chosen models/gateway.** Default deployment uses the
+>    **ARK (Volcano) multi-model gateway**; the Claude Agent SDK is pinned to the
+>    ARK-compatible ceiling (**0.2.112**). Don't design features that require a
+>    native-Anthropic-only SDK (0.3.x) without an explicit gateway/migration
+>    decision.
+> 4. **Deployability over hyperscale.** Optimize for "a team boots this with Docker
+>    and it just works," not elastic public-SaaS scale.
+>
 
 1. **Process-isolated Claude Agent SDK runtime** (the real interactive loop).
    A standalone WebSocket server (`ws-server.mjs`) authenticates each socket
@@ -24,14 +53,15 @@ Drizzle/Postgres, Polar billing, a BullMQ worker, S3/MinIO, Meilisearch.
 
 **Key truth:** OxyGenie is *not* an agent harness in the Deep Agents sense — it
 **delegates the agent loop to the Claude Agent SDK's `claude_code` preset** and
-invests its own engineering in the **multi-tenant platform shell** (transport,
-isolation, permissions, web UI, deployability).
+invests its own engineering in the **self-hosted multi-user platform shell**
+(transport, per-user isolation, permissions, web UI, deployability).
 
 ## 2. What we are trying to be (the production harness)
 
 A production-grade autonomous-agent product with:
-multi-model support · multi-tenancy · deployability · observability ·
-autonomous execution · a real web UI · and **strong security/sandboxing**.
+multi-model support · **self-hosted private deployability** · **single-org
+multi-user isolation** · observability · autonomous execution · a real web UI ·
+and **strong security/sandboxing (defense-in-depth for a trusted team)**.
 
 ## 3. Where we already win (keep these)
 
@@ -65,7 +95,11 @@ WebSocket protocol and the Claude Agent SDK.
 ## 6. Principles — do / don't
 
 **Do**
-- Security-first: treat tool execution as untrusted; sandbox it; least-privilege env.
+- Security-first **as defense-in-depth for a semi-trusted team — not anti-anonymous
+  lockdown**: sandbox tool execution + least-privilege env to contain *mistakes* and
+  protect the shared host/secrets. Server-touching power features (stdio MCP,
+  internal-tool access, code exec) are **legitimate** — guard them (sandbox + warn),
+  don't forbid them.
 - Keep the process-isolation substrate; preserve tenant isolation everywhere.
 - Use **TanStack Server Functions** for server logic (typed RPC).
 - Minimal necessary change; extend/adapt over rewrite (this repo started from a starter).
