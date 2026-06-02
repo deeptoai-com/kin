@@ -16,6 +16,14 @@ const appContent = {
         ko: 'Claude Chat',
         'zh-Hant': 'Claude Chat',
       }),
+      capabilityCenter: t({
+        en: 'Capability Center',
+        'zh-Hans': '能力中心',
+        fr: 'Centre de capacités',
+        ja: '機能センター',
+        ko: '기능 센터',
+        'zh-Hant': '能力中心',
+      }),
       skillsStore: t({
         en: 'Skills Store',
         'zh-Hans': '技能商店',

@@ -20,8 +20,7 @@ import FileTextIcon from 'virtual:icons/ri/file-text-line';
 import FlowChartIcon from 'virtual:icons/ri/flow-chart';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
-import SettingsIcon from 'virtual:icons/ri/settings-4-line';
-import PlugIcon from 'virtual:icons/ri/plug-line';
+import AppsIcon from 'virtual:icons/ri/apps-2-line';
 import ShieldIcon from 'virtual:icons/ri/shield-line';
 import { FEATURE_CONFIG } from '~/config/features';
 import { isAdminUser } from '~/server/function/skills.server';
@@ -57,16 +56,10 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
           enabled: FEATURE_CONFIG.claudeChat,
         },
         {
-          title: content.nav.skillsStore,
-          url: '/agents/skills',
-          icon: SettingsIcon,
-          enabled: FEATURE_CONFIG.skills,
-        },
-        {
-          title: content.nav.mcpStore,
-          url: '/agents/mcp',
-          icon: PlugIcon,
-          enabled: FEATURE_CONFIG.mcpStore,
+          title: content.nav.capabilityCenter,
+          url: '/agents/capabilities',
+          icon: AppsIcon,
+          enabled: FEATURE_CONFIG.skills || FEATURE_CONFIG.mcpStore,
         },
       ],
       hasDivider: true,
