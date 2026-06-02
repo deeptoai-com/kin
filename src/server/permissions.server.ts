@@ -23,7 +23,6 @@ const ALL_PERMISSION_MODES: PermissionMode[] = [
   'plan',
   'dontAsk',
   'acceptEdits',
-  'delegate',
   'bypassPermissions',
 ];
 
@@ -112,7 +111,7 @@ export const getPermissionInfo = createServerFn({ method: 'GET' })
       // Bypass mode requires admin role
       actualMode = isWhitelisted ? 'bypassPermissions' : 'default';
     } else {
-      // All other modes are used as-is (plan, dontAsk, acceptEdits, delegate, default)
+      // All other modes are used as-is (plan, dontAsk, acceptEdits, default)
       actualMode = permissionMode;
     }
 

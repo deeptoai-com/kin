@@ -42,7 +42,6 @@ const ALL_PERMISSION_MODES: PermissionMode[] = [
   'plan',
   'dontAsk',
   'acceptEdits',
-  'delegate',
   'bypassPermissions',
 ];
 
@@ -150,15 +149,6 @@ export function PermissionSettingsSection({
           color: 'text-indigo-600 dark:text-indigo-400',
           bgColor: 'bg-indigo-50 dark:bg-indigo-950',
           borderColor: 'border-indigo-200 dark:border-indigo-800',
-        };
-      case 'delegate':
-        return {
-          icon: ShieldCheckIcon,
-          label: toLocalizedString(content.permissionModes.delegate),
-          description: toLocalizedString(content.permissionModes.descDelegate),
-          color: 'text-purple-600 dark:text-purple-400',
-          bgColor: 'bg-purple-50 dark:bg-purple-950',
-          borderColor: 'border-purple-200 dark:border-purple-800',
         };
       case 'bypassPermissions':
         return {
@@ -270,17 +260,6 @@ export function PermissionSettingsSection({
                       <div className="font-medium">Accept Edits</div>
                       <div className="text-xs text-muted-foreground">
                         编辑模式，自动接受文件编辑
-                      </div>
-                    </div>
-                  </div>
-                </SelectItem>
-                <SelectItem value="delegate">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheckIcon className="h-4 w-4 text-purple-600" />
-                    <div>
-                      <div className="font-medium">Delegate</div>
-                      <div className="text-xs text-muted-foreground">
-                        委托模式，允许委派任务
                       </div>
                     </div>
                   </div>
