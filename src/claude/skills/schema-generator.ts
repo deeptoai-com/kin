@@ -196,6 +196,24 @@ type SkillSchemaDraft = z.infer<typeof SkillSchemaDraftZod>;
 const SCHEMA_GENERATION_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_SCHEMA_INPUTS = 6;
 const MAX_SCHEMA_EXAMPLES = 3;
+
+// claude-agent-sdk 0.1.76 crashes with "Cannot read properties of null (reading
+// 'effortLevel')" when query() is called with `tools: []` (no preset) + outputFormat,
+// because the reasoning/effort config is only populated by the claude_code preset.
+// Empirically this surfaces as a flaky `error_during_execution` (~50-75% of calls).
+// Fix: use the preset (like the working chat path) but disallow every actionable tool
+// so generation stays pure text + Structured Output, and retry the flaky crash.
+const SCHEMA_GENERATION_DISALLOWED_TOOLS = [
+  'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit',
+  'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task', 'TodoWrite',
+];
+// Max attempts to absorb the flaky SDK effortLevel crash (independent ~50% failures).
+const SCHEMA_GENERATION_MAX_ATTEMPTS = Math.max(
+  1,
+  Number(process.env.SCHEMA_GENERATION_MAX_ATTEMPTS ?? '4'),
+);
+// Error messages that indicate the flaky SDK crash and are worth retrying.
+const SCHEMA_GENERATION_RETRYABLE = /error_during_execution|effortLevel|no result received/i;
 const SCHEMA_GENERATION_DEBUG = process.env.SCHEMA_GENERATION_DEBUG === 'true';
 const SCHEMA_GENERATION_TRACE = process.env.SCHEMA_GENERATION_TRACE ?? 'off';
 const TRACE_ENABLED = SCHEMA_GENERATION_TRACE === 'true' || SCHEMA_GENERATION_TRACE === 'full';
@@ -984,7 +1002,11 @@ export interface GenerateSchemaFromContentResult {
   errorMessage?: string;
 }
 
-export async function generateSchemaFromContent(
+/**
+ * Single generation attempt (one SDK call). May throw on the flaky SDK
+ * `error_during_execution` crash; the exported wrapper retries those.
+ */
+async function generateSchemaFromContentOnce(
   skillMdContent: string,
   timeoutMs: number = SCHEMA_GENERATION_TIMEOUT_MS,
 ): Promise<GenerateSchemaFromContentResult> {
@@ -1023,12 +1045,23 @@ export async function generateSchemaFromContent(
       prompt,
       options: {
         model: resolvedModel,
-        // Disable ALL tools by passing empty array
-        // SDK type: tools?: string[] | { type: 'preset'; preset: 'claude_code' }
-        tools: [],
-        // No MCP servers
-        // P3 fix: Add system prompt for format enforcement
-        systemPrompt: SCHEMA_GENERATION_SYSTEM_PROMPT,
+        // IMPORTANT: use the claude_code preset for BOTH tools and systemPrompt.
+        // Passing `tools: []` (no preset) makes claude-agent-sdk 0.1.76 crash on
+        // outputFormat with "Cannot read properties of null (reading 'effortLevel')"
+        // because the reasoning/effort config is only populated by the preset.
+        // We mirror the working chat path (preset) but lock out every actionable
+        // tool, so generation stays pure text + Structured Output.
+        tools: { type: 'preset', preset: 'claude_code' },
+        disallowedTools: SCHEMA_GENERATION_DISALLOWED_TOOLS,
+        permissionMode: 'bypassPermissions',
+        // Keep generation isolated: do not load project skills / CLAUDE.md.
+        settingSources: [],
+        // P3 fix: Add system prompt for format enforcement (via preset append)
+        systemPrompt: {
+          type: 'preset',
+          preset: 'claude_code',
+          append: SCHEMA_GENERATION_SYSTEM_PROMPT,
+        },
         // Use Structured Outputs for reliable JSON format
         outputFormat: {
           type: 'json_schema',
@@ -1254,6 +1287,45 @@ export async function generateSchemaFromContent(
     // P2 fix: Clean up timeout
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Generate schema for a skill, retrying the flaky SDK `error_during_execution`
+ * crash (claude-agent-sdk 0.1.76 + gateway: "Cannot read properties of null
+ * (reading 'effortLevel')"). These failures are independent (~50% each), so a
+ * few retries bring the effective success rate well above 90%. Timeouts and
+ * non-retryable errors propagate immediately.
+ */
+export async function generateSchemaFromContent(
+  skillMdContent: string,
+  timeoutMs: number = SCHEMA_GENERATION_TIMEOUT_MS,
+): Promise<GenerateSchemaFromContentResult> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= SCHEMA_GENERATION_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await generateSchemaFromContentOnce(skillMdContent, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const isRetryable = SCHEMA_GENERATION_RETRYABLE.test(message);
+
+      // Never retry timeouts (the work budget is already spent).
+      const isTimeout = /timed out/i.test(message);
+
+      if (attempt < SCHEMA_GENERATION_MAX_ATTEMPTS && isRetryable && !isTimeout) {
+        console.warn(
+          `[Schema Generator] Attempt ${attempt}/${SCHEMA_GENERATION_MAX_ATTEMPTS} failed (retryable): ${message.split('\n')[0]}; retrying...`,
+        );
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  // Unreachable in practice (loop either returns or throws), but satisfies types.
+  throw lastError ?? new Error('Schema generation failed after retries');
 }
 
 // ============================================================================
