@@ -43,7 +43,7 @@ import { SkillChip } from './skill-chip';
 import { KnowledgeBasePanel } from './knowledge-base-panel';
 import { SessionFilesPanel } from './session-files-panel';
 import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
-import { PermissionBadge, type PermissionInfo } from './permission-badge';
+import { type PermissionInfo } from './permission-badge';
 import { PermissionTierSelector } from './permission-tier-selector';
 import { ToolbarStatus, type AgentStatusType } from './claude-status';
 import { McpStatusIndicator } from './mcp-status-indicator';
@@ -573,9 +573,6 @@ export function ChatComposer({
                 selectedTier={selectedTier}
                 onSelect={setSelectedTier}
               />
-            )}
-            {!isRunning && (
-              <PermissionBadge permissionInfo={permissionInfo} />
             )}
 
             {/* ToolbarStatus - show when running */}
