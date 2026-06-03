@@ -155,6 +155,8 @@ file → done). The earlier GLM-plan blocker is resolved.
 | `changedoc` (ai-pr-docs) needs `OPENAI_API_KEY` secret | S (chore) | Deferred by decision; or disable the AI workflows |
 | Archive old public repo `constructa-starter` | S (chore) | Avoid two-public-repo confusion |
 | Bump gitleaks/checkout actions off Node 20 | S (chore) | Deprecation forced ~2026-06-16 |
+| **Workspace (项目) as a first-class concept** | L | Decouple Workspace from Conversation; let new-chat pick "existing workspace vs new"; conversations belong to a workspace (stable absolute path). Today每对话=独立 workspace（`getSessionWorkspace`, 1:1）。L2 in `research/2026-06-conversation-persistence-resume-comparison.md`; subsumes the persistence 治本. Owner-deferred 2026-06 (do 治标 first). |
+| **Conversation history in our own DB (治本)** | M–L | Make Postgres the source of truth for messages (reload by session id, cwd-independent — LangGraph principle); SDK transcript becomes resume input + absolute cwd + spawn-validation/fallback (CraftAgent practice). Aligns with PRD "DB=truth, FS=projection". Pairs with the Workspace item. |
 
 ## Known weakened gates (intentionally non-blocking until backlog done)
 
@@ -164,6 +166,19 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-02** — Conversation-resume bug ("navigate away → back → empty history"):
+  fixed 治标 (#86) = absolute session paths (`resolveSessionsRoot()` → `path.resolve`,
+  normalize `CLAUDE_SESSIONS_ROOT`) + auto-resume on route remount. Root cause was a
+  relative-path/cwd mismatch (worker cwd=workspace vs ws-server cwd=repo root);
+  local-dev-only (prod uses absolute `/data/users`). **治本** (own DB message store)
+  and **Workspace as a first-class concept** are Owner-deferred to backlog (do 治标
+  first). See `research/2026-06-conversation-persistence-resume-comparison.md`.
+- **2026-06-02** — SDK pinned to **0.2.112** (ARK-compatible ceiling); 0.2.113+ switch to a
+  native binary incompatible with the ARK `/api/coding` gateway. See skills arch doc §九.
+- **2026-06-02** — Product positioning settled: **self-hosted private deployment for SMB
+  teams (company/team-internal, semi-trusted users), NOT a public multi-tenant SaaS.**
+  Drives the threat model (defense-in-depth for mistakes, not anti-anonymous lockdown).
+  See VISION §1 + CLAUDE.md top.
 - **2026-05-30** — Execution layer: insert **Phase 0.5** (runtime + sandbox) before Phase 1.
   Adopt **`@anthropic-ai/sandbox-runtime` (srt)** as the exec sandbox primitive; define a TS
   **`ExecutionRuntime`** abstraction (pattern from hermes-agent `BaseEnvironment` + deer-flow
