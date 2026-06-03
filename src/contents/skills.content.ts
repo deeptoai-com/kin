@@ -103,6 +103,7 @@ const skillsContent = {
       removedToast: t({ en: 'Removed.', 'zh-Hans': '已移除。', fr: 'Retiré.', ja: '削除しました。', ko: '제거됨.', 'zh-Hant': '已移除。' }),
       upstream: {
         addButton: t({ en: 'Add from upstream', 'zh-Hans': '从上游添加', fr: 'Ajouter depuis upstream', ja: '上流から追加', ko: '업스트림에서 추가', 'zh-Hant': '從上游新增' }),
+        uploadButton: t({ en: 'New skill', 'zh-Hans': '新建技能', fr: 'Nouveau skill', ja: '新規スキル', ko: '새 스킬', 'zh-Hant': '新建技能' }),
         title: t({ en: 'Add a skill from upstream', 'zh-Hans': '从上游添加技能', fr: 'Ajouter un skill', ja: '上流からスキルを追加', ko: '업스트림에서 스킬 추가', 'zh-Hant': '從上游新增技能' }),
         description: t({
           en: 'Search the ~9,600-skill registry and add one to your skills.',

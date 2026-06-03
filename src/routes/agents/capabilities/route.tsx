@@ -1,15 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useState } from 'react';
-import { listAllSkillsFn, listCuratedSkillsFn, listMySkillsFn, listMyAddedSkillsFn, isAdminUser } from '~/server/function/skills.server';
+import { listCuratedSkillsFn, listMySkillsFn, listMyAddedSkillsFn } from '~/server/function/skills.server';
 import { listAllMcpsFn } from '~/server/function/mcp.server';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
-import { SkillsPageComponent } from '~/components/skills/skills-page';
 import { CuratedSkillsSection } from '~/components/skills/curated-skills-section';
 import { SkillUploadDialog } from '~/components/skills/skill-upload-dialog';
-import { GitHubSkillInstaller } from '~/components/skills/github-skill-installer';
 import { McpPageComponent } from '~/components/mcp/mcp-page';
-import type { ExtendedSkillInfo } from '~/claude/skills';
 import type { ExtendedMcpInfo } from '~/claude/mcp';
 
 /**
@@ -30,21 +27,14 @@ export const Route = createFileRoute('/agents/capabilities')({
     tab: search.tab === 'mcp' ? 'mcp' : 'skills',
   }),
   loader: async () => {
-    const [skillsResult, curatedSkills, mySkills, myAddedSkills, mcpResult, adminCheck] = await Promise.all([
-      listAllSkillsFn(),
+    const [curatedSkills, mySkills, myAddedSkills, mcpResult] = await Promise.all([
       listCuratedSkillsFn(),
       listMySkillsFn(),
       listMyAddedSkillsFn(),
       listAllMcpsFn(),
-      isAdminUser(),
     ]);
 
     const installedCuratedSlugs = mySkills.map((s) => s.slug);
-
-    const allSkills: ExtendedSkillInfo[] = [
-      ...skillsResult.official,
-      ...skillsResult.user,
-    ];
 
     const officialMcps = mcpResult.official || [];
     const systemMcps = mcpResult.system || [];
@@ -52,11 +42,9 @@ export const Route = createFileRoute('/agents/capabilities')({
     const allMcps: ExtendedMcpInfo[] = [...officialMcps, ...systemMcps, ...userMcps];
 
     return {
-      allSkills,
       curatedSkills,
       installedCuratedSlugs,
       myAddedSkills,
-      isAdmin: adminCheck.isAdmin ?? false,
       officialMcps,
       systemMcps,
       userMcps,
@@ -67,16 +55,14 @@ export const Route = createFileRoute('/agents/capabilities')({
 });
 
 function CapabilityCenter() {
-  const { allSkills, curatedSkills, installedCuratedSlugs, myAddedSkills, isAdmin, officialMcps, systemMcps, userMcps, allMcps } =
+  const { curatedSkills, installedCuratedSlugs, myAddedSkills, officialMcps, systemMcps, userMcps, allMcps } =
     Route.useLoaderData();
   const { tab } = Route.useSearch();
   const content = useIntlayer('app');
 
   const [activeTab, setActiveTab] = useState<string>(tab);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-  const [isGitHubInstallOpen, setIsGitHubInstallOpen] = useState(false);
 
-  const enabledSkills = allSkills.filter((s) => s.enabled).map((s) => s.slug);
   const enabledMcps = allMcps.filter((m) => m.enabled).map((m) => m.slug);
 
   const handleSkillUploadSuccess = () => {
@@ -92,17 +78,10 @@ function CapabilityCenter() {
         </TabsList>
 
         <TabsContent value="skills" className="mt-6">
-          {curatedSkills.length > 0 && (
-            <CuratedSkillsSection
-              skills={curatedSkills}
-              installedSlugs={installedCuratedSlugs}
-              addedSkills={myAddedSkills}
-            />
-          )}
-          <SkillsPageComponent
-            skills={allSkills}
-            enabledSkills={enabledSkills}
-            isAdmin={isAdmin}
+          <CuratedSkillsSection
+            skills={curatedSkills}
+            installedSlugs={installedCuratedSlugs}
+            addedSkills={myAddedSkills}
             onNewSkill={() => setIsUploadDialogOpen(true)}
           />
         </TabsContent>
@@ -117,19 +96,12 @@ function CapabilityCenter() {
         </TabsContent>
       </Tabs>
 
-      {/* Skill dialogs (preserved from the former /agents/skills route) */}
+      {/* Upload dialog → creates a user-scoped catalog skill (S4) */}
       <SkillUploadDialog
         open={isUploadDialogOpen}
         onOpenChange={setIsUploadDialogOpen}
         onSuccess={handleSkillUploadSuccess}
       />
-      {isAdmin && (
-        <GitHubSkillInstaller
-          open={isGitHubInstallOpen}
-          onOpenChange={setIsGitHubInstallOpen}
-          onSuccess={handleSkillUploadSuccess}
-        />
-      )}
     </div>
   );
 }

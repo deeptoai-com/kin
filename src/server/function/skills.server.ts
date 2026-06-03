@@ -876,6 +876,114 @@ export const removeAddedSkillFn = createServerFn({ method: 'POST' })
     return { removed: deleted.length > 0, slug: data.slug };
   });
 
+/**
+ * Normalize uploaded skill files: strip a single common root dir (so SKILL.md
+ * sits at the root) and locate SKILL.md content.
+ */
+function normalizeUploadedSkillFiles(
+  files: Array<{ path: string; content: string }>,
+): { files: Array<{ path: string; content: string }>; skillMd: string | null } {
+  const norm = files.map((f) => f.path.replace(/\\/g, '/').replace(/^\/+/, ''));
+  const roots = new Set(norm.map((p) => (p.includes('/') ? p.split('/')[0] : '')));
+  const stripRoot = roots.size === 1 && [...roots][0] !== '' && norm.every((p) => p.includes('/'));
+  const out = files
+    .map((f, i) => {
+      let p = norm[i];
+      if (stripRoot) p = p.split('/').slice(1).join('/');
+      return { path: p, content: f.content };
+    })
+    .filter((f) => f.path);
+  const skillMd =
+    (out.find((f) => f.path === 'SKILL.md') ??
+      out.find((f) => f.path.toLowerCase().endsWith('skill.md')))?.content ?? null;
+  return { files: out, skillMd };
+}
+
+/**
+ * Upload a user-created skill INTO the DB catalog (scope='user', source='upload').
+ * Content (SKILL.md + files) is stored in skill_content_cache; install then
+ * materializes it like any catalog skill. Re-upload overwrites. (S4 — replaces
+ * the legacy FS-only uploadUserSkillFn.)
+ */
+export const uploadSkillToCatalogFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({
+      name: z.string().min(1).max(80),
+      description: z.string().optional(),
+      files: z.array(z.object({ path: z.string(), content: z.string() })).min(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+
+    if (data.files.length > 100) throw new Error('Too many files (max 100 per skill).');
+    const totalSize = data.files.reduce((sum, f) => sum + f.content.length, 0);
+    if (totalSize > 10 * 1024 * 1024) throw new Error('Skill size exceeds 10 MB.');
+
+    const { files, skillMd } = normalizeUploadedSkillFiles(data.files);
+    if (!skillMd) throw new Error('Skill package must contain a SKILL.md file.');
+
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog, skillContentCache } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const { hashSkillMd } = await import('~/claude/skills/schema-generator');
+
+    const slug = normalizeSkillName(data.name);
+
+    const [official] = await db
+      .select({ id: skillCatalog.id })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'official')))
+      .limit(1);
+    if (official) throw new Error('A curated skill with this name already exists; pick another name.');
+
+    const [existing] = await db
+      .select({ id: skillCatalog.id })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'user'), eq(skillCatalog.ownerUserId, user.id)))
+      .limit(1);
+
+    let catalogId: string;
+    if (existing) {
+      catalogId = existing.id;
+      await db
+        .update(skillCatalog)
+        .set({ name: data.name, summaryZh: data.description ?? null, updatedAt: new Date() })
+        .where(eq(skillCatalog.id, catalogId));
+    } else {
+      const [ins] = await db
+        .insert(skillCatalog)
+        .values({
+          slug,
+          name: data.name,
+          summaryZh: data.description ?? null,
+          source: 'upload',
+          scope: 'user',
+          ownerUserId: user.id,
+          sourceLabel: 'upload',
+        })
+        .returning({ id: skillCatalog.id });
+      catalogId = ins.id;
+    }
+
+    const contentHash = hashSkillMd(skillMd);
+    const now = new Date();
+    const filesPayload = files.map((f) => ({ path: f.path, content: f.content, encoding: 'utf-8' }));
+    await db
+      .insert(skillContentCache)
+      .values({ catalogId, skillMd, files: filesPayload, contentHash, fetchedAt: now })
+      .onConflictDoUpdate({
+        target: skillContentCache.catalogId,
+        set: { skillMd, files: filesPayload, contentHash, fetchedAt: now },
+      });
+
+    return { slug, uploaded: true };
+  });
+
 // ── Admin governance: see + remove all user-added skills ─────────────────────
 
 export interface AdminUserAddedSkill {

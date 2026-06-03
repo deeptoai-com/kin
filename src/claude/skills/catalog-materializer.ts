@@ -73,6 +73,32 @@ export async function materializeCatalogSkill(
       return { slug, ok: true, status: 'builtin_copied' };
     }
 
+    if (catalog.source === 'upload') {
+      // User-uploaded skill: content (SKILL.md + files) lives in skill_content_cache.
+      const { db } = await import('~/db/db-config');
+      const { skillContentCache } = await import('~/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const [cache] = await db
+        .select()
+        .from(skillContentCache)
+        .where(eq(skillContentCache.catalogId, catalog.id))
+        .limit(1);
+      if (!cache?.skillMd) {
+        return { slug, ok: false, status: 'skipped_no_content', error: 'no uploaded content' };
+      }
+      await fsp.rm(targetDir, { recursive: true, force: true });
+      await fsp.mkdir(targetDir, { recursive: true });
+      await fsp.writeFile(path.join(targetDir, 'SKILL.md'), cache.skillMd, 'utf-8');
+      for (const file of cache.files ?? []) {
+        const rel = path.normalize(file.path);
+        if (rel === 'SKILL.md' || rel.split(path.sep).includes('..') || path.isAbsolute(rel)) continue;
+        const dest = path.join(targetDir, rel);
+        await fsp.mkdir(path.dirname(dest), { recursive: true });
+        await fsp.writeFile(dest, file.content, 'utf-8');
+      }
+      return { slug, ok: true, status: 'content_written' };
+    }
+
     // curated / upstream → write SKILL.md from the content cache (cache-first).
     const content = await getCatalogSkillContent({ id: catalog.id, upstream: catalog.upstream });
     if (!content.skillMd) {

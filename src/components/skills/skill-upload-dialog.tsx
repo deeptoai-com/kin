@@ -11,7 +11,7 @@ import {
 } from '~/components/ui/dialog';
 import { Button } from '~/components/ui/button';
 import { useServerFn } from '@tanstack/react-start';
-import { uploadUserSkillFn, checkSkillCompatibilityFn } from '~/server/function/skills.server';
+import { uploadSkillToCatalogFn, checkSkillCompatibilityFn } from '~/server/function/skills.server';
 import JSZip from 'jszip';
 
 interface CompatibilityWarning {
@@ -39,7 +39,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
   onSuccess,
 }) => {
   const content = useIntlayer('skills');
-  const uploadSkill = useServerFn(uploadUserSkillFn);
+  const uploadSkill = useServerFn(uploadSkillToCatalogFn);
   const checkCompatibility = useServerFn(checkSkillCompatibilityFn);
 
   const [file, setFile] = useState<File | null>(null);

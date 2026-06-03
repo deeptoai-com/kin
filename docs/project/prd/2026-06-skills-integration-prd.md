@@ -136,8 +136,11 @@ skill_enablement              -- 谁启用了哪个
   - schema 后台/懒生成 + composer 可填充表单。
   - 现有 `.global-skills.json` / `ensureGlobalSkillsForUser` 语义改为"默认2"，启用状态迁到 DB `skill_enablement`。
 - **S3 — 上游搜索发现（已完成）**：skills-api 搜索弹窗 + 「从上游添加」→ user-scoped catalog 条目 + 取内容缓存；解析器泛化（install/detail/schema 均支持 user 条目）；「我添加的」区 + 移除；**admin 治理页 `/admin/skills`**（全员添加项可见可删）。
-- **S4 — 同步/维护**：按 scrapedAt 重取内容、schema stale 重算、~~迁移现有 builtin~~（已按 D9 删除）、迁移用户启用、上传/GitHub 安装产物收敛到 DB、admin 策展工具。
-- **composer 重做（D9 遗留，Skills 完成后）**：删除本地 baoyu 后，A2Composer 默认模板（`config.ts` 的 `baoyu-*` skillHint）与 composer 顶部 skills 快捷入口失效。重做方向：让 composer 的技能入口直接读「我的技能 / catalog」，而非旧 FS store。
+- **S4 — 同步/维护 + composer 重做（进行中）**：
+  - **S4a（完成 #97）**：composer 表单改读 DB schema（`getCuratedSkillSchemaFn`）；worker `loadSkillContext` 改轻量提示（不再每轮灌整篇 SKILL.md，省 token，交给 SDK 渐进式披露）。
+  - **S4b-1（本次）**：**用户上传收敛进 catalog**（`scope='user'`/`source='upload'`，新增 enum 值 + 迁移 0021；内容存 `skill_content_cache`，安装时物化全部文件）；移除冗余旧 `SkillsPageComponent`，上传入口并入精选库头部「新建技能」；上传项进「我添加的」。
+  - **S4b-2（下一步）**：新建 composer「My Skills 选择器 + 内联可填充表单」入口（替代读空 store 的旧面板）。
+  - **维护（待做）**：按 scrapedAt/ETag 重取内容、schema stale 重算 + 后台预热（BullMQ worker）、admin 策展工具。
 
 ## 10. 验收
 - 精选 100 在能力中心可浏览/搜索/分类/看详情(SKILL.md 来自 skills-api,落库)。
