@@ -37,7 +37,8 @@ export const CuratedSkillsSection: FC<{
   skills: CuratedSkillItem[];
   installedSlugs?: string[];
   addedSkills?: CuratedSkillItem[];
-}> = ({ skills, installedSlugs = [], addedSkills = [] }) => {
+  onNewSkill?: () => void;
+}> = ({ skills, installedSlugs = [], addedSkills = [], onNewSkill }) => {
   const content = useIntlayer('skills');
   const installFn = useServerFn(installCuratedSkillFn);
   const uninstallFn = useServerFn(uninstallCuratedSkillFn);
@@ -220,10 +221,18 @@ export const CuratedSkillsSection: FC<{
         <span className="text-sm text-muted-foreground">
           {toLocalizedString(content.curated.count).replace('{count}', String(skills.length))}
         </span>
-        <Button variant="outline" size="sm" className="ml-auto gap-1" onClick={() => setShowUpstream(true)}>
-          <Download className="h-3.5 w-3.5" />
-          {content.curated.upstream.addButton}
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {onNewSkill && (
+            <Button variant="outline" size="sm" className="gap-1" onClick={onNewSkill}>
+              <Plus className="h-3.5 w-3.5" />
+              {content.curated.upstream.uploadButton}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="gap-1" onClick={() => setShowUpstream(true)}>
+            <Download className="h-3.5 w-3.5" />
+            {content.curated.upstream.addButton}
+          </Button>
+        </div>
       </div>
       <p className="mb-4 text-sm text-muted-foreground">{content.curated.subtitle}</p>
 

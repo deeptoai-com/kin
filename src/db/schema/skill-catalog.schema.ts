@@ -25,7 +25,7 @@ export const skillLevelEnum = pgEnum('skill_level', ['L1', 'L2', 'L3', 'L4', 'L5
 export const skillReusabilityEnum = pgEnum('skill_reusability', [
   'ready', 'minor_adaptation', 'major_adaptation', 'unknown',
 ]);
-export const skillSourceEnum = pgEnum('skill_source', ['curated', 'upstream', 'builtin']);
+export const skillSourceEnum = pgEnum('skill_source', ['curated', 'upstream', 'builtin', 'upload']);
 export const skillScopeEnum = pgEnum('skill_scope', ['official', 'user']);
 export const skillSchemaStatusEnum = pgEnum('skill_schema_status', [
   'missing', 'valid', 'stale', 'failed', 'needs_review',
