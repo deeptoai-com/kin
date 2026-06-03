@@ -529,9 +529,14 @@ Example bad operations:
 - Read("/etc/passwd")                ← DON'T access system files
 - Write(".claude/skills/my-skill/SKILL.md", "...")  ← DON'T write to skills`;
 
+    // The skill is already materialized in .claude/skills and surfaced to the
+    // model via the SDK's progressive disclosure (name + description). When the
+    // user explicitly selects one, we only nudge the model to prefer it — we do
+    // NOT inject the full SKILL.md (that's redundant with disclosure and wastes
+    // tokens on every turn; the SDK loads the body on demand via the Skill tool).
     const skillContext = await loadSkillContext(skillSlug, config.cwd);
     const skillAppend = skillContext
-      ? `\n\n[Explicit Skill Selected: ${skillContext.slug}]\n${skillContext.content}\n[End Skill]\n`
+      ? `\n\n[The user explicitly selected the "${skillContext.slug}" skill for this message. Prefer using it; load its full instructions via the Skill tool as needed.]\n`
       : '';
 
     const stream = query({
