@@ -140,7 +140,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       NODE_ENV: production
-    entrypoint: ['sh', '-c', 'pnpm run db:migrate']
+    # Run migrations (fatal on failure) then seed the curated skill catalog (idempotent, best-effort)
+    entrypoint: ['sh', '-c', "pnpm run db:migrate && (pnpm run db:seed || echo '[seed] WARNING: curated skills seed failed (non-fatal); catalog may be empty')"]
     restart: 'no'
 
   # only for local dev, not exposed publicly
