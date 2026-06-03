@@ -1,9 +1,27 @@
 # OxyGenie — Status (Living Memory)
 
 > **This is the living memory of the project. Update it whenever state changes.**
-> Last updated: **2026-05-31**
+> Last updated: **2026-06-04**
 
 ## Current position (one-paragraph snapshot)
+
+**2026-06-04 — Skills integration (S1–S4) is DONE, merged, and owner-tested.** The Skills
+subsystem moved from a filesystem skills-store to a **DB catalog** model
+(`docs/project/prd/2026-06-skills-integration-prd.md`): `skill_catalog` (+ `skill_content_cache`,
+`skill_schema_cache`, `skill_enablement`) seeded from the platform's curated-100, content fetched
+from the upstream **skills-api** (`SKILLS_API_URL`, default `https://skills-api.deeptoai.com`) and
+cached, fillable-variable **schema generated locally** into the DB (cache-first, content-hashed).
+**S1** catalog + browse/detail (#90/#92), seed wired into `migrate` (#91). **S2** install→My-Skills
+(materialize to `~/.claude/skills/<slug>/`, **effective next conversation** — this SDK can't
+hot-reload a running session), default-2 (`find-skills` + `skill-creator`) auto-installed & locked
+(#93), + fillable-schema generation (#95). **D9**: legacy 8 `baoyu` FS assets **deleted** (#94).
+**S3** upstream search/add → user-scoped catalog + an **admin governance page `/admin/skills`** (#96).
+**S4** composer repointed to the catalog model (form←DB schema, lean skill-context to save tokens),
+**user-upload migrated into the catalog** (`source='upload'`, multi-file materialize), legacy
+`SkillsPageComponent` removed (#97/#98/#99). Remaining = maintenance only (content refresh,
+schema prewarm worker, admin curation, org-level sharing) — see Backlog. Capability Center Skills
+tab is now a single catalog surface (browse/search/install/My-Skills/detail/schema/upstream-add/
+upload); `/admin/skills` is the governance guardrail.
 
 **2026-05-31 — Phases 0/1/0.5/2 are DONE; Phase 3 (capabilities + UI/UX overhaul) is IN PROGRESS —
 Wave 0 + Wave 1 merged (#60).** Phase 0.5 delivered the execution-runtime abstraction + single-host concurrency
@@ -76,6 +94,17 @@ file → done). The earlier GLM-plan blocker is resolved.
 | Phase 4 — Multi-model & scale | ⬜ Not started |
 
 ## Done (most recent first)
+
+- ✅ **Skills integration S1–S4** (PRs #90–#99, owner-tested 2026-06-04): DB catalog replaces the
+  FS skills-store. **S1** `skill_catalog`+caches, curated-100 seed, seed-on-`migrate`, browse +
+  SKILL.md detail (from skills-api, cached) — #90/#91/#92. **S2** install→My-Skills (DB→FS
+  materialize, effective next conversation), default-2 locked, fillable schema gen (DB,
+  content-hashed) — #93/#95. **D9** delete legacy 8 baoyu FS assets — #94. **S3** upstream
+  search/add (user-scoped) + admin `/admin/skills` governance — #96. **S4** composer→catalog
+  (DB schema + lean skill-context token fix), upload→catalog (`source='upload'`), removed legacy
+  `SkillsPageComponent` — #97/#98/#99. Verified: each PR `build`+`lint` green on CI; content/schema
+  paths checked end-to-end against live skills-api + ARK + DB. Migrations 0020 (4 tables) + 0021
+  (`skill_source` add `'upload'`). New env: `SKILLS_API_URL` (+ optional `SKILLS_API_KEY`). *(2026-06-04)*
 
 - ✅ **Phase 3 Wave 0 + Wave 1** (PR #60): redo design tokens → Direction A "暖雾奶油" (warm-cream +
   terracotta primary, radius 1.25rem, soft warm shadows; only `app.css`, shadcn/Radix kept) + new
@@ -157,6 +186,11 @@ file → done). The earlier GLM-plan blocker is resolved.
 | Bump gitleaks/checkout actions off Node 20 | S (chore) | Deprecation forced ~2026-06-16 |
 | **Workspace (项目) as a first-class concept** | L | Decouple Workspace from Conversation; let new-chat pick "existing workspace vs new"; conversations belong to a workspace (stable absolute path). Today每对话=独立 workspace（`getSessionWorkspace`, 1:1）。L2 in `research/2026-06-conversation-persistence-resume-comparison.md`; subsumes the persistence 治本. Owner-deferred 2026-06 (do 治标 first). |
 | **Conversation history in our own DB (治本)** | M–L | Make Postgres the source of truth for messages (reload by session id, cwd-independent — LangGraph principle); SDK transcript becomes resume input + absolute cwd + spawn-validation/fallback (CraftAgent practice). Aligns with PRD "DB=truth, FS=projection". Pairs with the Workspace item. |
+| **Skills: content refresh (scrapedAt/ETag)** | M | Detect upstream changes via skills-api `scrapedAt`/ETag → re-fetch `skill_content_cache` + recompute content_hash → mark schema `stale` → regenerate. Today content is fetched once on first view/install and cached indefinitely. PRD S4 维护. |
+| **Skills: schema background prewarm (worker)** | M | Move fillable-schema generation off the on-demand "Generate" button into the BullMQ worker — prewarm the curated set + regenerate on `stale`. Today generation is lazy/manual (one ARK call per skill, cached globally by content_hash). PRD D5/S4. |
+| **Skills: admin curation of the catalog** | M | Admin UI to add/edit/remove **official** `skill_catalog` entries (editorial fields, default flags, sort) — currently the curated set is seed-only (`db:seed`); only user-added (`scope='user'`) skills are admin-manageable via `/admin/skills`. |
+| **Skills: team/org-level sharing** | L | Promote a user-added/uploaded skill (`scope='user'`) to org-shared (visible to the whole team), vs today's per-owner visibility + admin governance. PRD non-goal for this round; needs an `org` scope + unique-index rework. |
+| **Skills: composer "browse all installed" picker + inline form (optional)** | S–M | A dedicated composer picker listing **all** installed My-Skills → select → inline fillable variable form → compose. Today covered by context-badges (session-active skills + 「使用」 + examples) + A2Composer form (DB schema); this would be a convenience enhancement. PRD S4b-2 (partial). |
 
 ## Known weakened gates (intentionally non-blocking until backlog done)
 
@@ -166,6 +200,17 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **Skills integration S1–S4 shipped + owner-tested** (PRs #90–#99). Model:
+  **DB catalog = source of truth**, FS = runtime projection (materialize enabled skills to
+  `~/.claude/skills/`). Key owner decisions recorded in the Skills PRD:
+  **D6** default skills = only `find-skills` + `skill-creator` (admin, locked);
+  **D7** install effective **next conversation** (this SDK can't hot-reload a running/resumed
+  session — kept the "需重新发起对话" contract, replaced full SKILL.md injection with a lean hint +
+  SDK progressive disclosure);
+  **D8** seed wired into `migrate` (idempotent, best-effort);
+  **D9** deleted legacy 8 `baoyu` FS assets (curated-100 already references baoyu upstream — no loss);
+  **D10** upstream/upload skills are user-scoped (per-owner visible) + admin-visible/removable via
+  `/admin/skills` (governance guardrail). Remaining work is maintenance-only (see Backlog).
 - **2026-06-02** — Conversation-resume bug ("navigate away → back → empty history"):
   fixed 治标 (#86) = absolute session paths (`resolveSessionsRoot()` → `path.resolve`,
   normalize `CLAUDE_SESSIONS_ROOT`) + auto-resume on route remount. Root cause was a

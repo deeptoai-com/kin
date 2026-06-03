@@ -141,6 +141,45 @@ plus durable resume — while keeping our isolation + multi-tenant + web edge.
 
 ---
 
+## Skills integration (capabilities workstream) — ✅ S1–S4 DONE (2026-06-04)
+
+**Goal:** a curated, team-private Skills library (no public market) on a **DB-catalog** model
+(DB = truth, `~/.claude/skills/` = runtime projection), with upstream discovery + governance.
+Full design + decisions: [`prd/2026-06-skills-integration-prd.md`](./prd/2026-06-skills-integration-prd.md).
+Owner-tested 2026-06-04.
+
+- [x] **S1 — Catalog + display**: `skill_catalog` (+ `skill_content_cache`, `skill_schema_cache`,
+      `skill_enablement`), curated-100 seed wired into `migrate`, browse/search/category + SKILL.md
+      detail from skills-api (cached). *(#90/#91/#92, migration 0020)*
+- [x] **S2 — Execution layer**: install→My-Skills materializes to `~/.claude/skills/<slug>/`
+      (effective **next conversation** — SDK can't hot-reload a live session); default-2
+      (`find-skills`+`skill-creator`) auto-installed & locked (D6); fillable-variable schema
+      generated locally into the DB, cache-first by content-hash (D5). *(#93/#95)*
+- [x] **D9 — retire legacy FS store**: deleted the 8 `baoyu` local assets (curated-100 already
+      references baoyu upstream → no capability lost). *(#94)*
+- [x] **S3 — upstream discovery**: search skills-api → add as user-scoped catalog entry; admin
+      governance page `/admin/skills` (see + remove all users' added skills, D10). *(#96)*
+- [x] **S4 — composer rework + cleanup**: composer reads DB schema; worker injects a lean
+      skill hint (not the full SKILL.md) to save tokens; user-upload migrated into the catalog
+      (`source='upload'`, multi-file materialize); legacy `SkillsPageComponent` removed. *(#97/#98/#99, migration 0021)*
+
+**Remaining (maintenance only — none blocking):**
+- [ ] **Content refresh** — re-fetch on upstream change via skills-api `scrapedAt`/ETag → recompute
+      content-hash → mark schema `stale` → regenerate.
+- [ ] **Schema background prewarm** — move generation into the BullMQ worker (prewarm curated set,
+      regenerate on `stale`) instead of the on-demand button.
+- [ ] **Admin curation** — UI to add/edit/remove **official** catalog entries (today seed-only).
+- [ ] **Team/org-level sharing** — promote user-added/uploaded skills to org-shared (today
+      per-owner + admin governance).
+- [ ] **(optional) composer "browse all installed" picker** with inline variable form.
+
+**Exit criteria:** met for S1–S4 (catalog browse/install/run/detail/schema/upstream-add/upload +
+admin governance, build+lint green, owner-tested). Maintenance items above are tracked in STATUS Backlog.
+
+**Config:** `SKILLS_API_URL` (default `https://skills-api.deeptoai.com`), optional `SKILLS_API_KEY`.
+
+---
+
 ## Phase 4 — Multi-model & scale maturity
 
 **Goal:** real provider abstraction and horizontal scale.
