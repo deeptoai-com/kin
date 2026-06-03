@@ -169,6 +169,71 @@ export const listSkillsStore = createServerFn({ method: 'GET' }).handler(async (
 });
 
 /**
+ * Curated skill catalog item (DB-backed, the "product" layer).
+ * Read-only display shape for the Capability Center curated preview (Skills S1a).
+ * Runtime enable/materialization + SKILL.md detail are later phases (S1b/S2).
+ */
+export interface CuratedSkillItem {
+  slug: string;
+  name: string;
+  titleZh: string | null;
+  summaryZh: string | null;
+  category: string | null;
+  level: string | null;
+  tags: string[];
+  reusabilityStatus: string | null;
+  iconEmoji: string | null;
+  addsCount: string | null;
+  source: string;
+  githubUrl: string | null;
+  skillsShUrl: string | null;
+  sourceLabel: string | null;
+  sourceIcon: string | null;
+}
+
+/**
+ * List the curated skill catalog (DB-backed, seeded from the platform's curated-100).
+ *
+ * No authentication required — this is the public catalog (browse/search/category).
+ * Returns official-scope curated/builtin skills ordered by editorial sortWeight.
+ * See docs/project/prd/2026-06-skills-integration-prd.md (S1).
+ */
+export const listCuratedSkillsFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<CuratedSkillItem[]> => {
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { eq, desc, asc } = await import('drizzle-orm');
+
+    const rows = await db
+      .select({
+        slug: skillCatalog.slug,
+        name: skillCatalog.name,
+        titleZh: skillCatalog.titleZh,
+        summaryZh: skillCatalog.summaryZh,
+        category: skillCatalog.category,
+        level: skillCatalog.level,
+        tags: skillCatalog.tags,
+        reusabilityStatus: skillCatalog.reusabilityStatus,
+        iconEmoji: skillCatalog.iconEmoji,
+        addsCount: skillCatalog.addsCount,
+        source: skillCatalog.source,
+        githubUrl: skillCatalog.githubUrl,
+        skillsShUrl: skillCatalog.skillsShUrl,
+        sourceLabel: skillCatalog.sourceLabel,
+        sourceIcon: skillCatalog.sourceIcon,
+      })
+      .from(skillCatalog)
+      .where(eq(skillCatalog.scope, 'official'))
+      .orderBy(desc(skillCatalog.sortWeight), asc(skillCatalog.name));
+
+    return rows.map((r) => ({
+      ...r,
+      tags: Array.isArray(r.tags) ? r.tags : [],
+    }));
+  },
+);
+
+/**
  * Get global skills (admin only)
  */
 export const getGlobalSkillsFn = createServerFn({ method: 'GET' }).handler(async () => {

@@ -54,6 +54,34 @@ const skillsContent = {
       recommended: t({ en: 'Recommended', 'zh-Hans': '推荐', fr: 'Recommandés', ja: 'おすすめ', ko: '추천', 'zh-Hant': '推薦' }),
     },
 
+    // Curated catalog (DB-backed curated-100 preview — Skills S1a)
+    curated: {
+      title: t({ en: 'Curated Skill Library', 'zh-Hans': '精选技能库', fr: 'Bibliothèque de Skills sélectionnés', ja: '厳選スキルライブラリ', ko: '엄선 스킬 라이브러리', 'zh-Hant': '精選技能庫' }),
+      previewBadge: t({ en: 'Preview', 'zh-Hans': '预览', fr: 'Aperçu', ja: 'プレビュー', ko: '미리보기', 'zh-Hant': '預覽' }),
+      subtitle: t({
+        en: 'A curated catalog of high-quality skills. Enabling them inside the agent is coming soon.',
+        'zh-Hans': '精选的高质量技能目录。在 agent 中启用运行即将支持。',
+        fr: 'Un catalogue de skills de qualité. L\'activation dans l\'agent arrive bientôt.',
+        ja: '厳選された高品質スキルのカタログ。エージェント内での有効化は近日対応。',
+        ko: '엄선된 고품질 스킬 카탈로그. 에이전트 내 활성화는 곧 지원됩니다.',
+        'zh-Hant': '精選的高品質技能目錄。在 agent 中啟用執行即將支援。',
+      }),
+      count: t({ en: '{count} curated skills', 'zh-Hans': '{count} 个精选技能', fr: '{count} skills sélectionnés', ja: '{count} 件の厳選スキル', ko: '엄선 스킬 {count}개', 'zh-Hant': '{count} 個精選技能' }),
+      searchPlaceholder: t({ en: 'Search curated skills...', 'zh-Hans': '搜索精选技能...', fr: 'Rechercher...', ja: '厳選スキルを検索...', ko: '엄선 스킬 검색...', 'zh-Hant': '搜尋精選技能...' }),
+      allCategories: t({ en: 'All', 'zh-Hans': '全部', fr: 'Tous', ja: 'すべて', ko: '전체', 'zh-Hant': '全部' }),
+      viewOnGithub: t({ en: 'View on GitHub', 'zh-Hans': '在 GitHub 查看', fr: 'Voir sur GitHub', ja: 'GitHub で見る', ko: 'GitHub에서 보기', 'zh-Hant': '在 GitHub 檢視' }),
+      empty: t({ en: 'No curated skills match your filters', 'zh-Hans': '没有符合条件的精选技能', fr: 'Aucun skill ne correspond', ja: '条件に合う厳選スキルがありません', ko: '조건에 맞는 엄선 스킬이 없습니다', 'zh-Hant': '沒有符合條件的精選技能' }),
+      categories: {
+        ai_engineering: t({ en: 'AI Engineering', 'zh-Hans': 'AI 工程', fr: 'Ingénierie IA', ja: 'AI エンジニアリング', ko: 'AI 엔지니어링', 'zh-Hant': 'AI 工程' }),
+        research: t({ en: 'Research', 'zh-Hans': '研究', fr: 'Recherche', ja: 'リサーチ', ko: '리서치', 'zh-Hant': '研究' }),
+        writing: t({ en: 'Writing', 'zh-Hans': '写作', fr: 'Rédaction', ja: 'ライティング', ko: '글쓰기', 'zh-Hant': '寫作' }),
+        design_frontend: t({ en: 'Design & Frontend', 'zh-Hans': '设计与前端', fr: 'Design & Frontend', ja: 'デザイン・フロント', ko: '디자인·프론트', 'zh-Hant': '設計與前端' }),
+        automation: t({ en: 'Automation', 'zh-Hans': '自动化', fr: 'Automatisation', ja: '自動化', ko: '자동화', 'zh-Hant': '自動化' }),
+        learning: t({ en: 'Learning', 'zh-Hans': '学习', fr: 'Apprentissage', ja: '学習', ko: '학습', 'zh-Hant': '學習' }),
+        security: t({ en: 'Security', 'zh-Hans': '安全', fr: 'Sécurité', ja: 'セキュリティ', ko: '보안', 'zh-Hant': '安全' }),
+      },
+    },
+
     // Empty state
     empty: {
       title: t({ en: 'No skills found', 'zh-Hans': '未找到技能', fr: 'Aucun skill trouvé', ja: 'スキルが見つかりません', ko: '스킬을 찾을 수 없습니다', 'zh-Hant': '未找到技能' }),
