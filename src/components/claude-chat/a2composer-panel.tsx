@@ -17,7 +17,7 @@ import { ChevronDown, Minimize2 } from 'lucide-react';
 import type { A2Category, A2Template, A2ComposerStore } from '~/lib/a2composer/types';
 import { resolveSkillMatch } from '~/lib/a2composer/skill-match';
 import { applyTemplate, extractVariables } from '~/lib/a2composer/template-utils';
-import { listAllSkillsFn, getSkillSchemaFn, ensureUserSkillEnabledFn } from '~/server/function/skills.server';
+import { listAllSkillsFn, getCuratedSkillSchemaFn, ensureUserSkillEnabledFn } from '~/server/function/skills.server';
 import { getA2ComposerStoreFn } from '~/server/function/a2composer.server';
 import type { ExtendedSkillInfo, SkillInputField } from '~/claude/skills';
 import { useChatSessionStore } from '~/lib/chat-session-store';
@@ -41,7 +41,7 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOp
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   const listAllSkills = useServerFn(listAllSkillsFn);
-  const getSkillSchema = useServerFn(getSkillSchemaFn);
+  const getSkillSchema = useServerFn(getCuratedSkillSchemaFn);
   const ensureSkillEnabled = useServerFn(ensureUserSkillEnabledFn);
   const getStore = useServerFn(getA2ComposerStoreFn);
   const addTemporarySkill = useChatSessionStore((state) => state.addTemporarySkill);
@@ -82,8 +82,8 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOp
 
   const { data: schemaData } = useQuery({
     queryKey: ['a2composer-schema', selectedTemplate?.skillId],
-    // P1 fix: Use { data: { skillSlug } } pattern for POST server functions
-    queryFn: () => getSkillSchema({ data: { skillSlug: selectedTemplate?.skillId ?? '' } }),
+    // S4: read the fillable-variable schema from the DB cache (skill_schema_cache)
+    queryFn: () => getSkillSchema({ data: { slug: selectedTemplate?.skillId ?? '' } }),
     enabled: Boolean(selectedTemplate?.skillId),
   });
 
