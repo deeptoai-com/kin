@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '~/components/ui/tooltip';
-import { getSkillSchemaFn, listAllSkillsFn } from '~/server/function/skills.server';
+import { getCuratedSkillSchemaFn, listMySkillsFn } from '~/server/function/skills.server';
 import type { SkillSchema } from '~/claude/skills';
 import type { SessionMetadata, McpServerStatus } from './session-info-panel';
 
@@ -66,8 +66,8 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
 }) => {
   const content = useIntlayer('claude-chat');
   const [skillsOpen, setSkillsOpen] = useState(false);
-  const listAllSkills = useServerFn(listAllSkillsFn);
-  const getSkillSchema = useServerFn(getSkillSchemaFn);
+  const listMySkills = useServerFn(listMySkillsFn);
+  const getSkillSchema = useServerFn(getCuratedSkillSchemaFn);
 
   // Extract skills
   const skillSlugs = useMemo(() => {
@@ -83,9 +83,9 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
       .filter(Boolean);
   }, [sessionMetadata?.mcp_servers]);
 
-  const { data: skillCatalog } = useQuery({
-    queryKey: ['skills-catalog'],
-    queryFn: () => listAllSkills(),
+  const { data: mySkills } = useQuery({
+    queryKey: ['my-skills'],
+    queryFn: () => listMySkills(),
     enabled: skillSlugs.length > 0,
     staleTime: 60_000,
   });
@@ -96,7 +96,7 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
       const results = await Promise.all(
         skillSlugs.map(async (slug) => {
           try {
-            const result = await getSkillSchema({ data: { skillSlug: slug } });
+            const result = await getSkillSchema({ data: { slug } });
             return { slug, schema: (result?.schema ?? null) as SkillSchema | null };
           } catch {
             return { slug, schema: null };
@@ -111,12 +111,11 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
 
   const skillNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    if (!skillCatalog) return map;
-    for (const skill of [...skillCatalog.official, ...skillCatalog.user]) {
-      map.set(skill.slug, skill.name);
+    for (const skill of mySkills ?? []) {
+      map.set(skill.slug, skill.titleZh || skill.name);
     }
     return map;
-  }, [skillCatalog]);
+  }, [mySkills]);
 
   const schemaBySlug = useMemo(() => {
     const map = new Map<string, SkillSchema | null>();
@@ -180,7 +179,8 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
             <DropdownMenuLabel className="flex items-center justify-between px-2 text-xs">
               <span>{content.contextBadges.currentSessionSkills}</span>
               <Link
-                to="/agents/skills"
+                to="/agents/capabilities"
+                search={{ tab: 'skills' }}
                 className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                 aria-label={toLocalizedString(content.contextBadges.openSkillsStore)}
               >
