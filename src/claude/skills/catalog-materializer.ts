@@ -7,7 +7,9 @@
  * session — see PRD D7 / the "需重新发起对话" contract).
  *
  * Content source:
- *  - source='builtin' → copy the directory from the FS skills-store (8 baoyu)
+ *  - source='builtin' → copy the directory from the FS skills-store (the legacy
+ *    local store is currently empty — the 8 baoyu assets were retired per D9 —
+ *    but the path is kept for any future local builtins)
  *  - source='curated'|'upstream' → write SKILL.md from skill_content_cache
  *    (fetched from skills-api on demand, cache-first)
  *

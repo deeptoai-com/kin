@@ -1,50 +1,19 @@
-# Skills Store
+# Skills Store (legacy FS store — being retired)
 
-此目录存储所有可用的 Skills。
+> **状态（2026-06）**：历史的本地 FS 技能资产（8 个 `baoyu-*`）已**删除**，走干净路线。
+> Skills 的真相源已迁移到 **DB catalog**（`skill_catalog`）+ skills-api 内容 + 按用户安装（`skill_enablement` → 物化到 `~/.claude/skills/`）。
+> 详见 `docs/project/prd/2026-06-skills-integration-prd.md`。
 
-## 目录结构
+## 这个目录现在还剩什么用
 
-每个 Skill 应该是一个独立的目录，包含：
+- 仍是 `getSkillsStoreDir()` / `seedSkillsStore()` / `manager.ts` 的回退路径，但目前**为空**（仅本 README）。
+- `getSkillsStore()` 在空目录下返回 `[]`，所有相关 UI/接口优雅降级（不报错）。
+- 后续若要重新引入"本地内置技能"，可在此放置目录；但优先走 catalog（`source='builtin'` + 内容缓存）。
 
-- `SKILL.md`（必需）
-- 其他相关文件（可选）
+## 已知的待办（skills 体系完成后再处理）
 
-## 示例
+- 聊天 composer 上方的 skills 快捷入口 / A2Composer 模板（`src/lib/a2composer/config.ts` 里仍引用 `baoyu-*` 的 `skillHint`）在本地资产删除后**功能失效**（模板文本仍可用，但不再自动挂载技能）。这是**有意为之的过渡态**，待 Skills 整体完成后统一重做。
 
-```
-skills-store/
-├── example-skill/
-│   ├── SKILL.md
-│   └── ...
-└── another-skill/
-    ├── SKILL.md
-    └── ...
-```
+## 历史格式（供参考）
 
-## Skills 格式
-
-所有 Skills 使用统一的 `SKILL.md` 格式（带 YAML frontmatter）：
-
-```markdown
----
-name: skill-name
-description: Skill 描述
-category: development
----
-
-# Skill 名称
-
-Claude 在该 Skill 激活时应遵循的指令。
-
-## 示例
-- 示例用法 1
-- 示例用法 2
-```
-
-## 管理
-
-- **添加 Skill**：在此目录下创建新的 Skill 目录
-- **更新 Skill**：直接修改对应的 Skill 目录内容
-- **删除 Skill**：删除对应的 Skill 目录
-
-用户开启的 Skill 会自动从此目录复制到 `USER_DATA_DIR/<userId>/.claude/skills/`。
+每个 Skill 是一个目录，含 `SKILL.md`（YAML frontmatter：`name` / `description` / `category` + 指令正文）。

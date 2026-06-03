@@ -47,6 +47,7 @@
 | D6 | **默认只启用两个 skill**：`find-skills`（vercel-labs）+ `skill-creator`（anthropics）。其余（8 个 baoyu + curated-100 + 上游添加）**一律不默认启用** | owner 拍板（2026-06）|
 | D7 | **手动加载模型，而非 SDK 渐进式自动披露**：非默认 skill 由用户在**聊天窗快捷入口**显式选择加载到当前对话（按需物化），不靠 SDK 扫描目录自动加载全部 | owner 拍板（2026-06）|
 | D8 | **种子接入 migrate/启动流程**（幂等）：`migrate` 服务先 `db:migrate`（失败即致命）再 `db:seed`（best-effort，失败不阻断启动）| owner 拍板（2026-06）；开箱即用定位 |
+| D9 | **删除历史本地 FS 资产**：`src/skills-store/baoyu-*`（8 个）**全部删除**，不迁移为 catalog builtin（curated-100 已含 baoyu 的 GitHub 上游条目，不丢能力）。走干净路线。**代价**：composer 上方 skills 快捷入口 / A2Composer baoyu 模板**暂时失效**（优雅降级、不报错），待 Skills 体系完成后统一重做。 | owner 拍板（2026-06）|
 
 > **D6/D7 对 S2 执行层的影响（重要）**：当前 SDK 用 `settingSources:['project']` 扫描 `~/.claude/skills/` 自动加载目录内**全部** skill（渐进式披露）。新模型要求：
 > - **默认集**（find-skills + skill-creator）随会话初始化物化，始终可用。
@@ -117,7 +118,7 @@ skill_enablement              -- 谁启用了哪个
 ## 7. 与现有 OxyGenie skills 子系统的衔接 / 迁移
 - 复用:`schema-generator.ts`(已修)、`skill-marker`/`skill-match`、`skills-page`/详情组件、`manager.js` 的 enable/材料化、capability center Skills tab。
 - 改:数据源从 **FS skills-store → DB catalog**;`getSkillsStore`/`syncUserSkills`/`resolve... ` 改读 DB;内容来源加 skills-api。
-- 迁移:现有 8 个 builtin skill → catalog(source=builtin);现有用户已启用 → enablement 表。
+- 迁移:~~现有 8 个 builtin skill → catalog(source=builtin)~~ **改为删除**（D9）；现有用户已启用 → enablement 表。
 - **上传/GitHub 安装现状（已支持）**：`uploadUserSkillFn`（zip/.skill 上传）+ `installGitHubSkillFn`（admin，从 GitHub 装入 FS store）+ `SkillUploadDialog`/`GitHubSkillInstaller` 已在能力中心可用。S2/S4 需把这两条路径的产物也收敛到 DB catalog（user-scoped / builtin），与"手动加载"模型对齐。
 
 ## 8. 配置 / 环境
@@ -134,7 +135,8 @@ skill_enablement              -- 谁启用了哪个
   - schema 后台/懒生成 + composer 可填充表单。
   - 现有 `.global-skills.json` / `ensureGlobalSkillsForUser` 语义改为"默认2"，启用状态迁到 DB `skill_enablement`。
 - **S3 — 上游搜索发现**：skills-api 搜索 + 「从上游添加」→ user-scoped catalog + 内容 + schema。
-- **S4 — 同步/维护**：按 scrapedAt 重取内容、schema stale 重算、迁移现有 builtin/用户启用、上传/GitHub 安装产物收敛到 DB、admin 策展工具。
+- **S4 — 同步/维护**：按 scrapedAt 重取内容、schema stale 重算、~~迁移现有 builtin~~（已按 D9 删除）、迁移用户启用、上传/GitHub 安装产物收敛到 DB、admin 策展工具。
+- **composer 重做（D9 遗留，Skills 完成后）**：删除本地 baoyu 后，A2Composer 默认模板（`config.ts` 的 `baoyu-*` skillHint）与 composer 顶部 skills 快捷入口失效。重做方向：让 composer 的技能入口直接读「我的技能 / catalog」，而非旧 FS store。
 
 ## 10. 验收
 - 精选 100 在能力中心可浏览/搜索/分类/看详情(SKILL.md 来自 skills-api,落库)。
