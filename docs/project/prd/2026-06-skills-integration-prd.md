@@ -44,6 +44,15 @@
 | D3 | **DB 为真相**（catalog/启用/内容缓存/schema 缓存）；**FS 为运行时投影**（启用时物化到 `~/.claude/skills/`） | 既有「DB 编目」+ 会话持久化研究的同一原则 |
 | D4 | **内容落库**（不纯按需）：因为 SDK 必须从磁盘读 SKILL.md 才能跑 | §1 OxyGenie 执行层 |
 | D5 | **schema 本地生成、移出同步路径**（后台/懒生成，按 content-hash 缓存，needsReview 人工复核） | 架构文档 §六约束 A + schema-generator 修复 |
+| D6 | **默认只启用两个 skill**：`find-skills`（vercel-labs）+ `skill-creator`（anthropics）。其余（8 个 baoyu + curated-100 + 上游添加）**一律不默认启用** | owner 拍板（2026-06）|
+| D7 | **手动加载模型，而非 SDK 渐进式自动披露**：非默认 skill 由用户在**聊天窗快捷入口**显式选择加载到当前对话（按需物化），不靠 SDK 扫描目录自动加载全部 | owner 拍板（2026-06）|
+| D8 | **种子接入 migrate/启动流程**（幂等）：`migrate` 服务先 `db:migrate`（失败即致命）再 `db:seed`（best-effort，失败不阻断启动）| owner 拍板（2026-06）；开箱即用定位 |
+
+> **D6/D7 对 S2 执行层的影响（重要）**：当前 SDK 用 `settingSources:['project']` 扫描 `~/.claude/skills/` 自动加载目录内**全部** skill（渐进式披露）。新模型要求：
+> - **默认集**（find-skills + skill-creator）随会话初始化物化，始终可用。
+> - **其余 skill 不预先物化**；用户在 composer 快捷入口选中后，**仅把该 skill 物化进当前会话的 skills 目录**（按需投影），实现"手动加载"。
+> - 即默认目录里平时只有 2 个 skill；"加载"= 往当前会话目录里增量物化一个。这把"目录里有什么"从"全量"收敛为"默认2 + 用户本会话已加载"。
+> - 现有 `.global-skills.json`（FS 全局启用）与 `ensureGlobalSkillsForUser` 的语义需相应调整为"默认2"，迁移到 DB `skill_enablement`。
 
 ---
 
@@ -109,6 +118,7 @@ skill_enablement              -- 谁启用了哪个
 - 复用:`schema-generator.ts`(已修)、`skill-marker`/`skill-match`、`skills-page`/详情组件、`manager.js` 的 enable/材料化、capability center Skills tab。
 - 改:数据源从 **FS skills-store → DB catalog**;`getSkillsStore`/`syncUserSkills`/`resolve... ` 改读 DB;内容来源加 skills-api。
 - 迁移:现有 8 个 builtin skill → catalog(source=builtin);现有用户已启用 → enablement 表。
+- **上传/GitHub 安装现状（已支持）**：`uploadUserSkillFn`（zip/.skill 上传）+ `installGitHubSkillFn`（admin，从 GitHub 装入 FS store）+ `SkillUploadDialog`/`GitHubSkillInstaller` 已在能力中心可用。S2/S4 需把这两条路径的产物也收敛到 DB catalog（user-scoped / builtin），与"手动加载"模型对齐。
 
 ## 8. 配置 / 环境
 - `SKILLS_API_URL`(默认上游部署,如 `https://skills-api.deeptoai.com`)+ 可选 `SKILLS_API_KEY`(x-api-key)。仅服务端调用。
@@ -116,9 +126,15 @@ skill_enablement              -- 谁启用了哪个
 
 ## 9. 分期
 - **S1 — Catalog + 展示**：DB schema + curated-100 播种 + skills-api 取内容落库 + 能力中心 Skills tab 展精选 + 详情(SKILL.md)。**不跑、不 schema。**
-- **S2 — 执行层**：启用 → DB→FS 物化 → SDK 运行;schema 后台/懒生成 + composer 表单。
+  - **S1a（已完成 #90）**：DB schema(4 表) + 迁移 0020 + curated-100 播种(100/100) + 种子接入 migrate(D8) + 能力中心只读精选预览(`CuratedSkillsSection`)。
+  - **S1b**：skills-api `/content` 取 SKILL.md → `skill_content_cache` 落库 + 详情页渲染。
+- **S2 — 执行层（按 D6/D7 调整）**：
+  - **默认集**：会话初始化物化 `find-skills` + `skill-creator` 两个（始终可用）。
+  - **手动加载**：composer 快捷入口 → 选中某 catalog skill → **仅物化进当前会话** skills 目录（DB→FS 按需投影）→ SDK 运行；离开/禁用时 GC。**不做全量自动披露**。
+  - schema 后台/懒生成 + composer 可填充表单。
+  - 现有 `.global-skills.json` / `ensureGlobalSkillsForUser` 语义改为"默认2"，启用状态迁到 DB `skill_enablement`。
 - **S3 — 上游搜索发现**：skills-api 搜索 + 「从上游添加」→ user-scoped catalog + 内容 + schema。
-- **S4 — 同步/维护**：按 scrapedAt 重取内容、schema stale 重算、迁移现有 builtin/用户启用、admin 策展工具。
+- **S4 — 同步/维护**：按 scrapedAt 重取内容、schema stale 重算、迁移现有 builtin/用户启用、上传/GitHub 安装产物收敛到 DB、admin 策展工具。
 
 ## 10. 验收
 - 精选 100 在能力中心可浏览/搜索/分类/看详情(SKILL.md 来自 skills-api,落库)。
