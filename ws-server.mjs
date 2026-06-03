@@ -78,7 +78,12 @@ console.log(
 function resolveSessionsRoot() {
   const envRoot = process.env.CLAUDE_SESSIONS_ROOT;
   if (envRoot && envRoot.trim()) {
-    return envRoot;
+    // IMPORTANT: resolve to an ABSOLUTE path. A relative value (e.g. "./user-data")
+    // would resolve differently for the ws-server (cwd = repo root) vs the worker
+    // (cwd = per-session workspace), so the SDK would write the transcript under the
+    // workspace while resume looks for it under the repo root → "Session file not
+    // found" → conversation history fails to reload. Absolute = both agree.
+    return path.resolve(envRoot.trim());
   }
   // Check for Docker production path
   const dockerPath = '/data/users';
@@ -90,6 +95,10 @@ function resolveSessionsRoot() {
 }
 
 const SESSIONS_ROOT = resolveSessionsRoot();
+// Normalize the env var to the resolved ABSOLUTE path so spawned workers (which
+// inherit process.env) and the skills/mcp managers (which read CLAUDE_SESSIONS_ROOT)
+// all resolve to the same location regardless of their cwd.
+process.env.CLAUDE_SESSIONS_ROOT = SESSIONS_ROOT;
 console.log('[WS Server] Sessions root:', SESSIONS_ROOT);
 
 const config = {
@@ -427,7 +436,8 @@ async function loadSessionFromDb(cookie, workspaceSessionId) {
  * JSONL files are stored at: CLAUDE_HOME/.claude/projects/{project}/{sessionId}.jsonl
  */
 async function locateSessionFile(claudeHome, sessionId) {
-  const projectsRoot = path.join(claudeHome, '.claude', 'projects');
+  // Resolve to absolute in case a legacy session stored a relative claude_home_path.
+  const projectsRoot = path.join(path.resolve(claudeHome), '.claude', 'projects');
 
   try {
     await access(projectsRoot);

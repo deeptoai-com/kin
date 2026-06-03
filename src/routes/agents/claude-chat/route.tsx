@@ -247,14 +247,27 @@ function RouteComponent() {
     return unsubscribe;
   }, [loadHistoricalMessages]);
 
-  // Sync with adapter's session ID on mount
+  // Sync with adapter's session ID on mount, and re-hydrate history.
+  // The adapter keeps the session id across SPA navigation (module-level), but the
+  // assistant-ui thread is ephemeral and resets when this route remounts (e.g. after
+  // navigating to the Capability Center and back). So on mount, if a session was
+  // already active, resume it to reload the conversation — otherwise the user returns
+  // to an empty page even though the session is still "selected".
   useEffect(() => {
     const sessionId = getSessionId();
     if (sessionId) {
       setCurrentSessionId(sessionId);
       setSessionId(sessionId);
+      if (!checkIsQueryRunning()) {
+        clearMessages();
+        resumeSession(sessionId).catch((error) => {
+          console.error('[Route] Failed to resume restored session on mount:', error);
+        });
+      }
     }
-  }, [setSessionId]);
+    // Run once on mount; setSessionId/clearMessages are stable store actions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSessionId, clearMessages]);
 
   // Listen for session init events to keep route state in sync with adapter
   useEffect(() => {
