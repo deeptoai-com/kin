@@ -267,6 +267,25 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 toolName: target.toolName,
               })
               artifactId = existing.id
+            } else if (artifact && artifact.isTemporary && !artifact.sourceFilePath) {
+              // A3 dedup: the text code-block fallback (Method 2) already created a
+              // temporary card for this message before the Write tool finished. Upgrade
+              // that card in place to the file-backed artifact instead of creating a
+              // second "HTML 成果物" card for the same turn.
+              updateArtifact(artifact.id, {
+                sourceFilePath: target.filePath,
+                content: contentToUse,
+                type: target.type,
+                fileName: target.fileName,
+                messageId,
+                isTemporary: false,
+                mimeType,
+                imageFiles,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
+              })
+              artifactId = artifact.id
             } else {
               artifactId = createArtifact({
                 sessionId: sessionId || 'unknown',
