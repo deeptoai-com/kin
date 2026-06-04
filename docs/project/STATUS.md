@@ -200,6 +200,15 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **聊天+Workbench「Cowork-faithful 单源重做」定方向（owner 选 A）**。测试暴露根因：
+  Workbench 四个 tab 读 zustand `chat-session-store.messages`（只在刷新/resume 由 `loadHistoricalMessages` 填），
+  而实时消息在独立的 assistant-ui `useLocalRuntime` 里，且 `WorkbenchPanel` 渲染在 `AssistantRuntimeProvider`
+  之外 → **结构上拿不到实时数据，刷新才有**（这正是最早「Progress 滞后」的真因）。正解 = **单一实时真相源**
+  （推荐 `useExternalStoreRuntime`，store 持有单一有序消息列表，左侧流 + 右侧 Workbench 都读它），一把修好
+  Workbench 实时 + 消息顺序 + 历史/实时渲染统一 + Cowork 式渐进折叠。已交付实施规格
+  `research/2026-06-cowork-chat-workbench-redesign-spec.md`，将在**专门对话**按规格实现（owner 不要尾段仓促一把梭）。
+  期间已落地的小修：Phase B（Files/Context selector，#102，刷新后正确）、A3（每轮一张成果物卡，#103）。
+  另：泄漏的 "StructuredOutput" 内部消息是 SDK `outputFormat` 强制机制（`ENABLE_STRUCTURED_OUTPUTS=true`），建议先关。
 - **2026-06-04** — **「真预览」架构拍板（架构师评审）**：让用户看到 agent 生成的多文件 App 真正运行。
   方向 = **per-session 持久沙盒 + 按需预览进程 + idle 回收**（不每会话常驻 dev server）。
   新增 `PreviewRuntime`/`SessionSandboxManager`（不硬改 one-shot `DockerBackend`）+ `preview-controller`
