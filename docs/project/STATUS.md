@@ -46,12 +46,13 @@ Historical note below (kept for context).
 > Acceptable to defer during single-user / local dev; **must be closed before opening to multiple
 > tenants or the public internet.**
 
-- **R4 — Bash tier-gating gap** ([Issue #69](https://github.com/foreveryh/oxygenie/issues/69),
-  labels: `security` `release-blocker`). `wantsBash` is not threaded front-end → ws-server → worker,
-  so the permission tiers (Explore/Auto/Act) don't fully gate Bash; a tier could reach Bash it
-  shouldn't, or the gate is bypassed. Fix = thread `wantsBash` so the worker's `resolveDisallowedTools`
-  gates by tier + wantsBash; verify on real runs across all three tiers. ~2-line core fix, but it's a
-  **security boundary** — do not ship multi-user with it open.
+- **R4 — Bash tier-gating gap** ([Issue #69](https://github.com/foreveryh/oxygenie/issues/69))
+  — **RESOLVED BY REDESIGN (not by patch)**. The wantsBash patch (PR #108) was **closed**: the
+  Ask/Act redesign (2026-06-cowork) **removes the read-only `explore` tier entirely** (web+sandbox,
+  no use for Plan), so there is no read-only tier left to leak bash/python. Security = sandbox + (Ask
+  mode) HITL approval; Ask and Act are capability-equal. Net: #69's vulnerable tier is deleted. Close
+  #69 once the Ask/Act model lands (see `research/2026-06-ask-act-hitl-design.md`). Testing during R4
+  also found `explore` could still exec via the **python** tool (ungated) — also moot once explore is gone.
 
 ### Historical snapshot (2026-05-30, first browser-verified run)
 
@@ -200,6 +201,13 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **权限模型拍板:对标 Cowork 的 Ask/Act 两档,砍掉 Plan/explore/auto**。理由:纯
+  web、不在客户本地、全沙盒 → 只读 Plan 无用;符合既定哲学(安全=沙盒,档位=交互偏好)。**Ask**=每个动作
+  类工具前暂停等批准(HITL);**Act**=自主(默认)。两档能力相同,只差打不打断。**含义**:① R4(#69)由"删
+  explore"解决,**PR #108(wantsBash 补丁)已关闭作废**;② Phase C 的 python 越权洞随 explore 消失而作废;
+  ③ **Ask = HITL = 要真建**(canUseTool 暂停 → UI 批准/拒绝 → 回写 worker stdin 的往返协议),正是规划中的
+  Phase 3 Wave 2。设计子文档:`research/2026-06-ask-act-hitl-design.md`(含 stdin 行协议改造、canUseTool
+  组合闸、approval 协议、**实现前先 spike 验证 SDK canUseTool 能 async await**)。**Next: 评审设计 → spike → 实现。**
 - **2026-06-04** — **Phase C v1 代码就绪（PR #107），E2E + 一处回退挂到「全栈那轮」**。架构师交付真预览**后端**（`src/preview/*`：PreviewRuntime + controller sidecar + 一次性 token→cookie + manifest；`ws-server.mjs` 加 start/stop_preview + preview_state；docker-compose）；评审通过（范围/契约/安全六坑/5-5 单测/SDK 0.2.112）。架构师把收尾**交回评审执行**：已补 **P1 前端接缝**（`chat-session-store.previewState` + ws-adapter 收发 + `useSessionPreview` selector + `artifact-html` 「运行预览」CTA→ready 换 live iframe）、**P3**（preview 测试 `@vitest-environment node`；secret-from-env 架构师已做）。全部在分支 `codex/phasec-real-preview` / worktree `oxygenie-phasec` / **PR #107**（build+lint 绿、5/5 单测）。**未做 = P2 端到端**（需全栈 docker-compose：preview-controller+Traefik+浏览器交互验收 §3.1 1–5），owner 选延后。**已知回退（仅本地、非紧急、owner 同意延后）**：在 phasec 构建上「历史会话加载不出聊天记录」（main 正常）；已排除 历史合并逻辑/后端发送/intlayer，疑为 P1 给 `artifact-html` 加 `~/claude/adapters` import 边改变 Vite chunk 切分导致客户端初始化问题——**精确定位需浏览器 console，连同 P2 全栈那轮一并 pin+fix**（届时把 artifact-html 与 adapter/store 解耦）。
 - **2026-06-04** — **Phase C（真预览）交给架构师 + 完整实施指南落档**。chat/Workbench 单源重做 S1+S2 已合并 `main`、S3 延后备案，**真预览（多文件 App 跑起来）= Phase C，归架构师**。交付 `research/2026-06-phasec-implementation-guide-for-architect.md`（① 如何实施含 **UI 接缝契约**：`.oxygenie/app.json` + `preview_state` 事件 + `chat-session-store` slot + `useSessionPreview` selector + 卡片「运行预览」露出，后端/前端归属切分；② 预期=SPA static 硬验收；③ 验证清单+回归；④ 求助/协作规矩）。另：成果物多文件 App 预览加了「这是多文件 App…」提示横幅（`artifact-html.tsx`，合并 `main`）。
 - **2026-06-04** — **Cowork S2 实现（turn 卡渲染收尾）+ S3 决定（暂不修，挂 artifact 线）**。S2：
