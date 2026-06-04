@@ -200,6 +200,19 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **Cowork 单源重做 S1 实现 + owner 实测通过 + 合并 `main`**（merge `feat/cowork-s1-single-source`）。
+  落地：`useLocalRuntime`→`useExternalStoreRuntime`，`chat-session-store.messages` 成唯一有序真相源，
+  ws-adapter `runChat()` 把每个 chunk 写进 store（带单调 `seq`），左侧流 + 右侧 Workbench 同读一份
+  → **Progress/Files/Context 跑时实时、无需刷新**。实测迭代修掉 5 个问题：① converter 只在 assistant
+  角色带 `status`（否则发消息即报 "status is only supported for assistant messages"）；② 取消成果物
+  **自动弹面板**（仅点击开，避免盖住 Workbench）；③ 文本兜底卡与 Write 卡**去重**（升级临时卡而非新建）；
+  ④ **历史按轮合并**——`loadHistoricalMessages` 把一轮的多条 SDK 消息（每段文字/工具一条 + tool_result 走
+  user 消息）合并成**一条** store 消息，历史与实时渲染一致（每轮一张 turn 卡 + 一张交付物卡，告别「6 张
+  步骤已完成 + 3 张重复卡」）；⑤ `.js/.ts` 误判为 React 丢进 Sandpack 执行 → 原生 DOM 脚本崩
+  "Something went wrong"，改为**非组件代码只读展示**；并删掉重复的全局 `ThreadArtifactCallout`（与 turn
+  内联卡重复）。**真预览（多文件 App 跑起来）仍是 Phase C 沙盒，不在 S1**。**Next: S2**（turn 卡头摘要
+  「Worked Xs · N steps」+ thinking 去重）、S3（结构化输出泄漏处理）。规格见
+  `research/2026-06-cowork-chat-workbench-redesign-spec.md`。
 - **2026-06-04** — **聊天+Workbench「Cowork-faithful 单源重做」定方向（owner 选 A）**。测试暴露根因：
   Workbench 四个 tab 读 zustand `chat-session-store.messages`（只在刷新/resume 由 `loadHistoricalMessages` 填），
   而实时消息在独立的 assistant-ui `useLocalRuntime` 里，且 `WorkbenchPanel` 渲染在 `AssistantRuntimeProvider`
