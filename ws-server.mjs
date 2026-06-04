@@ -933,16 +933,14 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       console.log(`[WS Server] Using environment-based permissions: mode=${permissionMode}, bash=${allowBash}`);
     }
 
-    // PR-B: apply the client-requested product tier.
-    // Security lives in the sandbox — tiers are a UX preference (how much to interrupt).
-    // Falls back to DEFAULT_TIER ('act') when absent/unrecognised (no behaviour change
-    // for legacy clients that send no tier). Single source: src/lib/permission-tier.js.
-    const effective = resolveEffectivePermission({ requestedTier: permissionTier });
-    permissionMode = effective.permissionMode;
-    // wantsBash: tier's preference; actual bash availability gated by sandbox in PR-C.
-    // For now keeps existing allowBash logic (native Bash still in disallowedTools).
+    // Apply the client-requested interaction mode (Ask/Act). Security lives in the
+    // sandbox — modes are an interruption preference. Falls back to DEFAULT_MODE
+    // ('act') when absent/unrecognised. Single source: src/lib/permission-tier.js.
+    // (`permissionTier` is the wire field name; it now carries 'ask' | 'act'.)
+    const effective = resolveEffectivePermission({ requestedMode: permissionTier });
+    permissionMode = effective.permissionMode; // ask → 'default' (HITL via canUseTool); act → 'acceptEdits'
     if (permissionTier) {
-      console.log(`[WS Server] Permission tier: ${effective.tier} → mode=${permissionMode}`);
+      console.log(`[WS Server] Interaction mode: ${effective.mode} → permissionMode=${permissionMode}`);
     }
 
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);

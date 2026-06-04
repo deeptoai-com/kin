@@ -225,11 +225,15 @@ process.stdin.on('end', async () => {
     const dangerousDisableGuard =
       permissionMode === 'bypassPermissions' &&
       process.env.CLAUDE_DANGEROUS_DISABLE_GUARD === 'true';
+    // Ask mode → SDK 'default' (SDK consults canUseTool per tool → HITL in chunk 2).
+    // Act mode → 'acceptEdits' (autonomous; SDK skips canUseTool for edits).
     const sdkPermissionMode = dangerousDisableGuard
       ? 'bypassPermissions'
       : permissionMode === 'plan'
         ? 'plan'
-        : 'acceptEdits';
+        : permissionMode === 'default'
+          ? 'default'
+          : 'acceptEdits';
     const { canUseTool, debugInfo } = createPathSecurity({
       workspace: config.cwd,
       userId,

@@ -1,73 +1,63 @@
 /**
- * Permission Tier — single source of truth for the 3-tier product permission model.
+ * Interaction mode — single source of truth for the 2-mode model (Cowork-aligned).
  *
  * Shared, dependency-free ESM so BOTH the Node WS server (ws-server.mjs) and the
- * Vite/TS frontend import the exact same tier→SDK-mode mapping.
+ * Vite/TS frontend import the exact same mode → SDK-mode mapping.
  *
- * Design rationale: security comes from the SANDBOX (srt / container), NOT from
- * restricting which tier a user can pick. All users can reach any tier; the sandbox
- * is the hard boundary. Tiers are a UX preference: how much the agent interrupts.
+ * Design rationale: security comes from the SANDBOX (srt / container), NOT from the
+ * mode. Modes are an INTERRUPTION preference (how much the agent pauses), not a
+ * capability gate. (We dropped the old read-only "explore/Plan" tier: OxyGenie is a
+ * web, fully-sandboxed product — read-only planning has no use; see
+ * docs/project/research/2026-06-ask-act-hitl-design.md.)
  *
- * Tiers (ascending "interruption level" ↓ / "autonomy" ↑):
- *   - 'explore' (🔍)  → SDK `plan`        : read-only, no edits, no scripts
- *   - 'auto'    (⚡)  → SDK `acceptEdits` : edits auto, sandbox scripts ok, HITL for danger (Wave 2)
- *   - 'act'     (🚀)  → SDK `acceptEdits` : same as auto, minimal interruptions (default)
+ * Modes (Cowork: Ask before acting / Act without asking):
+ *   - 'ask' (🖐) → SDK `default`     : SDK consults canUseTool per tool → HITL approval
+ *   - 'act' (⏩) → SDK `acceptEdits` : autonomous, sandbox-bounded (default)
  *
- * Design ref: docs/project/research/2026-05-permission-bash-sandbox-design.md
+ * Spike-verified (2026-06-04): in `default` mode the SDK calls canUseTool per tool
+ * and awaits a long async return; `acceptEdits` skips canUseTool entirely. So Ask
+ * must use `default`, Act uses `acceptEdits`.
  *
- * @typedef {'explore' | 'auto' | 'act'} PermissionTier
+ * @typedef {'ask' | 'act'} InteractionMode
  * @typedef {'default' | 'plan' | 'dontAsk' | 'acceptEdits' | 'delegate' | 'bypassPermissions'} SdkPermissionMode
  */
 
-/** @type {readonly ['explore', 'auto', 'act']} */
-export const PERMISSION_TIERS = ['explore', 'auto', 'act'];
+/** @type {readonly ['ask', 'act']} */
+export const INTERACTION_MODES = ['ask', 'act'];
 
-/** @type {PermissionTier} */
-export const DEFAULT_TIER = 'act';
+/** @type {InteractionMode} */
+export const DEFAULT_MODE = 'act';
 
 /**
- * Is `value` one of the three product tiers?
+ * Is `value` one of the two interaction modes?
  * @param {unknown} value
- * @returns {value is PermissionTier}
+ * @returns {value is InteractionMode}
  */
-export function isPermissionTier(value) {
-  return value === 'explore' || value === 'auto' || value === 'act';
+export function isInteractionMode(value) {
+  return value === 'ask' || value === 'act';
 }
 
 /**
- * Map a product tier to the SDK permissionMode string.
- * @param {PermissionTier} tier
+ * Map an interaction mode to the SDK permissionMode string.
+ * Ask → 'default' (canUseTool consulted → HITL); Act → 'acceptEdits' (autonomous).
+ * @param {InteractionMode} mode
  * @returns {SdkPermissionMode}
  */
-export function tierToSdkMode(tier) {
-  return tier === 'explore' ? 'plan' : 'acceptEdits';
+export function modeToSdkPermissionMode(mode) {
+  return mode === 'ask' ? 'default' : 'acceptEdits';
 }
 
 /**
- * Does this tier want bash / scripting to be available?
- * Actual availability also requires the sandbox to be confirmed active (PR-C).
- * @param {PermissionTier} tier
- * @returns {boolean}
- */
-export function tierWantsBash(tier) {
-  return tier === 'auto' || tier === 'act';
-}
-
-/**
- * Resolve the effective SDK permission for a run, given the client's requested tier.
+ * Resolve the effective permission for a run, given the client's requested mode.
+ * Falls back to DEFAULT_MODE ('act') when absent/unrecognised.
  *
- * No org ceiling — security is the sandbox's job. Falls back to DEFAULT_TIER ('act')
- * when the requested tier is absent or unrecognised, so legacy clients that send no
- * tier get the same behaviour as today.
- *
- * @param {{ requestedTier?: PermissionTier | string | null }} params
- * @returns {{ tier: PermissionTier, permissionMode: SdkPermissionMode, wantsBash: boolean }}
+ * @param {{ requestedMode?: InteractionMode | string | null }} params
+ * @returns {{ mode: InteractionMode, permissionMode: SdkPermissionMode }}
  */
-export function resolveEffectivePermission({ requestedTier = null } = {}) {
-  const tier = isPermissionTier(requestedTier) ? requestedTier : DEFAULT_TIER;
+export function resolveEffectivePermission({ requestedMode = null } = {}) {
+  const mode = isInteractionMode(requestedMode) ? requestedMode : DEFAULT_MODE;
   return {
-    tier,
-    permissionMode: tierToSdkMode(tier),
-    wantsBash: tierWantsBash(tier),
+    mode,
+    permissionMode: modeToSdkPermissionMode(mode),
   };
 }

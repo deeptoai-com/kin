@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import type { UsageData } from '~/components/claude-chat/usage-card';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
-import type { PermissionTier } from '~/lib/permission-tier';
+import type { InteractionMode } from '~/lib/permission-tier';
 
 // Define our own message types that are compatible with @assistant-ui/react
 export type TextContentPart = {
@@ -145,7 +145,8 @@ interface ChatSessionState {
 
   // Selected product permission tier (ephemeral, per-session UI choice).
   // Clamped to the org ceiling server-side; undefined → server uses org default.
-  selectedTier?: PermissionTier;
+  // Holds the interaction mode ('ask' | 'act'); field name kept for wire compat.
+  selectedTier?: InteractionMode;
 
   // Actions
   setSessionId: (sessionId: string | null) => void;
@@ -170,7 +171,7 @@ interface ChatSessionState {
   clearMessages: () => void;
   addTemporarySkill: (skillSlug: string) => void;
   clearTemporarySkills: () => void;
-  setSelectedTier: (tier: PermissionTier | undefined) => void;
+  setSelectedTier: (mode: InteractionMode | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
