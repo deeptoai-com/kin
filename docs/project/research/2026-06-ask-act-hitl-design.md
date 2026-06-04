@@ -26,8 +26,10 @@
 改为:
 - 枚举 `['ask', 'act']`,`DEFAULT = 'act'`。
 - **删除** `explore`/`auto`/`plan` 映射、`tierWantsBash`/`wantsBash`(R4 概念,随 explore 一并废)。
-- **SDK permissionMode**:Ask 和 Act **都用 `acceptEdits`**。"问不问"**不靠 SDK permissionMode 实现,靠 `canUseTool`**(见 §2)。
-  - (不用 SDK `default` 模式——它无 responder 会 abort;我们自己在 canUseTool 里做 HITL。)
+- **SDK permissionMode**(⚠️ 已被 spike 修正,见 §0-spike):
+  - **Ask = SDK `default` 模式** —— 经 spike 验证:default 下 SDK **对每个工具调用 `canUseTool` 并 await 异步返回**(等了 15s/次没超时),deny 真的拦住工具。canUseTool **就是** responder,所以 default 完全可用(之前"default 会 abort"是没有 responder 的旧结论)。
+  - **Act = SDK `acceptEdits`** —— spike 验证:acceptEdits **不调 canUseTool**(自动放行编辑),靠沙盒兜底。
+  - 副发现:acceptEdits 下连路径安全的 canUseTool 也被跳过 → Act 的路径防护实际靠**沙盒 cwd fencing**,不靠 canUseTool。(记一笔,沙盒是边界,可接受。)
 - 新增 `interactionMode: 'ask' | 'act'` 贯穿 前端 → ws-server → worker(取代 `permissionTier`/`wantsBash`)。
 
 ---
@@ -122,5 +124,9 @@ canUseTool(toolName, input):
 
 ---
 
-## 7. 实现前的 spike(强烈建议)
-先用一个最小脚本验证 **SDK `canUseTool` 能 async await 用户决定并据此放行/拦截**(不被内部超时打断)。这是整套 HITL 的地基;地基不成立则要换方案(如把审批做成"工具调用前的两阶段确认"或其他)。spike 过了再按上面实现。
+## 7. 实现前的 spike —— ✅ 已做,通过(2026-06-04)
+`scripts/spike-canusetool.mjs`(已跑后删除)验证:
+- **`default` 模式**:SDK 对每个工具调用 `canUseTool`,**await 异步返回 ~15s/次不超时**;返回 `{behavior:'deny'}` **真的拦住**工具(目标文件未创建)。**HITL 地基成立。**
+- **`acceptEdits` 模式**:canUseTool **0 次调用**(自动放行编辑)→ 故 **Ask 必须用 `default`,Act 用 `acceptEdits`**。
+- 观察:被拒后 agent 会换工具重试(Write 拒→改 Bash);每个动作都被独立 gate(符合"逐动作审批")。被拒不结束 run(会耗 turn);真实 Ask 下用户批准即正常推进。
+- 结论:**按本文档实现,Ask=default + canUseTool(动作类→发 approval_request 并 await;只读→放行)。**
