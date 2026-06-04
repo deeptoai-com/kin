@@ -138,3 +138,74 @@ export function useSessionSubAgents(): SubAgentItem[] {
   const messages = useChatSessionStore((s) => s.messages);
   return useMemo(() => selectSubAgents(messages), [messages]);
 }
+
+// ───────────────────────── ③ Files ─────────────────────────
+
+export interface SessionFile {
+  path: string;
+  fileName: string;
+  /** The tool that last touched it (Write / Edit / …). */
+  tool: string;
+}
+
+const FILE_TOOLS = new Set(['write', 'edit', 'multiedit', 'notebookedit']);
+
+/**
+ * Files the agent produced/edited in this session's workspace, derived from
+ * Write/Edit tool-calls (latest touch wins, de-duped by path, in first-seen
+ * order). Store-only (no server round-trip) — a v1 approximation of the
+ * workspace tree; the sandbox-backed real FS listing is a later (sandbox) item.
+ */
+export function selectSessionFiles(messages: ThreadMessage[]): SessionFile[] {
+  const seen = new Map<string, SessionFile>();
+  for (const message of messages) {
+    for (const part of message.content) {
+      if (part.type !== 'tool-call') continue;
+      if (!FILE_TOOLS.has(part.toolName?.toLowerCase() ?? '')) continue;
+      const args = (part.args ?? {}) as Record<string, unknown>;
+      const fp =
+        readString(args.file_path) ?? readString(args.path) ?? readString(args.notebook_path);
+      if (!fp) continue;
+      const fileName = fp.split('/').pop() || fp;
+      seen.set(fp, { path: fp, fileName, tool: part.toolName });
+    }
+  }
+  return Array.from(seen.values());
+}
+
+export function useSessionFiles(): SessionFile[] {
+  const messages = useChatSessionStore((s) => s.messages);
+  return useMemo(() => selectSessionFiles(messages), [messages]);
+}
+
+// ───────────────────────── ④ Context ─────────────────────────
+
+export interface SessionContextInfo {
+  model?: string;
+  skills: number;
+  mcpServers: number;
+  tools: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalCostUsd?: number;
+  numTurns?: number;
+}
+
+/** Session context/usage from the store (model · skills · mcp · token usage). */
+export function useSessionContext(): SessionContextInfo | null {
+  const usage = useChatSessionStore((s) => s.usageData);
+  const meta = useChatSessionStore((s) => s.sessionMetadata);
+  return useMemo(() => {
+    if (!usage && !meta) return null;
+    return {
+      model: meta?.model,
+      skills: meta?.skills?.length ?? 0,
+      mcpServers: meta?.mcp_servers?.length ?? 0,
+      tools: meta?.tools?.length ?? 0,
+      inputTokens: usage?.usage?.input_tokens,
+      outputTokens: usage?.usage?.output_tokens,
+      totalCostUsd: usage?.total_cost_usd,
+      numTurns: usage?.num_turns,
+    };
+  }, [usage, meta]);
+}

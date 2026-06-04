@@ -20,13 +20,17 @@
  */
 
 import { useState, type FC, type ReactNode } from 'react';
-import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2 } from 'lucide-react';
+import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import {
   useSessionTodos,
   useSessionSubAgents,
+  useSessionFiles,
+  useSessionContext,
   type TodoItem,
   type SubAgentItem,
+  type SessionFile,
+  type SessionContextInfo,
 } from '~/lib/hooks/use-session-workbench';
 
 type WorkbenchTab = 'progress' | 'subagents' | 'files' | 'context';
@@ -181,6 +185,62 @@ const SubAgentList: FC<{ subAgents: SubAgentItem[] }> = ({ subAgents }) => (
   </div>
 );
 
+/** ③ Files — workspace files the agent wrote/edited this session. */
+const FilesList: FC<{ files: SessionFile[] }> = ({ files }) => (
+  <div className="flex h-full flex-col">
+    <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      Files · {files.length}
+    </p>
+    <ul className="flex flex-col gap-1 px-3 pb-4">
+      {files.map((f) => (
+        <li
+          key={f.path}
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60"
+          title={f.path}
+        >
+          <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-foreground">{f.fileName}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{f.path}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+/** ④ Context — model · capabilities · token usage for this session. */
+const ContextView: FC<{ ctx: SessionContextInfo }> = ({ ctx }) => {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (ctx.model) rows.push({ label: 'Model', value: ctx.model });
+  rows.push({ label: 'Skills', value: String(ctx.skills) });
+  rows.push({ label: 'MCP servers', value: String(ctx.mcpServers) });
+  rows.push({ label: 'Tools', value: String(ctx.tools) });
+  if (ctx.numTurns != null) rows.push({ label: 'Turns', value: String(ctx.numTurns) });
+  if (ctx.inputTokens != null || ctx.outputTokens != null) {
+    rows.push({
+      label: 'Tokens',
+      value: `${(ctx.inputTokens ?? 0).toLocaleString()} in · ${(ctx.outputTokens ?? 0).toLocaleString()} out`,
+    });
+  }
+  if (ctx.totalCostUsd != null) rows.push({ label: 'Cost', value: `$${ctx.totalCostUsd.toFixed(4)}` });
+  return (
+    <div className="flex h-full flex-col">
+      <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Context & usage
+      </p>
+      <dl className="flex flex-col gap-2 px-4 pb-4">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-3 text-xs">
+            <dt className="text-muted-foreground">{r.label}</dt>
+            <dd className="truncate font-medium text-foreground" title={r.value}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+};
+
 export interface WorkbenchPanelProps {
   currentSessionId: string | null;
   className?: string;
@@ -190,6 +250,8 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('progress');
   const todoSummary = useSessionTodos();
   const subAgents = useSessionSubAgents();
+  const files = useSessionFiles();
+  const context = useSessionContext();
 
   return (
     <aside
@@ -245,18 +307,24 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
               hint="When the agent delegates work via the Task tool, each sub-agent shows here with live status."
             />
           ))}
-        {activeTab === 'files' && (
-          <EmptyState
-            title="No files yet"
-            hint="Files and artifacts produced in this session's workspace will be listed here."
-          />
-        )}
-        {activeTab === 'context' && (
-          <EmptyState
-            title="Context & usage"
-            hint="Session memory, connectors, and this month's token usage will surface here."
-          />
-        )}
+        {activeTab === 'files' &&
+          (files.length > 0 ? (
+            <FilesList files={files} />
+          ) : (
+            <EmptyState
+              title="No files yet"
+              hint="Files the agent writes or edits in this session's workspace will be listed here."
+            />
+          ))}
+        {activeTab === 'context' &&
+          (context ? (
+            <ContextView ctx={context} />
+          ) : (
+            <EmptyState
+              title="Context & usage"
+              hint="Model, capabilities, and this session's token usage will surface here once a turn runs."
+            />
+          ))}
       </div>
 
       {/* Session-scope footer marker (skeleton — confirms per-session boundary) */}
