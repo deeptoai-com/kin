@@ -270,6 +270,17 @@ services:
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-true}
+      # Phase C real preview runtime (app talks to preview-controller; app does
+      # not mount Docker socket). Local preview domains use sslip.io by default.
+      PREVIEW_CONTROLLER_URL: ${PREVIEW_CONTROLLER_URL:-http://preview-controller:5055}
+      MAX_ACTIVE_PREVIEWS: ${MAX_ACTIVE_PREVIEWS:-4}
+      PREVIEW_IDLE_TIMEOUT_MS: ${PREVIEW_IDLE_TIMEOUT_MS:-300000}
+      PREVIEW_PROTOCOL: ${PREVIEW_PROTOCOL:-http}
+      PREVIEW_BASE_DOMAIN: ${PREVIEW_BASE_DOMAIN:-127-0-0-1.sslip.io}
+      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-}
+      PREVIEW_COOKIE_SECURE: ${PREVIEW_COOKIE_SECURE:-0}
+      PREVIEW_BOOTSTRAP_TTL_MS: ${PREVIEW_BOOTSTRAP_TTL_MS:-90000}
+      PREVIEW_COOKIE_TTL_MS: ${PREVIEW_COOKIE_TTL_MS:-900000}
       # Schema generation debug logging (default: enabled)
       SCHEMA_GENERATION_DEBUG: ${SCHEMA_GENERATION_DEBUG:-true}
       # Schema generation trace logging (off|true|full)
@@ -282,6 +293,42 @@ services:
     ports:
       - '5050:5000'
       - '3051:3001'
+    profiles: ['selfhost', 'prod']
+
+  # Phase C preview controller. This is the only service that mounts the Docker
+  # socket; it creates/removes per-session preview containers on behalf of app.
+  preview-controller:
+    image: *app_image
+    pull_policy: never
+    container_name: ex0-preview-controller
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      PREVIEW_CONTROLLER_PORT: ${PREVIEW_CONTROLLER_PORT:-5055}
+      PREVIEW_CONTROLLER_CONTAINER: ex0-preview-controller
+      PREVIEW_IMAGE: ${PREVIEW_IMAGE:-node:24-bookworm-slim}
+      PREVIEW_MEMORY: ${PREVIEW_MEMORY:-768m}
+      PREVIEW_CPUS: ${PREVIEW_CPUS:-1}
+      PREVIEW_PIDS: ${PREVIEW_PIDS:-256}
+      PREVIEW_CONTAINER_USER: ${PREVIEW_CONTAINER_USER:-1001:1001}
+      PREVIEW_INTERNAL_PORT: ${PREVIEW_INTERNAL_PORT:-4173}
+      PREVIEW_INSTALL_TIMEOUT_MS: ${PREVIEW_INSTALL_TIMEOUT_MS:-300000}
+      PREVIEW_BUILD_TIMEOUT_MS: ${PREVIEW_BUILD_TIMEOUT_MS:-300000}
+      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-bridge}
+      PREVIEW_TRAEFIK_ENABLED: ${PREVIEW_TRAEFIK_ENABLED:-1}
+      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-}
+      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-web}
+      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-0}
+      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-}
+      PREVIEW_FORWARD_AUTH_URL: ${PREVIEW_FORWARD_AUTH_URL:-http://app:3001/__oxy/preview/authorize}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-sessions:/data/users
+    command: ['node', 'src/preview/controller.mjs']
+    restart: unless-stopped
     profiles: ['selfhost', 'prod']
 
 volumes:

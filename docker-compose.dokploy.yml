@@ -298,6 +298,15 @@ services:
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
+      # Phase C real preview runtime
+      PREVIEW_CONTROLLER_URL: ${PREVIEW_CONTROLLER_URL:-http://preview-controller:5055}
+      MAX_ACTIVE_PREVIEWS: ${MAX_ACTIVE_PREVIEWS:-4}
+      PREVIEW_IDLE_TIMEOUT_MS: ${PREVIEW_IDLE_TIMEOUT_MS:-300000}
+      PREVIEW_PROTOCOL: ${PREVIEW_PROTOCOL:-https}
+      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-{previewId}.preview.${APP_HOSTNAME}}
+      PREVIEW_COOKIE_SECURE: ${PREVIEW_COOKIE_SECURE:-1}
+      PREVIEW_BOOTSTRAP_TTL_MS: ${PREVIEW_BOOTSTRAP_TTL_MS:-90000}
+      PREVIEW_COOKIE_TTL_MS: ${PREVIEW_COOKIE_TTL_MS:-900000}
       # WebSocket URL (frontend configuration)
       VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
       # Polar billing (optional)
@@ -364,6 +373,56 @@ services:
 
       # WS service (ws-server)
       - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
+
+      # ---------------------------------------------------------
+      # 3. Preview auth bootstrap/forward-auth endpoints
+      # ---------------------------------------------------------
+      # Preview content is served by dynamic preview containers. Their /__oxy/*
+      # auth paths must route back to the ws-server (same process that issued the
+      # one-time token and owns preview cookie sessions).
+      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.preview.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
+      - "traefik.http.routers.preview-auth.entrypoints=websecure"
+      - "traefik.http.routers.preview-auth.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.preview-auth.priority=200"
+      - "traefik.http.routers.preview-auth.service=ws-service"
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
+  # Phase C preview controller. This is the only service that mounts the Docker
+  # socket; app calls it over the private network to create/remove preview
+  # containers with Traefik labels.
+  preview-controller:
+    <<: *app_build
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      PREVIEW_CONTROLLER_PORT: ${PREVIEW_CONTROLLER_PORT:-5055}
+      PREVIEW_CONTROLLER_CONTAINER: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+      PREVIEW_IMAGE: ${PREVIEW_IMAGE:-node:24-bookworm-slim}
+      PREVIEW_MEMORY: ${PREVIEW_MEMORY:-768m}
+      PREVIEW_CPUS: ${PREVIEW_CPUS:-1}
+      PREVIEW_PIDS: ${PREVIEW_PIDS:-256}
+      PREVIEW_CONTAINER_USER: ${PREVIEW_CONTAINER_USER:-1001:1001}
+      PREVIEW_INTERNAL_PORT: ${PREVIEW_INTERNAL_PORT:-4173}
+      PREVIEW_INSTALL_TIMEOUT_MS: ${PREVIEW_INSTALL_TIMEOUT_MS:-300000}
+      PREVIEW_BUILD_TIMEOUT_MS: ${PREVIEW_BUILD_TIMEOUT_MS:-300000}
+      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-dokploy-network}
+      PREVIEW_TRAEFIK_ENABLED: ${PREVIEW_TRAEFIK_ENABLED:-1}
+      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-dokploy-network}
+      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-websecure}
+      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-1}
+      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-letsencrypt}
+      PREVIEW_FORWARD_AUTH_URL: ${PREVIEW_FORWARD_AUTH_URL:-http://app:3001/__oxy/preview/authorize}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-sessions:/data/users
+    command: ['node', 'src/preview/controller.mjs']
     restart: unless-stopped
     networks:
       - private
