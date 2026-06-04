@@ -1522,7 +1522,6 @@ function ClaudeChatSurface({
                 />
               ))}
 
-              <ThreadArtifactCallout />
               <div aria-hidden="true" className="h-4" />
             </ThreadPrimitive.Viewport>
 
@@ -1663,50 +1662,6 @@ const EscapeInterruptHandler: FC<{
   }, [isRunning, escPressedOnce, setEscPressedOnce, escTimeoutRef, api]);
 
   return null;
-};
-
-const ThreadArtifactCallout: FC = () => {
-  const messages = useThread((state) => state.messages) as Array<{
-    id: string;
-    role?: string;
-  }>;
-  const artifacts = useArtifactsStore((state) => state.artifacts);
-  const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
-
-  const artifact = useMemo(() => {
-    if (!messages || messages.length === 0) return null;
-
-    const candidateMessageIds: string[] = [];
-    for (let i = messages.length - 1; i >= 0 && candidateMessageIds.length < 3; i -= 1) {
-      const msg = messages[i];
-      if (msg?.role === 'assistant') {
-        candidateMessageIds.push(msg.id);
-      }
-    }
-
-    if (candidateMessageIds.length === 0) return null;
-    const candidateSet = new Set(candidateMessageIds);
-    const matches = Array.from(artifacts.values()).filter(
-      (entry) => entry.messageId && candidateSet.has(entry.messageId)
-    );
-    if (matches.length === 0) return null;
-    return matches.sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  }, [messages, artifacts]);
-
-  if (!artifact || artifact.type === 'image') return null;
-
-  return (
-    <div className="mx-auto w-full max-w-3xl px-2 pb-2">
-      <ArtifactButton
-        type={artifact.type}
-        title={artifact.title}
-        fileName={artifact.fileName}
-        filePath={artifact.sourceFilePath}
-        isTemporary={artifact.isTemporary}
-        onClick={() => setActiveArtifact(artifact.id)}
-      />
-    </div>
-  );
 };
 
 const getInlineImageFiles = (artifact: Artifact | null | undefined): ArtifactImageFile[] => {
@@ -2009,11 +1964,16 @@ const HistoricalMessageImpl: FC<{
                   />
                 )}
 
-                {/* Artifact Button */}
+                {/* Artifact Button — one deliverable card per turn, with the
+                    real file name / title (not a generic "{TYPE} 成果物"). */}
                 {artifact && artifact.type !== 'image' && (
                   <div className="mt-3">
                     <ArtifactButton
                       type={artifact.type}
+                      title={artifact.title}
+                      fileName={artifact.fileName}
+                      filePath={artifact.sourceFilePath}
+                      isTemporary={artifact.isTemporary}
                       onClick={() => setActiveArtifact(artifact.id)}
                     />
                   </div>
