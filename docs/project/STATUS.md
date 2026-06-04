@@ -200,6 +200,13 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **Cowork S2 实现（turn 卡渲染收尾）+ S3 决定（暂不修，挂 artifact 线）**。S2：
+  `turn-builder.ts` 折叠头改 Cowork 式 **「Worked Xs · N steps · 改 K 文件」**（耗时=工具 `elapsedSeconds`
+  之和、步数=工具/搜索组渲染行、改动文件=Write/Edit/MultiEdit/NotebookEdit 去重计数；纯思考轮 stepCount=0
+  回退实时 previewText），并**去重连续重复的 thinking/intermediate** 行；运行中仍显示实时 preview + 步数 Tag。
+  历史/实时同组件（S1 P4 合并后天然成立）。**S3（结构化输出泄漏）决定不在本 PR 修**：owner 选「维持 env-off
+  + 不加投机文本过滤」——泄漏当前不触发（`ENABLE_STRUCTURED_OUTPUTS` **强制默认 false**，已写进 `.env.example`/
+  `CLAUDE.md`/worker 注释），根因与 artifact/结构化输出策略耦合，**备案到 `research/2026-06-real-preview-architect-brief.md` §9**，随 Phase C/artifact 线统一定。分支 `feat/cowork-s2-turn-card`。
 - **2026-06-04** — **Cowork 单源重做 S1 实现 + owner 实测通过 + 合并 `main`**（merge `feat/cowork-s1-single-source`）。
   落地：`useLocalRuntime`→`useExternalStoreRuntime`，`chat-session-store.messages` 成唯一有序真相源，
   ws-adapter `runChat()` 把每个 chunk 写进 store（带单调 `seq`），左侧流 + 右侧 Workbench 同读一份

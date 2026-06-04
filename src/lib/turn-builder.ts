@@ -48,6 +48,13 @@ export type AssistantTurn = {
   previewText: string;
   runningLabel: string | null;
   renderItems: RenderItem[];
+  // Cowork collapse-header summary inputs (S2): "Worked Xs · N steps · 改 K 文件".
+  /** Sum of per-tool elapsed seconds (from tool_progress); 0 when unavailable. */
+  elapsedSeconds: number;
+  /** Number of work steps shown when expanded (tool rows + each search group). */
+  stepCount: number;
+  /** Distinct files touched by Write/Edit/MultiEdit/NotebookEdit in this turn. */
+  changedFileCount: number;
 };
 
 export function stripMarkdown(text: string): string {
@@ -126,11 +133,19 @@ function buildTurnData(content: ContentPart[] | undefined, isRunning: boolean) {
     return { activities, responseText: '', responseIsStreaming: false, hasPendingText: false };
   }
 
+  // Dedup consecutive duplicate thinking rows (S2.2): the SDK / historical merge
+  // can surface the same reasoning text twice in a row. Track the previous
+  // reasoning/intermediate text; a tool call or final-answer text resets the run.
+  let lastThoughtKey: string | null = null;
+
   for (let i = 0; i < content.length; i++) {
     const part = content[i];
     if (part.type === 'text') {
       const textPart = part as TextContentPart;
       if (textPart.isIntermediate || textPart.isPending) {
+        const key = textPart.text.trim();
+        if (key && key === lastThoughtKey) continue;
+        if (key) lastThoughtKey = key;
         activities.push({
           id: `intermediate-${i}`,
           kind: 'intermediate',
@@ -138,9 +153,13 @@ function buildTurnData(content: ContentPart[] | undefined, isRunning: boolean) {
           status: textPart.isPending ? 'running' : 'completed',
         });
       } else {
+        lastThoughtKey = null;
         responseParts.push(textPart);
       }
     } else if (part.type === 'reasoning') {
+      const key = part.text.trim();
+      if (key && key === lastThoughtKey) continue;
+      if (key) lastThoughtKey = key;
       activities.push({
         id: `reasoning-${i}`,
         kind: 'reasoning',
@@ -148,6 +167,7 @@ function buildTurnData(content: ContentPart[] | undefined, isRunning: boolean) {
         status: isRunning ? 'running' : 'completed',
       });
     } else if (part.type === 'tool-call') {
+      lastThoughtKey = null;
       const toolPart = part as ToolCallContentPart;
       const displayName = formatToolDisplayName(toolPart.toolName);
       activities.push({
@@ -306,9 +326,40 @@ function getPreviewText(activities: StepActivity[], isRunning: boolean, hasRespo
   return '开始中…';
 }
 
+const FILE_EDIT_TOOLS = new Set(['write', 'edit', 'multiedit', 'notebookedit']);
+
+/** Distinct files touched by Write/Edit/MultiEdit/NotebookEdit tool steps. */
+function countChangedFiles(activities: StepActivity[]): number {
+  const files = new Set<string>();
+  for (const activity of activities) {
+    if (activity.kind !== 'tool') continue;
+    if (!FILE_EDIT_TOOLS.has(activity.toolName.toLowerCase())) continue;
+    const args = (activity.args ?? {}) as Record<string, unknown>;
+    const fp =
+      (typeof args.file_path === 'string' && args.file_path) ||
+      (typeof args.path === 'string' && args.path) ||
+      (typeof args.notebook_path === 'string' && args.notebook_path) ||
+      '';
+    if (fp) files.add(fp);
+  }
+  return files.size;
+}
+
+/** Number of work steps to advertise in the header: tool rows + each search group. */
+function countSteps(renderItems: RenderItem[]): number {
+  return renderItems.filter(
+    (item) => item.type === 'search-group' || (item.type === 'activity' && item.activity.kind === 'tool')
+  ).length;
+}
+
 export function buildAssistantTurn(content: ContentPart[] | undefined, isRunning: boolean): AssistantTurn {
   const { activities, responseText, responseIsStreaming, hasPendingText } = buildTurnData(content, isRunning);
   const hasResponse = Boolean(responseText);
+  const renderItems = buildRenderItems(activities);
+  const elapsedSeconds = activities.reduce(
+    (sum, activity) => sum + (activity.kind === 'tool' && activity.elapsedSeconds ? activity.elapsedSeconds : 0),
+    0
+  );
   return {
     activities,
     responseText,
@@ -316,6 +367,9 @@ export function buildAssistantTurn(content: ContentPart[] | undefined, isRunning
     hasPendingText,
     previewText: getPreviewText(activities, isRunning, hasResponse),
     runningLabel: getRunningLabel(activities, isRunning),
-    renderItems: buildRenderItems(activities),
+    renderItems,
+    elapsedSeconds,
+    stepCount: countSteps(renderItems),
+    changedFileCount: countChangedFiles(activities),
   };
 }

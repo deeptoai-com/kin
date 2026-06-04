@@ -255,6 +255,13 @@ process.stdin.on('end', async () => {
       console.error(`[Worker]   Selected Skill: ${skillSlug}`);
     }
 
+    // ENFORCED DEFAULT = OFF. Enabling outputFormat triggers the SDK's StructuredOutput
+    // Stop-hook: if the model doesn't call StructuredOutput it runs an extra loop AND
+    // leaks "You MUST call the StructuredOutput tool" into the chat. The root-fix is
+    // coupled to the artifact/structured-output strategy (Phase C / real-preview line),
+    // so this stays off until that lands. Opt-in requires ENABLE_STRUCTURED_OUTPUTS=true
+    // AND a structured-output file hint in the prompt. See
+    // docs/project/research/2026-06-real-preview-architect-brief.md.
     const useStructuredOutputs = process.env.ENABLE_STRUCTURED_OUTPUTS === 'true';
     const shouldUseStructuredOutputs = useStructuredOutputs && hasStructuredOutputFileHint(prompt);
 

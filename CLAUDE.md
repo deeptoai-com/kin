@@ -171,7 +171,11 @@ ANTHROPIC_MODEL=<optional-model-override>
 WS_PORT=3001
 APP_URL=http://localhost:5000
 CLAUDE_SESSIONS_ROOT=/data/users
-ENABLE_STRUCTURED_OUTPUTS=true  # 可选
+# 默认关闭（强制默认）。开启会触发 SDK outputFormat 的 Stop-hook 强制机制：
+# 模型未调用 StructuredOutput 时会多跑一轮，并把 “You MUST call the StructuredOutput tool”
+# 内部反馈漏进对话。根因与 artifact/结构化输出策略耦合，归 Phase C/real-preview 线统一定，
+# 在此之前一律保持关闭。重启命令里用 `ENABLE_STRUCTURED_OUTPUTS=false` 覆盖。
+ENABLE_STRUCTURED_OUTPUTS=false  # 默认关闭，详见 docs/.../2026-06-real-preview-architect-brief.md
 ```
 
 ---

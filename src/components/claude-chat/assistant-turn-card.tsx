@@ -550,13 +550,31 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
   onUrlClick,
 }) => {
   const isRunning = status?.type === 'running';
-  const { activities, responseText, responseIsStreaming, hasPendingText, previewText, renderItems } = useMemo(
-    () => buildAssistantTurn(content, isRunning),
-    [content, isRunning]
-  );
+  const {
+    activities,
+    responseText,
+    responseIsStreaming,
+    hasPendingText,
+    previewText,
+    renderItems,
+    elapsedSeconds,
+    stepCount,
+    changedFileCount,
+  } = useMemo(() => buildAssistantTurn(content, isRunning), [content, isRunning]);
 
   const hasResponse = Boolean(responseText);
   const hasActivities = activities.length > 0;
+
+  // D1.4 Cowork 折叠头：完成后用「Worked Xs · N steps · 改 K 文件」概览（有耗时/步数才显示），
+  // 运行中仍用实时 previewText。stepCount=0（纯思考轮）回退到 previewText 避免「0 steps」。
+  const summaryText = useMemo(() => {
+    const parts: string[] = [];
+    if (elapsedSeconds > 0) parts.push(`Worked ${formatElapsed(elapsedSeconds)}`);
+    parts.push(`${stepCount} ${stepCount === 1 ? 'step' : 'steps'}`);
+    if (changedFileCount > 0) parts.push(`改 ${changedFileCount} 文件`);
+    return parts.join(' · ');
+  }, [elapsedSeconds, stepCount, changedFileCount]);
+  const headerText = isRunning || stepCount === 0 ? previewText : summaryText;
 
   const [isExpanded, setIsExpanded] = useState(hasActivities && isRunning);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -592,10 +610,12 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
             ) : (
               <ChevronRight className="h-4 w-4" />
             )}
-            <Tag tone="ghost" className="tabular-nums">
-              {renderItems.length}
-            </Tag>
-            <span className="truncate flex-1">{previewText}</span>
+            {isRunning && (
+              <Tag tone="ghost" className="tabular-nums">
+                {stepCount}
+              </Tag>
+            )}
+            <span className="truncate flex-1">{headerText}</span>
           </button>
 
           {isExpanded && (
