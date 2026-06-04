@@ -27,6 +27,7 @@ export {
 export {
   runChat,
   cancelActiveRun,
+  respondApproval,
   abort,
   resumeSession,
   newSession,

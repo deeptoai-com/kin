@@ -17,6 +17,7 @@ import {
   type SDKMessage as StorageSDKMessage,
   type ContentPart as StoreContentPart,
   type ThreadMessage as StoreThreadMessage,
+  type ApprovalRequest,
 } from '~/lib/chat-session-store';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
 
@@ -110,6 +111,7 @@ type InboundMessage =
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
+  | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny' }
   | { type: 'ping' };
 
 type OutboundMessage =
@@ -120,6 +122,16 @@ type OutboundMessage =
   | { type: 'error'; code: string; message: string; retriable: boolean }
   | { type: 'done'; seq?: number }
   | { type: 'aborted' }
+  | {
+      type: 'approval_request';
+      toolUseID: string;
+      toolName: string;
+      title?: string | null;
+      displayName?: string | null;
+      description?: string | null;
+      input?: Record<string, unknown>;
+      seq?: number;
+    }
   | { type: 'pong' };
 
 // Assistant UI Part Types
@@ -545,6 +557,21 @@ function getWebSocket(): Promise<WebSocket> {
           return;
         }
 
+        // Ask-mode HITL: a tool-approval request arrives mid-run (outside the
+        // per-run messageHandler queue). Push it to the store so the UI can prompt;
+        // the user's decision goes back via respondApproval().
+        if (msg.type === 'approval_request') {
+          useChatSessionStore.getState().addPendingApproval({
+            toolUseID: msg.toolUseID,
+            toolName: msg.toolName,
+            title: msg.title ?? null,
+            displayName: msg.displayName ?? null,
+            description: msg.description ?? null,
+            input: msg.input ?? {},
+          } as ApprovalRequest);
+          return;
+        }
+
         // Forward to current handler
         if (messageHandler) {
           messageHandler(msg);
@@ -562,6 +589,15 @@ function getWebSocket(): Promise<WebSocket> {
 async function send(message: InboundMessage): Promise<void> {
   const socket = await getWebSocket();
   socket.send(JSON.stringify(message));
+}
+
+/**
+ * Ask-mode HITL: send the user's approve/reject for a pending tool call back to
+ * the worker (via ws-server → worker stdin), and clear it from the store.
+ */
+export async function respondApproval(toolUseID: string, decision: 'allow' | 'deny'): Promise<void> {
+  useChatSessionStore.getState().resolvePendingApproval(toolUseID);
+  await send({ type: 'approval_response', toolUseID, decision });
 }
 
 /**

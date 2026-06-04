@@ -1,79 +1,63 @@
+// @vitest-environment node
 /**
- * Unit tests for the 3-tier permission model (pure, dep-free).
- * Security note: tiers are a UX preference only — the sandbox is the hard boundary.
- * Design ref: docs/project/research/2026-05-permission-bash-sandbox-design.md
+ * Unit tests for the 2-mode interaction model (Ask/Act, pure, dep-free).
+ * Security note: modes are an interruption preference only — the sandbox is the
+ * hard boundary. Design ref: docs/project/research/2026-06-ask-act-hitl-design.md
  */
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_TIER,
-  PERMISSION_TIERS,
-  isPermissionTier,
+  DEFAULT_MODE,
+  INTERACTION_MODES,
+  isInteractionMode,
+  modeToSdkPermissionMode,
   resolveEffectivePermission,
-  tierToSdkMode,
-  tierWantsBash,
 } from '~/lib/permission-tier.js';
 
 describe('constants', () => {
-  it('DEFAULT_TIER is act', () => {
-    expect(DEFAULT_TIER).toBe('act');
+  it('DEFAULT_MODE is act', () => {
+    expect(DEFAULT_MODE).toBe('act');
   });
-  it('PERMISSION_TIERS contains all three', () => {
-    expect(PERMISSION_TIERS).toEqual(['explore', 'auto', 'act']);
+  it('INTERACTION_MODES is [ask, act]', () => {
+    expect(INTERACTION_MODES).toEqual(['ask', 'act']);
   });
 });
 
-describe('isPermissionTier', () => {
-  it('accepts the three tiers', () => {
-    for (const t of PERMISSION_TIERS) expect(isPermissionTier(t)).toBe(true);
+describe('isInteractionMode', () => {
+  it('accepts the two modes', () => {
+    for (const m of INTERACTION_MODES) expect(isInteractionMode(m)).toBe(true);
   });
-  it('rejects anything else', () => {
-    for (const bad of ['', 'plan', 'bypassPermissions', null, undefined, 1, 'ACT']) {
-      expect(isPermissionTier(bad)).toBe(false);
+  it('rejects anything else (incl. dropped tiers)', () => {
+    for (const bad of ['', 'explore', 'auto', 'plan', 'bypassPermissions', null, undefined, 1, 'ASK']) {
+      expect(isInteractionMode(bad)).toBe(false);
     }
   });
 });
 
-describe('tierToSdkMode', () => {
-  it('explore → plan', () => expect(tierToSdkMode('explore')).toBe('plan'));
-  it('auto → acceptEdits', () => expect(tierToSdkMode('auto')).toBe('acceptEdits'));
-  it('act → acceptEdits', () => expect(tierToSdkMode('act')).toBe('acceptEdits'));
-});
-
-describe('tierWantsBash', () => {
-  it('explore does NOT want bash (read-only)', () => expect(tierWantsBash('explore')).toBe(false));
-  it('auto wants bash', () => expect(tierWantsBash('auto')).toBe(true));
-  it('act wants bash', () => expect(tierWantsBash('act')).toBe(true));
+describe('modeToSdkPermissionMode', () => {
+  it('ask → default (canUseTool consulted → HITL)', () => expect(modeToSdkPermissionMode('ask')).toBe('default'));
+  it('act → acceptEdits (autonomous)', () => expect(modeToSdkPermissionMode('act')).toBe('acceptEdits'));
 });
 
 describe('resolveEffectivePermission', () => {
-  it('act → acceptEdits, wantsBash=true', () => {
-    expect(resolveEffectivePermission({ requestedTier: 'act' })).toEqual({
-      tier: 'act',
+  it('act → acceptEdits', () => {
+    expect(resolveEffectivePermission({ requestedMode: 'act' })).toEqual({
+      mode: 'act',
       permissionMode: 'acceptEdits',
-      wantsBash: true,
     });
   });
-  it('auto → acceptEdits, wantsBash=true', () => {
-    expect(resolveEffectivePermission({ requestedTier: 'auto' })).toEqual({
-      tier: 'auto',
-      permissionMode: 'acceptEdits',
-      wantsBash: true,
+  it('ask → default', () => {
+    expect(resolveEffectivePermission({ requestedMode: 'ask' })).toEqual({
+      mode: 'ask',
+      permissionMode: 'default',
     });
   });
-  it('explore → plan, wantsBash=false', () => {
-    expect(resolveEffectivePermission({ requestedTier: 'explore' })).toEqual({
-      tier: 'explore',
-      permissionMode: 'plan',
-      wantsBash: false,
-    });
+  it('absent mode falls back to DEFAULT_MODE (act)', () => {
+    expect(resolveEffectivePermission()).toMatchObject({ mode: 'act', permissionMode: 'acceptEdits' });
+    expect(resolveEffectivePermission({ requestedMode: null })).toMatchObject({ mode: 'act' });
+    expect(resolveEffectivePermission({ requestedMode: undefined })).toMatchObject({ mode: 'act' });
   });
-  it('absent tier falls back to DEFAULT_TIER (act)', () => {
-    expect(resolveEffectivePermission()).toMatchObject({ tier: 'act', permissionMode: 'acceptEdits' });
-    expect(resolveEffectivePermission({ requestedTier: null })).toMatchObject({ tier: 'act' });
-    expect(resolveEffectivePermission({ requestedTier: undefined })).toMatchObject({ tier: 'act' });
-  });
-  it('unrecognised tier falls back to act', () => {
-    expect(resolveEffectivePermission({ requestedTier: 'garbage' })).toMatchObject({ tier: 'act' });
-    expect(resolveEffectivePermission({ requestedTier: 'bypassPermissions' })).toMatchObject({ tier: 'act' });
+  it('unrecognised mode falls back to act (incl. dropped tiers)', () => {
+    expect(resolveEffectivePermission({ requestedMode: 'garbage' })).toMatchObject({ mode: 'act' });
+    expect(resolveEffectivePermission({ requestedMode: 'explore' })).toMatchObject({ mode: 'act' });
   });
 });

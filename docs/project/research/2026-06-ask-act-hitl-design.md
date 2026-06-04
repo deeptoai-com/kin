@@ -124,6 +124,34 @@ canUseTool(toolName, input):
 
 ---
 
+## 8. 官方文档 + 0.2.112 类型校验(2026-06-04)
+
+对照官方文档(code.claude.com/docs/agent-sdk/permissions、/user-input)**和本地装机 0.2.112 的 `sdk.d.ts` 类型**(ground truth),结论:**`canUseTool` 就是官方的运行时审批机制,本方案正确**;并据真实 API 精修:
+
+**(a) 权限求值顺序(官方)**:Hooks → deny 规则 → **permissionMode** → allow 规则 → **`canUseTool`**。含义:
+- **Act = `acceptEdits`**:**只有文件编辑 + 文件系统命令(mkdir/rm/mv/cp/sed)被自动批准**;**Bash(非文件)/python/MCP 等仍会落到 `canUseTool`**。→ 修正之前"Act 路径安全被跳过"的说法:**Act 下编辑跳过 canUseTool(沙盒兜),但 Bash/python/MCP 仍过 canUseTool(路径安全照跑)**。Act 的 canUseTool = 路径安全后**放行**。
+- **Ask = `default`**:**无任何自动批准,所有未预批的工具都触发 `canUseTool`**。→ 为避免对只读工具(Read/Grep/Glob…)频繁打扰,要么 canUseTool 里**只读直接放行**,要么用 `allowedTools:[只读工具]` 预批(allow 规则在 canUseTool 之前)。本实现:**canUseTool 里按"只读放行、动作类发审批"**。
+
+**(b) `CanUseTool` 真实签名(0.2.112,用它们别自己造)**:
+`(toolName, input, options) => Promise<PermissionResult>`,其中 `options` 提供:
+- **`toolUseID: string`** —— 用作审批的关联 id(取代我设计里自造的 toolCallId)。
+- **`title` / `displayName` / `description`** —— SDK 已渲染的人类可读提示("Claude wants to read foo.txt" / "Read file" / 副标题)→ **审批卡文案优先用这些**,缺失再回退 toolName+input 摘要。
+- **`signal: AbortSignal`** —— 中止信号 → **pending 审批监听它,abort 时 reject 为 deny** 并清理(取代我设计里自造的 abort 处理)。
+- `suggestions: PermissionUpdate[]` —— "始终允许"用(返回为 `updatedPermissions`)。**v1 不做**,留作"always allow this tool"future。
+
+**(c) `PermissionResult`(0.2.112)**:
+- allow:`{ behavior:'allow', updatedInput?, updatedPermissions?, toolUseID? }`
+- deny:`{ behavior:'deny', message, interrupt?, toolUseID? }`
+- **`interrupt`**:spike 实测 `interrupt:false` = 拒该工具、**agent 继续**(会换工具重试);路径安全用 `interrupt:true` 硬停。→ **Ask 拒绝用 `interrupt:false`**(拒这步、让 agent 适应);用户要全停 = Stop 按钮(abort)。
+
+**(d) 不需要 streaming-input**:spike 用**字符串 prompt** + canUseTool 即跑通(0.2.112)→ 不必改成 async-generator 输入。worker 现有的字符串 prompt 调用保持即可。
+
+**(e) 澄清式提问 ≠ 工具审批**:plan 模式/`AskUserQuestion` 的"澄清问题"走的是 **elicitation / `OnElicitation`**(另一套),**不在本轮**(未来"agent 反问你"功能再做)。本轮只做工具审批(canUseTool)。
+
+> 净结论:**方案不变,实现时用 `options.toolUseID/title/displayName/description/signal`,Ask=default、Act=acceptEdits,拒绝用 interrupt:false。**
+
+---
+
 ## 7. 实现前的 spike —— ✅ 已做,通过(2026-06-04)
 `scripts/spike-canusetool.mjs`(已跑后删除)验证:
 - **`default` 模式**:SDK 对每个工具调用 `canUseTool`,**await 异步返回 ~15s/次不超时**;返回 `{behavior:'deny'}` **真的拦住**工具(目标文件未创建)。**HITL 地基成立。**

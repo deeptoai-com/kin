@@ -278,6 +278,7 @@ const BUSINESS_MESSAGE_TYPES = new Set([
   'chat',
   'resume',
   'abort',
+  'approval_response',
 ]);
 
 // Track initialized directories
@@ -933,16 +934,14 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       console.log(`[WS Server] Using environment-based permissions: mode=${permissionMode}, bash=${allowBash}`);
     }
 
-    // PR-B: apply the client-requested product tier.
-    // Security lives in the sandbox — tiers are a UX preference (how much to interrupt).
-    // Falls back to DEFAULT_TIER ('act') when absent/unrecognised (no behaviour change
-    // for legacy clients that send no tier). Single source: src/lib/permission-tier.js.
-    const effective = resolveEffectivePermission({ requestedTier: permissionTier });
-    permissionMode = effective.permissionMode;
-    // wantsBash: tier's preference; actual bash availability gated by sandbox in PR-C.
-    // For now keeps existing allowBash logic (native Bash still in disallowedTools).
+    // Apply the client-requested interaction mode (Ask/Act). Security lives in the
+    // sandbox — modes are an interruption preference. Falls back to DEFAULT_MODE
+    // ('act') when absent/unrecognised. Single source: src/lib/permission-tier.js.
+    // (`permissionTier` is the wire field name; it now carries 'ask' | 'act'.)
+    const effective = resolveEffectivePermission({ requestedMode: permissionTier });
+    permissionMode = effective.permissionMode; // ask → 'default' (HITL via canUseTool); act → 'acceptEdits'
     if (permissionTier) {
-      console.log(`[WS Server] Permission tier: ${effective.tier} → mode=${permissionMode}`);
+      console.log(`[WS Server] Interaction mode: ${effective.mode} → permissionMode=${permissionMode}`);
     }
 
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
@@ -1006,8 +1005,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
       userId: ws.userId,
     });
-    worker.stdin.write(request);
-    worker.stdin.end();
+    // Newline-delimited + keep stdin OPEN so Ask-mode HITL can stream
+    // approval_response lines to the worker mid-run. The worker exits on its own
+    // (process.exit) when the run ends, closing the pipe.
+    worker.stdin.write(request + '\n');
 
     // Track our workspace session ID for mapping/persistence
     ws.workspaceSessionId = workspaceSessionId;
@@ -1097,6 +1098,20 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
             // Forward the worker's monotonic seq so the client store can order/merge
             // live deltas deterministically (cowork redesign spec §3).
             applyBackpressure(sendMessage(ws, { type: 'message', event, seq: msg.seq }));
+          }
+        } else if (msg.type === 'approval_request') {
+          // Ask-mode HITL: relay the worker's tool-approval request to the client.
+          if (!silentInit) {
+            sendMessage(ws, {
+              type: 'approval_request',
+              toolUseID: msg.toolUseID,
+              toolName: msg.toolName,
+              title: msg.title ?? null,
+              displayName: msg.displayName ?? null,
+              description: msg.description ?? null,
+              input: msg.input ?? {},
+              seq: msg.seq,
+            });
           }
         } else if (msg.type === 'done') {
           worker.__terminalSent = true;
@@ -1424,6 +1439,22 @@ async function handleMessage(ws, msg) {
         }
       }
       break;
+
+    case 'approval_response': {
+      // Ask-mode HITL: forward the user's approve/reject to the active worker's
+      // stdin (newline-delimited). The worker resolves the pending canUseTool.
+      const w = ws.workerProcess;
+      if (w && w.stdin && w.stdin.writable && message.toolUseID) {
+        w.stdin.write(
+          JSON.stringify({
+            type: 'approval_response',
+            toolUseID: message.toolUseID,
+            decision: message.decision === 'allow' ? 'allow' : 'deny',
+          }) + '\n',
+        );
+      }
+      break;
+    }
 
     case 'ping':
       sendMessage(ws, { type: 'pong' });

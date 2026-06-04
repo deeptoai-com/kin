@@ -180,18 +180,65 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Read query request from stdin
-let inputData = '';
+// --- stdin: newline-delimited control channel (kept open for Ask-mode HITL) ---
+// First line = the initial query request → startRun(). Subsequent lines = control
+// messages delivered mid-run by ws-server (e.g. approval_response). ws-server now
+// writes `JSON.stringify(msg) + '\n'` per message and keeps stdin open.
+let stdinBuf = '';
+let runStarted = false;
+// toolUseID → resolve('allow'|'deny'); populated while a canUseTool approval awaits.
+const pendingApprovals = new Map();
+
+function routeStdinLine(line) {
+  let msg;
+  try {
+    msg = JSON.parse(line);
+  } catch {
+    console.error('[Worker] Ignoring malformed stdin line');
+    return;
+  }
+  if (!runStarted) {
+    runStarted = true;
+    startRun(msg);
+    return;
+  }
+  if (msg && msg.type === 'approval_response' && msg.toolUseID) {
+    const resolve = pendingApprovals.get(msg.toolUseID);
+    if (resolve) {
+      pendingApprovals.delete(msg.toolUseID);
+      resolve(msg.decision === 'allow' ? 'allow' : 'deny');
+    }
+  }
+}
+
+function drainStdin(flush) {
+  let idx;
+  while ((idx = stdinBuf.indexOf('\n')) !== -1) {
+    const line = stdinBuf.slice(0, idx).trim();
+    stdinBuf = stdinBuf.slice(idx + 1);
+    if (line) routeStdinLine(line);
+  }
+  if (flush) {
+    const tail = stdinBuf.trim();
+    stdinBuf = '';
+    if (tail) routeStdinLine(tail);
+  }
+}
 
 process.stdin.on('data', (chunk) => {
-  inputData += chunk;
+  stdinBuf += chunk;
+  drainStdin(false);
+});
+// Back-compat: a caller that writes the request then ends stdin without a trailing
+// newline (no HITL channel) still starts the run from the final buffer.
+process.stdin.on('end', () => {
+  drainStdin(true);
 });
 
-process.stdin.on('end', async () => {
+async function startRun(request) {
   // Declared here (not inside try) so the catch block can clear it.
   let watchdog = null;
   try {
-    const request = JSON.parse(inputData);
     const {
       prompt,
       skillSlug,
@@ -225,17 +272,77 @@ process.stdin.on('end', async () => {
     const dangerousDisableGuard =
       permissionMode === 'bypassPermissions' &&
       process.env.CLAUDE_DANGEROUS_DISABLE_GUARD === 'true';
+    // Ask mode → SDK 'default' (SDK consults canUseTool per tool → HITL in chunk 2).
+    // Act mode → 'acceptEdits' (autonomous; SDK skips canUseTool for edits).
     const sdkPermissionMode = dangerousDisableGuard
       ? 'bypassPermissions'
       : permissionMode === 'plan'
         ? 'plan'
-        : 'acceptEdits';
-    const { canUseTool, debugInfo } = createPathSecurity({
+        : permissionMode === 'default'
+          ? 'default'
+          : 'acceptEdits';
+    const { canUseTool: baseCanUseTool, debugInfo } = createPathSecurity({
       workspace: config.cwd,
       userId,
       claudeHome: process.env.CLAUDE_HOME,
       sessionsRoot: process.env.CLAUDE_SESSIONS_ROOT,
     });
+
+    // Ask mode (SDK 'default') = Cowork "ask before acting": the SDK consults
+    // canUseTool for every non-pre-approved tool. We auto-allow read-only tools and,
+    // for action tools, emit an approval_request to the UI and AWAIT the user's
+    // decision (HITL). Act mode (acceptEdits) never asks — canUseTool just runs the
+    // path-security guard then allows. Path-security denies stay hard (interrupt).
+    const isAskMode = sdkPermissionMode === 'default';
+    const AUTO_ALLOW_TOOLS = new Set([
+      'read', 'grep', 'glob', 'ls', 'notebookread', 'todowrite',
+    ]);
+    const canUseTool = async (toolName, input, options = {}) => {
+      // 1) Path/tenant security always runs first; a security deny is hard.
+      const base = await baseCanUseTool(toolName, input, options);
+      if (base.behavior === 'deny') return base;
+      // 2) Act mode, or a read-only tool in Ask mode → allow (no prompt).
+      if (!isAskMode || AUTO_ALLOW_TOOLS.has(String(toolName || '').toLowerCase())) {
+        return base;
+      }
+      // 3) Ask mode + action tool → pause for user approval (HITL round-trip).
+      const toolUseID =
+        options.toolUseID || `tu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeFrame({
+        type: 'approval_request',
+        toolUseID,
+        toolName,
+        title: options.title || null,
+        displayName: options.displayName || null,
+        description: options.description || null,
+        input: input && typeof input === 'object' ? input : {},
+      });
+      console.error(`[Worker] HITL: awaiting approval for ${toolName} (${toolUseID})`);
+      const decision = await new Promise((resolve) => {
+        pendingApprovals.set(toolUseID, resolve);
+        const signal = options.signal;
+        if (signal) {
+          if (signal.aborted) {
+            pendingApprovals.delete(toolUseID);
+            resolve('deny');
+            return;
+          }
+          signal.addEventListener(
+            'abort',
+            () => {
+              if (pendingApprovals.has(toolUseID)) {
+                pendingApprovals.delete(toolUseID);
+                resolve('deny');
+              }
+            },
+            { once: true },
+          );
+        }
+      });
+      console.error(`[Worker] HITL: ${toolName} (${toolUseID}) → ${decision}`);
+      if (decision === 'allow') return base; // preserve base.updatedInput
+      return { behavior: 'deny', message: '已被用户拒绝 (Ask mode)', interrupt: false };
+    };
 
     console.error(`[Worker] ======================================`);
     console.error(`[Worker] Starting query`);
@@ -719,4 +826,4 @@ Example bad operations:
     });
     process.exit(1);
   }
-});
+}

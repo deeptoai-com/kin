@@ -37,6 +37,7 @@ import { ImagePreviewOverlay } from '~/components/claude-chat/overlay/image-prev
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
+import { ApprovalPrompt } from '~/components/claude-chat/approval-prompt';
 import { WorkbenchPanel } from '~/components/claude-chat/workbench-panel';
 import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
@@ -1528,6 +1529,8 @@ function ClaudeChatSurface({
             {/* Only show Composer when session exists */}
             {hasSession && !isInitializingSession && (
               <>
+                {/* Ask-mode HITL: tool-approval prompts above the composer */}
+                <ApprovalPrompt />
                 <div className={`mb-3 ${isSkillsPanelOpen ? 'hidden' : ''}`}>
                   <A2ComposerPanel
                     key={a2ComposerKey}

@@ -1,29 +1,26 @@
 /**
- * Permission Tier Selector (PR-B)
+ * Interaction Mode Selector — Cowork-aligned: 🖐 Ask · ⏩ Act (default).
  *
- * Coze-style bottom dropdown: 🔍 Explore · ⚡ Auto · 🚀 Act(default)
+ * Modes are an INTERRUPTION preference (how much the agent pauses), not a
+ * capability gate. Security is the sandbox's job. (The old read-only "Explore/Plan"
+ * tier was dropped — web + fully-sandboxed, no use for read-only planning.)
  *
- * Tiers are a UX preference — how much the agent interrupts you.
- * Security is the sandbox's job, not the tier's. All tiers are always selectable.
- *
- * Capability notes per tier:
- *   Explore : read-only, no edits, no scripts — for planning/review only
- *   Auto    : edits + sandbox scripts; HITL for dangerous ops (Wave 2)
- *   Act     : same as Auto, minimal interruptions (default)
+ *   Ask : Claude pauses before each action so you can approve it (HITL)
+ *   Act : Claude works without pausing for approval (default)
  */
 
 'use client';
 
 import { type FC, useCallback, useEffect, useRef, useState } from 'react';
-import { CheckIcon, ChevronDownIcon, RocketIcon, SearchIcon, ZapIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, FastForwardIcon, HandIcon } from 'lucide-react';
 import {
-  DEFAULT_TIER,
-  PERMISSION_TIERS,
-  type PermissionTier,
+  DEFAULT_MODE,
+  INTERACTION_MODES,
+  type InteractionMode,
 } from '~/lib/permission-tier';
 
-interface TierMeta {
-  icon: typeof ZapIcon;
+interface ModeMeta {
+  icon: typeof HandIcon;
   label: string;
   sub: string;
   desc: string;
@@ -32,30 +29,21 @@ interface TierMeta {
   borderColor: string;
 }
 
-const TIER_META: Record<PermissionTier, TierMeta> = {
-  explore: {
-    icon: SearchIcon,
-    label: 'Explore',
-    sub: '探索',
-    desc: '只读 · 出方案 · 不改文件 · 不跑脚本',
+const MODE_META: Record<InteractionMode, ModeMeta> = {
+  ask: {
+    icon: HandIcon,
+    label: 'Ask',
+    sub: '逐步批准',
+    desc: '每个动作前暂停,等你批准',
     color: 'text-muted-foreground',
     bgColor: 'bg-muted',
     borderColor: 'border-border',
   },
-  auto: {
-    icon: ZapIcon,
-    label: 'Auto',
-    sub: '默认',
-    desc: '自动编辑 · 危险才问 · 可跑脚本（沙箱）',
-    color: 'text-success',
-    bgColor: 'bg-success/10',
-    borderColor: 'border-success/30',
-  },
   act: {
-    icon: RocketIcon,
+    icon: FastForwardIcon,
     label: 'Act',
-    sub: '执行',
-    desc: '放手干 · 少打断 · 含沙箱 Bash',
+    sub: '自主',
+    desc: '自主执行,不打断',
     color: 'text-primary',
     bgColor: 'bg-primary/10',
     borderColor: 'border-primary/30',
@@ -63,8 +51,8 @@ const TIER_META: Record<PermissionTier, TierMeta> = {
 };
 
 interface PermissionTierSelectorProps {
-  selectedTier?: PermissionTier;
-  onSelect: (tier: PermissionTier) => void;
+  selectedTier?: InteractionMode;
+  onSelect: (mode: InteractionMode) => void;
 }
 
 export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
@@ -74,8 +62,8 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const current: PermissionTier = selectedTier ?? DEFAULT_TIER;
-  const meta = TIER_META[current];
+  const current: InteractionMode = selectedTier ?? DEFAULT_MODE;
+  const meta = MODE_META[current];
   const Icon = meta.icon;
 
   useEffect(() => {
@@ -95,8 +83,8 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
   }, [open]);
 
   const handlePick = useCallback(
-    (tier: PermissionTier) => {
-      onSelect(tier);
+    (mode: InteractionMode) => {
+      onSelect(mode);
       setOpen(false);
     },
     [onSelect],
@@ -124,20 +112,20 @@ export const PermissionTierSelector: FC<PermissionTierSelectorProps> = ({
           role="listbox"
           className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border border-border bg-popover p-1.5 shadow-lg"
         >
-          {PERMISSION_TIERS.map((tier) => {
-            const m = TIER_META[tier];
-            const TierIcon = m.icon;
-            const isCurrent = tier === current;
+          {INTERACTION_MODES.map((mode) => {
+            const m = MODE_META[mode];
+            const ModeIcon = m.icon;
+            const isCurrent = mode === current;
             return (
               <button
-                key={tier}
+                key={mode}
                 type="button"
                 role="option"
                 aria-selected={isCurrent}
-                onClick={() => handlePick(tier)}
+                onClick={() => handlePick(mode)}
                 className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer transition hover:bg-accent ${isCurrent ? 'bg-accent' : ''}`}
               >
-                <TierIcon className={`mt-0.5 h-4 w-4 shrink-0 ${m.color}`} />
+                <ModeIcon className={`mt-0.5 h-4 w-4 shrink-0 ${m.color}`} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="text-xs font-semibold text-foreground">{m.label}</span>
