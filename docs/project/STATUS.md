@@ -47,11 +47,15 @@ Historical note below (kept for context).
 > tenants or the public internet.**
 
 - **R4 — Bash tier-gating gap** ([Issue #69](https://github.com/foreveryh/oxygenie/issues/69),
-  labels: `security` `release-blocker`). `wantsBash` is not threaded front-end → ws-server → worker,
-  so the permission tiers (Explore/Auto/Act) don't fully gate Bash; a tier could reach Bash it
-  shouldn't, or the gate is bypassed. Fix = thread `wantsBash` so the worker's `resolveDisallowedTools`
-  gates by tier + wantsBash; verify on real runs across all three tiers. ~2-line core fix, but it's a
-  **security boundary** — do not ship multi-user with it open.
+  labels: `security` `release-blocker`) — **FIXED in PR #108 (pending merge + cross-tier verify)**.
+  Root cause: the 3-tier `wantsBash` (explore=false, auto/act=true) was never threaded to the worker,
+  so the sandboxed Bash tool (`mcp__bash__run`) was registered purely on sandbox readiness — explore
+  could still run bash. Fix: thread `wantsBash` ws-server (`resolveEffectivePermission`) → worker, and
+  gate registration on `sandboxReady && wantsBash` (worker falls back to `sdkMode !== 'plan'` when
+  absent = secure default). Native Bash stays in `disallowedTools` regardless. `ws-server.mjs` +
+  `ws-query-worker.mjs`, node --check + lint green. **Remaining = cross-tier live verify** (needs a
+  ready sandbox `EXEC_RUNTIME=docker` to observe: explore→no bash, act→bash; the `wantsBash` threading
+  is visible in the worker log on any run). Then merge #108 + close it before multi-user.
 
 ### Historical snapshot (2026-05-30, first browser-verified run)
 
