@@ -127,4 +127,16 @@
 8. **v1 硬验收 = 纯前端 SPA：install→build→static→iframe 可见**；Next/Express/带 API = best-effort/下一版。
 
 **归属**：在「沙盒 + 与沙盒交互」新对话执行；与 `…-fix-plan.md` 的 Phase A/B（消息顺序、过程折叠、Files/Context、artifact 去重）并行不冲突。
+
+---
+
+## 9. 备案：结构化输出泄漏（Cowork S3 根因，挂本线）
+
+> 记录时间：2026-06-04 ｜ 来源：Cowork 单源重做 S3（见 `2026-06-cowork-s1-review-and-s2s3-handoff.md` §4）。**根因与本「artifact 元数据/结构化输出」策略耦合，统一在本线定，S2 PR 不做文本过滤。**
+
+- **现象**：开启结构化输出后，模型未调用 StructuredOutput 时，SDK 的 `outputFormat` **Stop-hook 强制机制**会①多跑一轮、②把 “You MUST call the StructuredOutput tool” 内部反馈漏进对话。
+- **触发条件（双重门）**：`ENABLE_STRUCTURED_OUTPUTS=true` **且** prompt 命中 `hasStructuredOutputFileHint`（`ws-query-worker.mjs` 的 `query().options.outputFormat`，约 588 行）。
+- **当前状态（已强制默认关）**：`ENABLE_STRUCTURED_OUTPUTS` 强制默认 `false`（`.env.example` / `CLAUDE.md` / worker 注释均已写明）；关闭状态下泄漏与多跑一轮均不发生。artifact 元数据改由被动探测（`use-artifact-detection.ts`）兜底，不依赖结构化输出。
+- **根治选项（待本线定）**：① 维持关闭，artifact 元数据继续走探测；或 ② 若要重新启用，需先解决 Stop-hook 泄漏（过滤该内部反馈文本 + 抑制多跑一轮），并与本节的 manifest/`declare_app` 策略统一——`.oxygenie/app.json` 若成为 artifact 声明的唯一来源，结构化输出可能整体不再需要。**建议 ①，重启用须随本线 artifact 策略一并评审。**
+- **不做**：评审已决定 S2 PR **不**加投机性文本过滤（实现者无法离线复现确切注入格式，且只治标不治本——多跑一轮只有关 env 才能消除）。
 </content>
