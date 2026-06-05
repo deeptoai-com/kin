@@ -17,22 +17,13 @@
 
 version: '3.8'
 
-# Build configuration for Dokploy
-# Dokploy builds the image locally using environment variables from its UI
-# This ensures VITE_* variables are baked into the frontend bundle at build time
-x-app-build: &app_build
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      # WebSocket URL (will be set via Traefik routing)
-      VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
-      # OAuth Client IDs (optional - for social login, passed at build time)
-      VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
-      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-      # PostHog product analytics (from Dokploy env config)
-      VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
-      VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-https://eu.i.posthog.com}
+# Image is built OFF-SERVER by CI (.github/workflows/build.yml, on push to main) and
+# pushed to GHCR; Dokploy only PULLS it. Building this heavy app on the Dokploy host
+# OOMs during the SSR bundle (rollup chunk rendering), so we never build in-place here.
+# Note: VITE_WS_URL is intentionally NOT baked — the frontend falls back to a runtime
+# wss://<current-host>/ws/agent (src/claude/adapters/ws-adapter.ts), so one image works
+# for any domain. OAuth/PostHog VITE_* can be added to build.yml build-args if needed.
+x-app-image: &app_image '${APP_IMAGE:-ghcr.io/foreveryh/oxygenie/app}:${APP_TAG:-latest}'
 
 services:
   # PostgreSQL database with pgvector extension
@@ -142,7 +133,8 @@ services:
   # Database migrations (runs before app starts)
   # Uses the same image built by the app service
   migrate:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
@@ -169,7 +161,8 @@ services:
   # Background workers for BullMQ (cron + indexing, etc.)
   # Uses the same image built by the app service
   worker:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
@@ -212,7 +205,8 @@ services:
   # Dokploy builds the image locally to include VITE_* environment variables
   # Build args are passed from Dokploy's environment configuration
   app:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-app
     # PR-C Step 0: enable srt (bubblewrap) sandbox for tool execution.
     # srt requires unprivileged user namespaces → seccomp=unconfined.
@@ -400,7 +394,8 @@ services:
   # socket; app calls it over the private network to create/remove preview
   # containers with Traefik labels.
   preview-controller:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
     depends_on:
       app:
