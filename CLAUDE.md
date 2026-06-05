@@ -162,10 +162,19 @@ Claude Agent SDK 文档相对较新，**无法通过 MCP 工具获取**，需要
 ### 环境变量
 
 ```bash
-# Anthropic API
-ANTHROPIC_API_KEY=<your-api-key>
-ANTHROPIC_BASE_URL=<optional-base-url>
-ANTHROPIC_MODEL=<optional-model-override>
+# Anthropic / ARK 网关
+# ⚠️ ARK（火山）coding 网关用 Bearer 鉴权：设 ANTHROPIC_AUTH_TOKEN，**不要**设 ANTHROPIC_API_KEY
+#    （设了 ws-server 会注入它，SDK 改走 x-api-key 而非 Bearer，ARK 会失败）。
+#    鉴权无需改代码：worker 继承 process.env，SDK 调起的 CLI 直接读以下环境变量。
+ANTHROPIC_AUTH_TOKEN=<ark-api-key>           # ARK：Bearer token（生产用这个）
+ANTHROPIC_API_KEY=<your-api-key>             # 仅原生 Anthropic / x-api-key 场景
+ANTHROPIC_BASE_URL=<gateway-base-url>        # ARK: https://ark.cn-beijing.volces.com/api/coding
+ANTHROPIC_MODEL=<model>                       # 主模型（如 glm-5.1）
+# 模型别名（按 ARK 可用模型映射；haiku=后台廉价档）
+ANTHROPIC_DEFAULT_SONNET_MODEL=<model>
+ANTHROPIC_DEFAULT_OPUS_MODEL=<model>
+ANTHROPIC_DEFAULT_HAIKU_MODEL=<model>        # 如 doubao-seed-2.0-lite
+CLAUDE_CODE_SUBAGENT_MODEL=<model>
 
 # WebSocket 服务器
 WS_PORT=3001
@@ -796,3 +805,17 @@ services:
 3. ✅ 确认 `docker-compose.dokploy.yml` 包含 `pull_policy: always`
 4. ✅ 在 Dokploy 触发重新部署
 5. ✅ 检查部署日志确认拉取了新镜像（看 digest 是否变化）
+
+### 生产部署（oxygenie.cc）决策与差异
+
+**完整决策记录 + 与 `docker-compose.dokploy.yml` 的精确差异 + runbook**：
+见 `docs/project/research/2026-06-oxygenie-cc-dokploy-deployment.md`。关键不变量（改部署前先读）：
+
+- **域名**：app=apex `oxygenie.cc`；预览=**单层 `*.oxygenie.cc`**（Cloudflare 免费 SSL 不覆盖两层
+  `*.preview.*`，勿用两层）。
+- **TLS**：Cloudflare 橙云 + **Full(Strict) + Origin CA 证书**，**不要用 Let's Encrypt**
+  （橙云下 HTTP-01 会失败）；compose 里所有 `certresolver=letsencrypt` 需去掉、改走 Traefik 默认证书。
+- **ARK 鉴权**：见上「环境变量」段 —— 用 `ANTHROPIC_AUTH_TOKEN`，**不设** `ANTHROPIC_API_KEY`。
+- **镜像 build-args**：`buildx` 需传 `--build-arg VITE_WS_URL=wss://oxygenie.cc/ws/agent`（前端域名烤在构建期）。
+- **preview-controller**：真预览引擎已硬化（`src/preview/controller.mjs`，`CapAdd:['CHOWN']` +
+  detached serve + 自写容器内 pid）；镜像必须从含该提交的分支构建。
