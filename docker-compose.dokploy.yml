@@ -151,7 +151,7 @@ services:
       echo 'DATABASE_URL length: '$$(echo -n \"$$DATABASE_URL\" | wc -c) &&
       echo 'DATABASE_URL preview: '$$(echo \"$$DATABASE_URL\" | sed 's/:[^:@]*@/:****@/') &&
       echo '===========================' &&
-      pnpm run db:migrate &&
+      n=0; until pnpm run db:migrate; do n=$$((n+1)); [ $$n -ge 20 ] && { echo '[migrate] FAILED after 20 attempts'; exit 1; }; echo \"[migrate] attempt $$n failed (db DNS/conn not ready yet), retrying in 3s...\"; sleep 3; done &&
       ( pnpm run db:seed || echo '[seed] WARNING: curated skills seed failed (non-fatal); catalog may be empty' )
       "
     restart: 'no'
