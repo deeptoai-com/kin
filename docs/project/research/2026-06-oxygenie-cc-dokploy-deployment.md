@@ -170,8 +170,9 @@ docker buildx build --platform linux/amd64 \
 - [x] CF：创建 API Token + **Origin CA 证书已签发**（2026-06-05，有效期至 2041，SAN
       `oxygenie.cc` + `*.oxygenie.cc`，issuer = CloudFlare Origin CA，与私钥匹配）
 - [x] DB / MinIO / Meili / `BETTER_AUTH_SECRET` 随机密钥已生成
-- [ ] 提供 **ARK `ANTHROPIC_AUTH_TOKEN`**（已留占位）
-- [ ] 确认 `doubao-seed-2.0-lite` 的确切 model id（不在最初给的可用列表里）
+- [x] **ARK `ANTHROPIC_AUTH_TOKEN` 已提供 + 实测通过**（2026-06-05：`/api/coding/v1/messages`
+      + Bearer，`glm-5.1` 与 `doubao-seed-2.0-lite` 均 HTTP200 应答 `OK`）
+- [x] `doubao-seed-2.0-lite` 确认存在且可用（实测通过）
 - [ ] 按 §6 改 `docker-compose.dokploy.yml`
 - [ ] 按 §6/§5 补 `infra/deploy/env.dokploy.example` 的 ARK/模型/域名键
 - [ ] 从 phasec 分支构建并推送 GHCR 镜像（§8）
