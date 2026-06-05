@@ -1,6 +1,12 @@
 # OxyGenie 生产部署决策 + 差异规格（oxygenie.cc on Dokploy）
 
-> 状态：**决策已定，待执行**（2026-06-05）
+> 状态：**✅ 已上线**（2026-06-05，`oxygenie.cc`；/health 200、/ws/agent 426 验证通过）。
+> **可操作的部署指南(7 步 + 卡点根因表)见 `docs/deployment/dokploy.md`** —— 本文是决策/差异记录。
+> 上线前共闯过 8 个卡点(构建 OOM、playwright/office 拖慢、GHCR 私有、卷名冲突、
+> DATABASE_URL 失配、migrate DNS EAI_AGAIN、CF 泛域名 SSL、ARK 鉴权),根因与修法见指南的
+> "Troubleshooting — blockers" 表。
+>
+> 原始状态：决策已定，待执行（2026-06-05）
 > 目标：把 `codex/phasec-real-preview`（Phase C 真预览 + Ask/Act + controller 硬化）部署到
 > Dokploy 服务器 `h.deeptoai.com`，对外域名 `oxygenie.cc`，并跑通 Traefik 路由的真预览 E2E。
 > 本文是**决策记录 + 与现有部署资产的精确差异**，执行时按"差异清单"逐条落地。

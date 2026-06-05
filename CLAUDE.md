@@ -806,16 +806,28 @@ services:
 4. ✅ 在 Dokploy 触发重新部署
 5. ✅ 检查部署日志确认拉取了新镜像（看 digest 是否变化）
 
-### 生产部署（oxygenie.cc）决策与差异
+### 生产部署（oxygenie.cc）—— ✅ 已上线（2026-06-05）
 
-**完整决策记录 + 与 `docker-compose.dokploy.yml` 的精确差异 + runbook**：
-见 `docs/project/research/2026-06-oxygenie-cc-dokploy-deployment.md`。关键不变量（改部署前先读）：
+**操作指南(7 步 + 卡点根因表,实战验证):`docs/deployment/dokploy.md`** ← 改部署前必读。
+决策/差异记录:`docs/project/research/2026-06-oxygenie-cc-dokploy-deployment.md`。
 
-- **域名**：app=apex `oxygenie.cc`；预览=**单层 `*.oxygenie.cc`**（Cloudflare 免费 SSL 不覆盖两层
-  `*.preview.*`，勿用两层）。
-- **TLS**：Cloudflare 橙云 + **Full(Strict) + Origin CA 证书**，**不要用 Let's Encrypt**
-  （橙云下 HTTP-01 会失败）；compose 里所有 `certresolver=letsencrypt` 需去掉、改走 Traefik 默认证书。
-- **ARK 鉴权**：见上「环境变量」段 —— 用 `ANTHROPIC_AUTH_TOKEN`，**不设** `ANTHROPIC_API_KEY`。
-- **镜像 build-args**：`buildx` 需传 `--build-arg VITE_WS_URL=wss://oxygenie.cc/ws/agent`（前端域名烤在构建期）。
-- **preview-controller**：真预览引擎已硬化（`src/preview/controller.mjs`，`CapAdd:['CHOWN']` +
-  detached serve + 自写容器内 pid）；镜像必须从含该提交的分支构建。
+**关键不变量(踩错任一 → 部署失败):**
+
+1. **镜像 off-server 构建 → 推 GHCR → Dokploy 只拉取**。SSR 打包峰值 >8G,在 Dokploy 主机和
+   标准 7G CI runner 上都会 OOM。`docker-compose.dokploy.yml` 用 `image:`+`pull_policy: always`(**非 `build:`**)。
+   构建命令带 `--build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false`(跳过 playwright/libreoffice)。
+2. **`APP_NAME_SANITIZED` 每个部署必须唯一**。卷名 `${APP_NAME_SANITIZED}-data` 是**全局名**,撞了会复用
+   别的栈的数据卷(连带其旧密码)→ migrate 28P01。
+3. **`DATABASE_URL` 在 compose 内从 `POSTGRES_*` 拼**(单一来源),不要独立传 `DATABASE_URL`(会与
+   `POSTGRES_PASSWORD` 失配 → 28P01)。
+4. **ARK 用 `ANTHROPIC_AUTH_TOKEN`(Bearer),不设 `ANTHROPIC_API_KEY`**(见上「环境变量」段)。
+5. **域名**:app=apex;预览=**单层 `*.oxygenie.cc`**(CF 免费 SSL 不覆盖两层 `*.preview.*`)。
+6. **TLS**:CF 橙云 + **Full(Strict) + Origin CA 证书**,**不用 Let's Encrypt**(橙云下 HTTP-01 失败);
+   compose 路由用 `tls=true`(默认 Origin 证书),不用 `certresolver=letsencrypt`。
+7. **migrate 会重试直到 `db` 可解析**(Dokploy 上 `db` 别名有 DNS 时序,`depends_on:healthy` 挡不住 `EAI_AGAIN`)。
+8. **GHCR 包设 public**(或给 Dokploy 加 registry 凭据),否则拉不到。
+9. `VITE_WS_URL` **无需**烤进镜像 —— 前端运行期按 `wss://<当前域名>/ws/agent` 自算(`ws-adapter.ts`)。
+10. **preview-controller** 已硬化(`CapAdd:['CHOWN']` + detached serve + 自写容器内 pid)。
+
+> **遗留**:CI(7G runner)构建仍会 OOM → 待砍 Mastra + playwright + libreoffice 瘦身后,恢复
+> `build.yml` push-main 自动构建 GHCR(开源贡献者就不必本地 16G 构建)。
