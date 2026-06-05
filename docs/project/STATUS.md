@@ -201,7 +201,18 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
-- **2026-06-05** — **生产部署拍板：`oxygenie.cc` on Dokploy（待执行）+ preview-controller 硬化**。
+- **2026-06-05** — **✅ `oxygenie.cc` 在 Dokploy 上线成功**（/health 200、/ 200、/ws/agent 426、TLS via CF）。
+  闯过 **8 个部署卡点**,根因 + 修法已沉淀到 **`docs/deployment/dokploy.md`**(7 步指南 + 卡点根因表):
+  ① 构建 OOM/挂死 → **镜像 off-server 构建推 GHCR、Dokploy 只拉**(compose 用 `image:`+`pull_policy:always`,非 `build:`);
+  ② playwright/libreoffice 拖慢/吃内存 → `INSTALL_BROWSER=false INSTALL_OFFICE=false`(并决定**永久移除**这两个重型工具);
+  ③ GHCR 包私有 → 设 public;④ 卷名全局冲突(撞 deeptoai 遗留卷)→ `APP_NAME_SANITIZED` 必须唯一;
+  ⑤ `DATABASE_URL` 与 `POSTGRES_PASSWORD` 失配(28P01)→ compose 内从 `POSTGRES_*` 拼 DATABASE_URL(单一来源);
+  ⑥ migrate `getaddrinfo EAI_AGAIN db`(DNS 时序)→ migrate entrypoint 重试直到 db 可解析;
+  ⑦ CF 免费 SSL 不覆盖两层泛域名 → 预览用单层 `*.oxygenie.cc`;⑧ ARK 用 `ANTHROPIC_AUTH_TOKEN` 非 `API_KEY`。
+  关键认知:**本地用同一 compose+镜像+env 全栈跑通(migrate+app+WS 200)→ 失败全在 Dokploy 环境/状态**,
+  逐一隔离修复。**遗留**:CI 7G runner 构建仍 OOM(待砍 Mastra/playwright/office 瘦身后恢复免费 CI 构建);
+  Phase C 路由预览的浏览器 E2E 待做。
+- **2026-06-05** — **生产部署拍板：`oxygenie.cc` on Dokploy（待执行→已上线）+ preview-controller 硬化**。
   完整决策/差异/runbook → `research/2026-06-oxygenie-cc-dokploy-deployment.md`。要点：
   ① **域名**：app=apex `oxygenie.cc`，预览=**单层 `*.oxygenie.cc`**（CF 免费 SSL 不覆盖两层
   `*.preview.`，故弃用 2 层）。② **TLS**：CF 橙云 + **Full(Strict) + Origin CA 证书**，**不用
