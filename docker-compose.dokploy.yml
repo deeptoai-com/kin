@@ -17,22 +17,13 @@
 
 version: '3.8'
 
-# Build configuration for Dokploy
-# Dokploy builds the image locally using environment variables from its UI
-# This ensures VITE_* variables are baked into the frontend bundle at build time
-x-app-build: &app_build
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      # WebSocket URL (will be set via Traefik routing)
-      VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
-      # OAuth Client IDs (optional - for social login, passed at build time)
-      VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
-      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-      # PostHog product analytics (from Dokploy env config)
-      VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
-      VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-https://eu.i.posthog.com}
+# Image is built OFF-SERVER by CI (.github/workflows/build.yml, on push to main) and
+# pushed to GHCR; Dokploy only PULLS it. Building this heavy app on the Dokploy host
+# OOMs during the SSR bundle (rollup chunk rendering), so we never build in-place here.
+# Note: VITE_WS_URL is intentionally NOT baked — the frontend falls back to a runtime
+# wss://<current-host>/ws/agent (src/claude/adapters/ws-adapter.ts), so one image works
+# for any domain. OAuth/PostHog VITE_* can be added to build.yml build-args if needed.
+x-app-image: &app_image '${APP_IMAGE:-ghcr.io/foreveryh/oxygenie/app}:${APP_TAG:-latest}'
 
 services:
   # PostgreSQL database with pgvector extension
@@ -142,7 +133,8 @@ services:
   # Database migrations (runs before app starts)
   # Uses the same image built by the app service
   migrate:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
@@ -169,7 +161,8 @@ services:
   # Background workers for BullMQ (cron + indexing, etc.)
   # Uses the same image built by the app service
   worker:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
@@ -212,7 +205,8 @@ services:
   # Dokploy builds the image locally to include VITE_* environment variables
   # Build args are passed from Dokploy's environment configuration
   app:
-    <<: *app_build
+    image: *app_image
+    pull_policy: always
     container_name: ${APP_NAME:-OxyGenie}-app
     # PR-C Step 0: enable srt (bubblewrap) sandbox for tool execution.
     # srt requires unprivileged user namespaces → seccomp=unconfined.
@@ -275,12 +269,18 @@ services:
       # OAuth Providers (frontend - Client ID only)
       VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-      # Mastra Agent (Zhipu AI GLM-5.0 via Mastra built-in gateway)
-      ZHIPU_API_KEY: ${ZHIPU_API_KEY:?}
-      # Claude Agent SDK configuration
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
+      # Mastra Agent (Zhipu AI GLM via Mastra built-in gateway) — optional, not used in ARK-only deploy
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
+      # do NOT set ANTHROPIC_API_KEY (it would make the SDK use x-api-key instead of Bearer).
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_DEFAULT_SONNET_MODEL: ${ANTHROPIC_DEFAULT_SONNET_MODEL:-}
+      ANTHROPIC_DEFAULT_OPUS_MODEL: ${ANTHROPIC_DEFAULT_OPUS_MODEL:-}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${ANTHROPIC_DEFAULT_HAIKU_MODEL:-}
+      CLAUDE_CODE_SUBAGENT_MODEL: ${CLAUDE_CODE_SUBAGENT_MODEL:-}
       # Gemini API for skill icon generation
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
@@ -298,6 +298,15 @@ services:
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
+      # Phase C real preview runtime
+      PREVIEW_CONTROLLER_URL: ${PREVIEW_CONTROLLER_URL:-http://preview-controller:5055}
+      MAX_ACTIVE_PREVIEWS: ${MAX_ACTIVE_PREVIEWS:-4}
+      PREVIEW_IDLE_TIMEOUT_MS: ${PREVIEW_IDLE_TIMEOUT_MS:-300000}
+      PREVIEW_PROTOCOL: ${PREVIEW_PROTOCOL:-https}
+      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-{previewId}.${APP_HOSTNAME}}
+      PREVIEW_COOKIE_SECURE: ${PREVIEW_COOKIE_SECURE:-1}
+      PREVIEW_BOOTSTRAP_TTL_MS: ${PREVIEW_BOOTSTRAP_TTL_MS:-90000}
+      PREVIEW_COOKIE_TTL_MS: ${PREVIEW_COOKIE_TTL_MS:-900000}
       # WebSocket URL (frontend configuration)
       VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
       # Polar billing (optional)
@@ -337,16 +346,16 @@ services:
       # 1. Main HTTP service (Web) - exclude /ws
       # ---------------------------------------------------------
       # HTTP router (port 80) -> redirect to HTTPS
-      - "traefik.http.routers.main-web.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-web.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
       - "traefik.http.routers.main-web.entrypoints=web"
       - "traefik.http.routers.main-web.middlewares=redirect-to-https@file"
       - "traefik.http.routers.main-web.service=main-service"
       - "traefik.http.routers.main-web.priority=50"
 
       # HTTPS router (port 443)
-      - "traefik.http.routers.main-websecure.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-websecure.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
       - "traefik.http.routers.main-websecure.entrypoints=websecure"
-      - "traefik.http.routers.main-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.main-websecure.tls=true"
       - "traefik.http.routers.main-websecure.service=main-service"
       - "traefik.http.routers.main-websecure.priority=50"
 
@@ -356,14 +365,67 @@ services:
       # ---------------------------------------------------------
       # 2. WebSocket service (WS) - exclusive /ws + higher priority
       # ---------------------------------------------------------
-      - "traefik.http.routers.ws-router.rule=Host(`deeptoai.com`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws-router.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.ws-router.entrypoints=websecure"
-      - "traefik.http.routers.ws-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ws-router.tls=true"
       - "traefik.http.routers.ws-router.priority=100"
       - "traefik.http.routers.ws-router.service=ws-service"
 
       # WS service (ws-server)
       - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
+
+      # ---------------------------------------------------------
+      # 3. Preview auth bootstrap/forward-auth endpoints
+      # ---------------------------------------------------------
+      # Preview content is served by dynamic preview containers. Their /__oxy/*
+      # auth paths must route back to the ws-server (same process that issued the
+      # one-time token and owns preview cookie sessions).
+      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
+      - "traefik.http.routers.preview-auth.entrypoints=websecure"
+      - "traefik.http.routers.preview-auth.tls=true"
+      - "traefik.http.routers.preview-auth.priority=200"
+      - "traefik.http.routers.preview-auth.service=ws-service"
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
+  # Phase C preview controller. This is the only service that mounts the Docker
+  # socket; app calls it over the private network to create/remove preview
+  # containers with Traefik labels.
+  preview-controller:
+    image: *app_image
+    pull_policy: always
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      PREVIEW_CONTROLLER_PORT: ${PREVIEW_CONTROLLER_PORT:-5055}
+      PREVIEW_CONTROLLER_CONTAINER: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+      PREVIEW_IMAGE: ${PREVIEW_IMAGE:-node:24-bookworm-slim}
+      PREVIEW_MEMORY: ${PREVIEW_MEMORY:-768m}
+      PREVIEW_CPUS: ${PREVIEW_CPUS:-1}
+      PREVIEW_PIDS: ${PREVIEW_PIDS:-256}
+      PREVIEW_CONTAINER_USER: ${PREVIEW_CONTAINER_USER:-1001:1001}
+      PREVIEW_INTERNAL_PORT: ${PREVIEW_INTERNAL_PORT:-4173}
+      PREVIEW_INSTALL_TIMEOUT_MS: ${PREVIEW_INSTALL_TIMEOUT_MS:-300000}
+      PREVIEW_BUILD_TIMEOUT_MS: ${PREVIEW_BUILD_TIMEOUT_MS:-300000}
+      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-dokploy-network}
+      PREVIEW_TRAEFIK_ENABLED: ${PREVIEW_TRAEFIK_ENABLED:-1}
+      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-dokploy-network}
+      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-websecure}
+      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-1}
+      # Empty: previews use Traefik's default cert (Cloudflare Origin CA), not Let's Encrypt
+      # (orange-cloud blocks HTTP-01). See research/2026-06-oxygenie-cc-dokploy-deployment.md §3.
+      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-}
+      PREVIEW_FORWARD_AUTH_URL: ${PREVIEW_FORWARD_AUTH_URL:-http://app:3001/__oxy/preview/authorize}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-sessions:/data/users
+    command: ['node', 'src/preview/controller.mjs']
     restart: unless-stopped
     networks:
       - private

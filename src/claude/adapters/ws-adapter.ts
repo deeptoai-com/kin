@@ -17,6 +17,7 @@ import {
   type SDKMessage as StorageSDKMessage,
   type ContentPart as StoreContentPart,
   type ThreadMessage as StoreThreadMessage,
+  type PreviewState,
   type ApprovalRequest,
 } from '~/lib/chat-session-store';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
@@ -111,6 +112,8 @@ type InboundMessage =
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
+  | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live' }
+  | { type: 'stop_preview'; sessionId?: string }
   | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny' }
   | { type: 'ping' };
 
@@ -122,6 +125,7 @@ type OutboundMessage =
   | { type: 'error'; code: string; message: string; retriable: boolean }
   | { type: 'done'; seq?: number }
   | { type: 'aborted' }
+  | { type: 'preview_state'; state: PreviewState; seq?: number }
   | {
       type: 'approval_request';
       toolUseID: string;
@@ -557,6 +561,14 @@ function getWebSocket(): Promise<WebSocket> {
           return;
         }
 
+        // Preview state is session-level and arrives asynchronously (outside a
+        // chat run), so handle it on the persistent socket rather than via the
+        // per-run messageHandler (which is only set during runChat()).
+        if (msg.type === 'preview_state') {
+          useChatSessionStore.getState().setPreviewState(msg.state);
+          return;
+        }
+
         // Ask-mode HITL: a tool-approval request arrives mid-run (outside the
         // per-run messageHandler queue). Push it to the store so the UI can prompt;
         // the user's decision goes back via respondApproval().
@@ -589,6 +601,22 @@ function getWebSocket(): Promise<WebSocket> {
 async function send(message: InboundMessage): Promise<void> {
   const socket = await getWebSocket();
   socket.send(JSON.stringify(message));
+}
+
+/**
+ * Start / stop the Phase C preview for a session (sent over the same /ws/agent
+ * socket). Defaults to the adapter's current session. The backend responds
+ * asynchronously via `preview_state` events (handled on the persistent socket).
+ */
+export async function startPreview(
+  sessionId?: string,
+  mode: 'static' | 'live' = 'static',
+): Promise<void> {
+  await send({ type: 'start_preview', sessionId: sessionId ?? currentSessionId, mode });
+}
+
+export async function stopPreview(sessionId?: string): Promise<void> {
+  await send({ type: 'stop_preview', sessionId: sessionId ?? currentSessionId });
 }
 
 /**

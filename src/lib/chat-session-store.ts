@@ -109,6 +109,17 @@ export type SDKMessage = {
   }>;
 };
 
+// Phase C preview runtime state — pushed by the preview backend over WS
+// (`preview_state` event). Session-scoped; the selector filters by currentSessionId.
+export type PreviewState = {
+  sessionId: string;
+  previewId: string;
+  mode: 'static' | 'live';
+  status: 'detecting' | 'installing' | 'building' | 'ready' | 'error' | 'stopped';
+  url?: string;
+  error?: string;
+};
+
 // Ask-mode HITL: a pending tool-approval request, pushed by the worker over WS
 // (`approval_request`). The user approves/rejects; the decision goes back to the
 // worker's canUseTool. See docs/project/research/2026-06-ask-act-hitl-design.md.
@@ -142,6 +153,9 @@ interface ChatSessionState {
 
   // Session metadata (tools, agents, configuration)
   sessionMetadata: SessionMetadata | null;
+
+  // Phase C preview runtime state (session-scoped; null when no preview running)
+  previewState: PreviewState | null;
 
   // Ask-mode HITL: tool-approval requests awaiting the user's decision.
   pendingApprovals: ApprovalRequest[];
@@ -180,6 +194,7 @@ interface ChatSessionState {
   setCurrentToolName: (toolName: string | null) => void;
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
+  setPreviewState: (state: PreviewState | null) => void;
   addPendingApproval: (req: ApprovalRequest) => void;
   resolvePendingApproval: (toolUseID: string) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
@@ -391,6 +406,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   currentToolName: null,
   usageData: null,
   sessionMetadata: null,
+  previewState: null,
   pendingApprovals: [],
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
@@ -478,6 +494,10 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     set({ sessionMetadata: data });
   },
 
+  setPreviewState: (data) => {
+    set({ previewState: data });
+  },
+
   addPendingApproval: (req) => {
     set((state) => {
       if (state.pendingApprovals.some((a) => a.toolUseID === req.toolUseID)) return state;
@@ -530,7 +550,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     // instead of a fragmented stack of "步骤已完成" cards with duplicate artifacts.
     let cur: {
       id: string;
-      createdAt: Date;
+      createdAt: Date | undefined;
       status: ThreadMessage['status'];
       parts: ContentPart[];
     } | null = null;

@@ -201,6 +201,19 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-05** — **生产部署拍板：`oxygenie.cc` on Dokploy（待执行）+ preview-controller 硬化**。
+  完整决策/差异/runbook → `research/2026-06-oxygenie-cc-dokploy-deployment.md`。要点：
+  ① **域名**：app=apex `oxygenie.cc`，预览=**单层 `*.oxygenie.cc`**（CF 免费 SSL 不覆盖两层
+  `*.preview.`，故弃用 2 层）。② **TLS**：CF 橙云 + **Full(Strict) + Origin CA 证书**，**不用
+  Let's Encrypt**（橙云下 HTTP-01 会失败）；Origin CA 用带 `Zone>SSL&Certs>Edit` 的 API Token
+  签（Service Key 已弃用）。③ **ARK 鉴权**：用 **`ANTHROPIC_AUTH_TOKEN`（Bearer），不设
+  `ANTHROPIC_API_KEY`**；base=`https://ark.cn-beijing.volces.com/api/coding`；**无需改鉴权代码**
+  （worker 继承 `process.env`，SDK CLI 直接读环境）。④ **模型**：主/sonnet/opus/subagent=`glm-5.1`，
+  haiku=`doubao-seed-2.0-lite`；多模型切换延后。⑤ **镜像**：GHCR（既定），从 `codex/phasec-real-preview`
+  以 `--platform linux/amd64` + VITE build-args 重建。⑥ **dokploy compose 需改 6 处**（Host
+  deeptoai.com→oxygenie.cc、去 letsencrypt、预览单层、ARK auth-token、ZHIPU 改可选、VITE build-args）。
+  **preview-controller 硬化**（`d19621c`，本地真预览引擎已验证）：serve 改 detached `exec node`（修首跑竞态）、
+  服务器自写容器内 pid（修 restart/reap）、`CapAdd:['CHOWN']`（修 CapDrop ALL 下非-root 装依赖 EACCES）。
 - **2026-06-04** — **Ask/Act + HITL（Phase 3 Wave 2）实现 + owner 实测通过 + 合并 `main`**（merge
   `feat/ask-act-hitl`）。2 档(🖐 Ask 逐动作审批 / ⏩ Act 自主,默认),砍掉 explore/auto/Plan。实现:先
   **spike 验证** SDK `canUseTool` 能 async-await(0.2.112),再**对照官方文档**(canUseTool=官方 HITL 机制;

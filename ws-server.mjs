@@ -23,6 +23,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Semaphore } from './src/server/concurrency/semaphore.js';
 import { shouldReapIdle } from './src/server/concurrency/idle-reaper.js';
 import { resolveEffectivePermission } from './src/lib/permission-tier.js';
+import { PreviewAuth } from './src/preview/auth.js';
+import { PreviewRuntime } from './src/preview/runtime.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -107,6 +109,16 @@ const config = {
   model: process.env.ANTHROPIC_MODEL,
   cwd: process.cwd(),
 };
+
+const previewAuth = new PreviewAuth({
+  secret: process.env.PREVIEW_AUTH_SECRET || process.env.BETTER_AUTH_SECRET,
+  bootstrapTtlMs: Number(process.env.PREVIEW_BOOTSTRAP_TTL_MS) || undefined,
+  cookieTtlMs: Number(process.env.PREVIEW_COOKIE_TTL_MS) || undefined,
+  secureCookies: process.env.PREVIEW_COOKIE_SECURE
+    ? process.env.PREVIEW_COOKIE_SECURE === '1'
+    : process.env.NODE_ENV === 'production',
+});
+const previewRuntime = new PreviewRuntime({ auth: previewAuth });
 
 const PERMISSION_MODES = new Set([
   'default',
@@ -278,6 +290,8 @@ const BUSINESS_MESSAGE_TYPES = new Set([
   'chat',
   'resume',
   'abort',
+  'start_preview',
+  'stop_preview',
   'approval_response',
 ]);
 
@@ -751,6 +765,68 @@ function sendMessage(ws, msg) {
   return 0;
 }
 
+function nextPreviewSeq(ws) {
+  ws.__previewSeq = (ws.__previewSeq || 0) + 1;
+  return ws.__previewSeq;
+}
+
+function sendPreviewState(ws, state) {
+  return sendMessage(ws, {
+    type: 'preview_state',
+    state,
+    seq: nextPreviewSeq(ws),
+  });
+}
+
+function normalizeHost(headerValue) {
+  if (!headerValue) return '';
+  return String(headerValue).split(',')[0].trim().replace(/:\d+$/, '').toLowerCase();
+}
+
+function redirect(res, location, headers = {}) {
+  res.writeHead(302, { location, ...headers });
+  res.end();
+}
+
+async function handlePreviewHttp(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'preview.local'}`);
+  const forwardedHost = normalizeHost(req.headers['x-forwarded-host']);
+  const host = forwardedHost || normalizeHost(req.headers.host);
+
+  if (req.method === 'GET' && url.pathname === '/__oxy/preview/auth') {
+    try {
+      const token = url.searchParams.get('t');
+      const entry = previewAuth.consumeBootstrapToken(token, { host });
+      previewRuntime.touchPreview(entry.previewId);
+      const session = previewAuth.createCookieSession(entry);
+      redirect(res, '/', { 'set-cookie': session.cookie });
+    } catch (error) {
+      res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end(error instanceof Error ? error.message : 'Unauthorized preview');
+    }
+    return true;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/__oxy/preview/authorize') {
+    const verified = previewAuth.verifyCookie(req.headers.cookie || '', { host });
+    if (!verified) {
+      res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Unauthorized preview');
+      return true;
+    }
+    previewRuntime.touchPreview(verified.entry.previewId);
+    res.writeHead(200, {
+      'content-type': 'text/plain; charset=utf-8',
+      'x-oxygenie-preview-id': verified.entry.previewId,
+      'x-oxygenie-session-id': verified.entry.sessionId,
+    });
+    res.end('ok');
+    return true;
+  }
+
+  return false;
+}
+
 // C4 backpressure (consumer side): bytes queued on the WS socket above/below
 // which we pause/resume reading the worker's stdout, so a fast agent stream +
 // slow client can't grow the server's send buffer without bound.
@@ -812,6 +888,84 @@ async function handleCreateSession(ws) {
     sendMessage(ws, {
       type: 'error',
       code: 'server_error',
+      message: error instanceof Error ? error.message : String(error),
+      retriable: true,
+    });
+  }
+}
+
+async function resolvePreviewWorkspace(ws, sessionId) {
+  if (!sessionId) {
+    throw new Error('Missing sessionId for preview');
+  }
+
+  if (ws.cookie) {
+    const sessionData = await loadSessionFromDb(ws.cookie, sessionId);
+    if (sessionData) {
+      return getSessionWorkspace(ws.userId, sessionId);
+    }
+  }
+
+  // Newly-created empty sessions are persisted immediately, but keep a narrow
+  // fallback for the current socket while the DB/API write is settling.
+  if (ws.workspaceSessionId === sessionId) {
+    return getSessionWorkspace(ws.userId, sessionId);
+  }
+
+  throw new Error('Session not found or not accessible');
+}
+
+async function handleStartPreview(ws, message) {
+  const sessionId = message.sessionId || ws.workspaceSessionId;
+  const mode = message.mode === 'live' ? 'live' : 'static';
+  if (mode !== 'static') {
+    sendPreviewState(ws, {
+      sessionId,
+      previewId: 'pending',
+      mode,
+      status: 'error',
+      error: 'Live preview is best-effort and not enabled in v1. Use static preview.',
+    });
+    return;
+  }
+
+  try {
+    const workspacePath = await resolvePreviewWorkspace(ws, sessionId);
+    await previewRuntime.startStaticPreview({
+      userId: ws.userId,
+      sessionId,
+      workspacePath,
+      sendState: (state) => sendPreviewState(ws, state),
+    });
+  } catch (error) {
+    sendPreviewState(ws, {
+      sessionId,
+      previewId: 'pending',
+      mode,
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function handleStopPreview(ws, message) {
+  try {
+    const previewId = message.previewId;
+    if (!previewId) {
+      sendMessage(ws, {
+        type: 'error',
+        code: 'invalid_message',
+        message: 'Missing previewId for stop_preview',
+        retriable: false,
+      });
+      return;
+    }
+    const state = await previewRuntime.stopPreview(previewId);
+    if (state) sendPreviewState(ws, state);
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'preview_stop_failed',
       message: error instanceof Error ? error.message : String(error),
       retriable: true,
     });
@@ -1440,6 +1594,14 @@ async function handleMessage(ws, msg) {
       }
       break;
 
+    case 'start_preview':
+      await handleStartPreview(ws, message);
+      break;
+
+    case 'stop_preview':
+      await handleStopPreview(ws, message);
+      break;
+
     case 'approval_response': {
       // Ask-mode HITL: forward the user's approve/reject to the active worker's
       // stdin (newline-delimited). The worker resolves the pending canUseTool.
@@ -1497,7 +1659,18 @@ async function handleMessage(ws, msg) {
  */
 export function startWebSocketServer(port = WS_PORT) {
   // Create HTTP server for WebSocket
-  const httpServer = http.createServer((req, res) => {
+  const httpServer = http.createServer(async (req, res) => {
+    try {
+      if (await handlePreviewHttp(req, res)) {
+        return;
+      }
+    } catch (error) {
+      console.error('[WS Server] Preview HTTP handler failed:', error);
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Preview endpoint failed');
+      return;
+    }
+
     // Health check endpoint
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1596,6 +1769,7 @@ wss.on('connection', async (ws, request) => {
 // Heartbeat (+ S3 idle reaping)
 const heartbeat = setInterval(() => {
   const now = Date.now();
+  previewAuth.reapExpired();
   wss.clients.forEach((ws) => {
     // S3 — close alive-but-idle connections before the liveness ping. Guards
     // (active worker / never-stamped / disabled) live in shouldReapIdle().
@@ -1629,6 +1803,15 @@ const heartbeat = setInterval(() => {
     }
     ws.isAlive = false;
     ws.ping();
+  });
+  previewRuntime.reapIdlePreviews((state) => {
+    wss.clients.forEach((ws) => {
+      if (ws.workspaceSessionId === state.sessionId) {
+        sendPreviewState(ws, state);
+      }
+    });
+  }).catch((error) => {
+    console.error('[WS Server] Preview idle reap failed:', error);
   });
 }, HEARTBEAT_INTERVAL_MS);
 

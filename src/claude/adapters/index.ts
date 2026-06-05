@@ -7,6 +7,8 @@
 export {
   runChat,
   cancelActiveRun,
+  startPreview,
+  stopPreview,
   respondApproval,
   abort,
   resumeSession,

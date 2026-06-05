@@ -9,7 +9,7 @@
  */
 
 import { useMemo } from 'react';
-import { useChatSessionStore, type ThreadMessage } from '~/lib/chat-session-store';
+import { useChatSessionStore, type ThreadMessage, type PreviewState } from '~/lib/chat-session-store';
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -208,4 +208,18 @@ export function useSessionContext(): SessionContextInfo | null {
       numTurns: usage?.num_turns,
     };
   }, [usage, meta]);
+}
+
+/**
+ * Phase C preview runtime state for the active session, or null. Guards by
+ * currentSessionId so a stale preview from a previous session never leaks.
+ */
+export function useSessionPreview(): PreviewState | null {
+  const preview = useChatSessionStore((s) => s.previewState);
+  const sessionId = useChatSessionStore((s) => s.currentSessionId);
+  return useMemo(() => {
+    if (!preview) return null;
+    if (sessionId && preview.sessionId && preview.sessionId !== sessionId) return null;
+    return preview;
+  }, [preview, sessionId]);
 }
