@@ -141,7 +141,7 @@ services:
         condition: service_healthy
     environment:
       # Ensure DATABASE_URL is set (Docker Compose will fail if not set)
-      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       NODE_ENV: production
     # Add debug output to verify DATABASE_URL is set
     entrypoint: >
@@ -177,7 +177,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       # S3-compatible config to reach MinIO inside the stack
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
@@ -235,7 +235,7 @@ services:
       # Disable auto-migration in production (use migrate service instead)
       AUTO_MIGRATE: 'false'
       # Database
-      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       # S3-compatible config to reach MinIO inside the stack
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
