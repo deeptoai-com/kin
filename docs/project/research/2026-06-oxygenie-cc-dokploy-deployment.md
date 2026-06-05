@@ -167,8 +167,10 @@ docker buildx build --platform linux/amd64 \
 ## 9. 执行前待办（阻塞项）
 
 - [ ] CF：SSL/TLS 模式切 **Full (Strict)**
-- [ ] CF：创建 API Token（Origin CA 模板 / `Zone > SSL and Certificates > Edit`）→ 用它签 Origin CA 证书
-- [ ] 提供 **ARK `ANTHROPIC_AUTH_TOKEN`**
+- [x] CF：创建 API Token + **Origin CA 证书已签发**（2026-06-05，有效期至 2041，SAN
+      `oxygenie.cc` + `*.oxygenie.cc`，issuer = CloudFlare Origin CA，与私钥匹配）
+- [x] DB / MinIO / Meili / `BETTER_AUTH_SECRET` 随机密钥已生成
+- [ ] 提供 **ARK `ANTHROPIC_AUTH_TOKEN`**（已留占位）
 - [ ] 确认 `doubao-seed-2.0-lite` 的确切 model id（不在最初给的可用列表里）
 - [ ] 按 §6 改 `docker-compose.dokploy.yml`
 - [ ] 按 §6/§5 补 `infra/deploy/env.dokploy.example` 的 ARK/模型/域名键
@@ -177,6 +179,19 @@ docker buildx build --platform linux/amd64 \
 - [ ] 部署 → 冒烟 → **浏览器真预览路由 E2E** → 通过后合并 PR #107 到 main
 
 ---
+
+## 9.1 本地密钥与证书位置（仓库外，勿提交）
+
+> 放在 repo 外（CLAUDE.md 禁止动 repo `.env`，且密钥进 git 会泄露）。**这就是"以后去哪找"的答案**：
+
+```
+~/oxygenie-deploy/secrets.env                  # CF token + 随机密钥 + ARK 占位 + 域名（chmod 600）
+~/oxygenie-deploy/certs/oxygenie.cc.origin.crt # Origin CA 证书（装进 Dokploy → Certificates）
+~/oxygenie-deploy/certs/oxygenie.cc.origin.key # 对应私钥（装进 Dokploy）
+~/oxygenie-deploy/certs/oxygenie.cc.{crt,key}  # 自签后备证书（CF Full 非 Strict 时用）
+```
+
+`secrets.env` 可作 Dokploy 环境变量导入蓝本。CF API Token 用完可在 CF 控制台撤销。
 
 ## 10. 相关文件
 
