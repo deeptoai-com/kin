@@ -1,131 +1,138 @@
-# Docker Compose Deployment
+# Path A — Docker Compose on a single Linux VPS
 
-Deploy OxyGenie on a single server using Docker Compose. Best for self-hosted, VPS, or local testing with production-like setup.
+Self-host the **full** OxyGenie stack — chat, the Phase C **live preview**, and the **code
+sandbox** — on one Linux server with a public IP, using a **bundled Traefik** that terminates
+TLS. This is the recommended baseline for anyone running their own box. **No Cloudflare Tunnel,
+no Dokploy, no Swarm.** (For a workstation behind NAT, use [Path C / tunnel](tunnel.md); for a
+managed UI, [Path B / Dokploy](dokploy.md).)
 
-## Prerequisites
+**Compose file:** [`docker-compose.prod.yml`](../../docker-compose.prod.yml)
 
-- Docker & Docker Compose
-- (Optional) Domain name and reverse proxy for HTTPS
-- (Optional) Caddy or nginx for SSL
+```
+Internet ──TLS──▶ Traefik (:443, bundled)  ──reads container labels──▶
+   ├─ your-domain        → app (5000) ;  /ws → ws-server (3001)
+   └─ <id>.your-domain   → preview sandbox container (4173), forward-auth gated
+```
+
+> On a normal Linux Docker host Traefik talks to the docker socket **directly** — the macOS
+> `dockerproxy` shim from the tunnel path is **not needed here**.
 
 ---
 
-## Step 1: Clone and Configure
+## Critical invariants (get any wrong → it won't serve)
 
-```bash
-git clone https://github.com/foreveryh/oxygenie.git
-cd OxyGenie
-pnpm install
-```
-
-## Step 2: Environment Variables
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set at minimum:
-
-```bash
-# Database (Docker builds DATABASE_URL from these; do NOT set DATABASE_URL)
-POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="your-secure-password"
-POSTGRES_DB="oxygenie"
-
-# MinIO
-MINIO_ROOT_USER="minioadmin"
-MINIO_ROOT_PASSWORD="your-minio-password"
-MINIO_BUCKET="oxygenie-files"
-
-# Meilisearch
-MEILI_MASTER_KEY="your-strong-master-key"
-
-# Auth (use http://localhost:5050 when accessing via Docker ports)
-BETTER_AUTH_SECRET="your-secret-at-least-32-chars"
-BETTER_AUTH_URL="http://localhost:5050"
-
-# AI
-ANTHROPIC_API_KEY="sk-ant-..."
-ZHIPU_API_KEY="your-zhipu-key"
-```
-
-See [.env.example](../../.env.example) for all options. [.env.docker](../../.env.docker) provides Docker-specific defaults (container hostnames, `VITE_WS_URL`).
+1. **Secrets live OUTSIDE the repo** in `~/oxygenie-deploy/secrets.env` (chmod 600). Never edit
+   `.env` / commit secrets.
+2. **`APP_NAME_SANITIZED` must be unique** on the host — volume names (`${APP_NAME_SANITIZED}-data`
+   etc.) are global; a collision reuses another stack's data (→ Postgres `28P01`).
+3. **`DATABASE_URL` is built from `POSTGRES_*` inside the compose** — don't pass a separate
+   `DATABASE_URL` (it would drift from `POSTGRES_PASSWORD`).
+4. **ARK auth = `ANTHROPIC_AUTH_TOKEN` (Bearer)** — do **not** set `ANTHROPIC_API_KEY` (it flips
+   the SDK to `x-api-key` and ARK rejects it).
+5. **Previews need a wildcard**: DNS `*.<domain>` → the VPS, and a **wildcard TLS cert**
+   (`*.<domain>`). The cert is issued once (see TLS below); preview subdomains reuse it — Traefik
+   does **not** request a cert per preview.
+6. **Image is built off-server → pulled** by default (the SSR build peaks >8 GB; don't build on a
+   small VPS). Set `APP_PULL_POLICY=never` + build locally only if the VPS has ≥16 GB RAM.
 
 ---
 
-## Step 3: Start Services
+## TLS — two supported options
 
-```bash
-pnpm docker:up
-```
+| Option | When | What you set |
+|---|---|---|
+| **A. Let's Encrypt DNS-01 (default)** | Pure VPS; you want your own free, auto-renewing certs | `ACME_EMAIL` + `CF_DNS_API_TOKEN` (a Cloudflare token with **Zone:DNS:Edit**). Traefik issues ONE cert for `<domain>` + `*.<domain>` via DNS-01 (HTTP-01 can't do wildcards). |
+| **B. Cloudflare Origin CA** | Domain already on Cloudflare, orange-cloud | Origin CA cert in `infra/prod/dynamic/` (see [its README](../../infra/prod/dynamic/README.md)); drop the `tls.certresolver=le` lines from the app `main` router. Proven on the Dokploy path. |
 
-Or the full command:
-```bash
-docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
-```
-
-**Why two env files?** `.env.docker` provides container hostnames (e.g. `redis://redis`, `meilisearch:7700`); `.env` provides your secrets and overrides. Both are needed for correct container-to-container communication.
-
-This starts:
-
-- PostgreSQL (port 5432)
-- MinIO (9000, 9001)
-- Redis (6379)
-- Meilisearch (7700)
-- Runs migrations
-- Starts app and worker
+The compose **defaults to option A**. Both are wired; see the comments in the `traefik` service.
 
 ---
 
-## Step 4: Access
+## Steps
 
-| Service | URL | Port |
-|---------|-----|------|
-| **App** | http://localhost:5050 | 5050 |
-| **Claude Chat** | http://localhost:5050/agents/claude-chat | 5050 |
-| **WebSocket** | ws://localhost:3051/ws/agent | 3051 |
+### 1. Server + DNS
+- A Linux VPS with **Docker + the Compose plugin**, ports **80 + 443** open.
+- DNS for your domain (examples use `oxygenie.cc`):
+  - `A  @  → <vps-ip>`
+  - `A  *  → <vps-ip>`  (wildcard, for previews)
+  - For TLS option A you also need the domain in **Cloudflare** (for the DNS-01 token); for
+    option B, set both records **proxied** (orange).
 
----
-
-## Production: Reverse Proxy + HTTPS
-
-For production with a domain:
-
-1. **Point DNS** to your server IP
-2. **Use a reverse proxy** (Caddy, nginx, Traefik)
-3. **Set** in `.env`:
-   ```bash
-   BETTER_AUTH_URL="https://your-domain.com"
-   VITE_WS_URL="wss://your-domain.com/ws/agent"
-   ```
-4. **Rebuild** so `VITE_WS_URL` is baked into the frontend:
-   ```bash
-   docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
-   ```
-
-Example Caddy config (see [infra/deploy/Caddyfile](../../infra/deploy/Caddyfile)):
-
+### 2. Get the code + secrets
+```bash
+git clone https://github.com/foreveryh/oxygenie.git && cd oxygenie
+mkdir -p ~/oxygenie-deploy && chmod 700 ~/oxygenie-deploy
+cat > ~/oxygenie-deploy/secrets.env <<'EOF'
+APP_HOSTNAME=oxygenie.cc
+APP_NAME=oxygenie
+APP_NAME_SANITIZED=oxygenie            # unique per host (volume names)
+POSTGRES_USER=oxygenie
+POSTGRES_PASSWORD=__FILL__
+POSTGRES_DB=oxygenie
+MINIO_ROOT_USER=oxygenie
+MINIO_ROOT_PASSWORD=__FILL__
+MINIO_BUCKET=oxygenie
+MEILI_MASTER_KEY=__FILL__
+BETTER_AUTH_SECRET=__FILL__
+# TLS option A (Let's Encrypt DNS-01):
+ACME_EMAIL=you@example.com
+CF_DNS_API_TOKEN=__cloudflare_token_Zone_DNS_Edit__
+# LLM gateway (ARK / Volcengine) — Bearer; do NOT set ANTHROPIC_API_KEY
+ANTHROPIC_AUTH_TOKEN=ark-your-key
+ANTHROPIC_BASE_URL=https://ark.cn-beijing.volces.com/api/coding
+ANTHROPIC_MODEL=glm-5.1
+ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.1
+ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.1
+ANTHROPIC_DEFAULT_HAIKU_MODEL=doubao-seed-2.0-lite
+CLAUDE_CODE_SUBAGENT_MODEL=glm-5.1
+EOF
+chmod 600 ~/oxygenie-deploy/secrets.env
+for k in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MEILI_MASTER_KEY BETTER_AUTH_SECRET; do
+  sed -i "s|^$k=__FILL__|$k=$(openssl rand -hex 32)|" ~/oxygenie-deploy/secrets.env
+done
+# then edit secrets.env: real ANTHROPIC_AUTH_TOKEN, ACME_EMAIL, CF_DNS_API_TOKEN, APP_HOSTNAME
 ```
-your-domain.com {
-    reverse_proxy localhost:5050
-}
 
-# WebSocket
-your-domain.com {
-    handle_path /ws/* {
-        reverse_proxy localhost:3051
-    }
-}
+### 3. Image — pull (default) or build on the VPS
+Default pulls `ghcr.io/foreveryh/oxygenie/app:latest`. To build on the VPS instead (needs ≥16 GB
+RAM): `docker build -t oxygenie:local .` then set `APP_IMAGE=oxygenie APP_TAG=local APP_PULL_POLICY=never`.
+
+### 4. Bring it up
+```bash
+set -a; . ~/oxygenie-deploy/secrets.env; set +a
+docker compose -f docker-compose.prod.yml up -d
 ```
+Traefik obtains the wildcard cert via DNS-01 on first boot — watch:
+`docker logs ${APP_NAME_SANITIZED}-traefik 2>&1 | grep -i acme`.
+
+### 5. Verify
+```bash
+set -a; . ~/oxygenie-deploy/secrets.env; set +a
+docker compose -f docker-compose.prod.yml ps                            # all healthy
+curl -sS -o /dev/null -w '%{http_code}\n' https://$APP_HOSTNAME/health   # → 200
+docker exec ${APP_NAME}-app sh -c 'unshare -Urn echo userns-ok'         # → userns-ok (sandbox)
+```
+Then open `https://<domain>`, sign in, ask for a small web app → **运行预览 / Run preview** →
+it loads at `https://<id>.<domain>`. (Optional speed-up: `bash infra/preview/warm-cache.sh`.)
 
 ---
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `database "oxygenie" does not exist` | Run `docker compose down -v` then `up -d --build` (⚠️ deletes data) |
-| Keep existing DB (ex0/constructa) | Set only `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` in `.env` to match; do NOT set `DATABASE_URL` |
-| WebSocket 426 / fails | Ensure reverse proxy supports WebSocket upgrade; check VITE_WS_URL matches your domain |
+| Symptom | Fix |
+|---|---|
+| No cert / `https` fails | `docker logs <stack>-traefik \| grep -i acme`. DNS-01 needs `CF_DNS_API_TOKEN` (Zone:DNS:Edit) + the domain on Cloudflare. Wildcard requires DNS-01 (not HTTP-01). |
+| Preview subdomain → cert warning | The wildcard covers `*.<domain>` (one level only). Previews are single-level `<id>.<domain>` by design. |
+| Preview opens but **404** | Needs the Traefik **v3 `HostRegexp`** fix — this compose has it. |
+| migrate `28P01` | `APP_NAME_SANITIZED` collided with an old stack's volume → set a unique one. |
+| Build OOM on the VPS | Don't build on a small box — pull from GHCR (default). Building needs ≥16 GB. |
+| Chat auth/model error | `ANTHROPIC_AUTH_TOKEN` set, `ANTHROPIC_API_KEY` **unset**. |
 
-See [Troubleshooting](../troubleshooting.md) for more.
+---
+
+## Notes
+- This path grants the app the privileges preview + sandbox need (`seccomp/apparmor=unconfined`,
+  `NET_ADMIN`) — fine on a VPS you control.
+- Backups: the stateful volumes are `${APP_NAME_SANITIZED}-{data,claude-sessions,minio-data,meili-data}`
+  (same `docker run --rm -v … tar` recipe as [mac-mini.md](mac-mini.md#operations)).
+- All three paths run the **same images + app**; only the edge (proxy / TLS / DNS) differs.

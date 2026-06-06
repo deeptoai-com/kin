@@ -1,0 +1,12 @@
+# Cloudflare Origin CA — Traefik file-provider config (the ALTERNATIVE TLS option for Path A).
+# Activate by copying to `origin-ca.yml` and dropping origin.crt / origin.key in this dir.
+# See README.md. (Default Path A TLS is Let's Encrypt DNS-01; you don't need this file for that.)
+tls:
+  certificates:
+    - certFile: /etc/traefik/dynamic/origin.crt
+      keyFile: /etc/traefik/dynamic/origin.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/dynamic/origin.crt
+        keyFile: /etc/traefik/dynamic/origin.key

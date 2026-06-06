@@ -128,3 +128,9 @@ loadtest-results/
 # Both are generated from your tunnel token — commit only config.yml.example.
 infra/tunnel/credentials.json
 infra/tunnel/config.yml
+
+# Path A (prod) Traefik dynamic — Cloudflare Origin CA cert/key (the key is secret) + the
+# activated config. Commit only origin-ca.yml.example + README.
+infra/prod/dynamic/origin.crt
+infra/prod/dynamic/origin.key
+infra/prod/dynamic/origin-ca.yml
