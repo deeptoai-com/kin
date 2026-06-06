@@ -215,6 +215,9 @@ services:
     # Should show "srt: initialized" not "env-strip only".
     security_opt:
       - seccomp=unconfined
+      # AppArmor (Ubuntu/Debian hosts) also blocks the unprivileged user namespaces
+      # srt needs; the default docker profile must be lifted too, not just seccomp.
+      - apparmor=unconfined
     depends_on:
       db:
         condition: service_healthy

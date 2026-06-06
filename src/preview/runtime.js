@@ -82,6 +82,10 @@ export class DockerPreviewProvider {
   async stopPreview(input) {
     return this.request('/v1/preview/stop', input);
   }
+
+  async statusPreview(input) {
+    return this.request('/v1/preview/status', input);
+  }
 }
 
 export class PreviewRuntime {
@@ -209,21 +213,34 @@ export class PreviewRuntime {
             manifest,
           });
         }
-        const token = this.auth?.issueBootstrapToken({
-          previewId,
-          sessionId,
-          userId,
-          host,
-        });
-        const readyState = status({
-          sessionId,
-          previewId,
-          mode: 'static',
-          status: 'ready',
-          url: token ? this.getPreviewUrl(previewId, token) : existing.url,
-          manifest,
-        });
-        return readyState;
+        // Cached as 'ready' — but the sandbox container may have been removed since
+        // (redeploy, idle-reap, crash) while this in-memory entry lingered. Returning
+        // the stale URL would 404. Verify liveness with the controller first; if the
+        // container is gone, clean up and fall through to a fresh (re)build.
+        let alive = false;
+        try {
+          const st = await this.provider.statusPreview({ previewId });
+          alive = !!st?.running;
+        } catch {
+          alive = false;
+        }
+        if (alive) {
+          const token = this.auth?.issueBootstrapToken({
+            previewId,
+            sessionId,
+            userId,
+            host,
+          });
+          return status({
+            sessionId,
+            previewId,
+            mode: 'static',
+            status: 'ready',
+            url: token ? this.getPreviewUrl(previewId, token) : existing.url,
+            manifest,
+          });
+        }
+        await this.stopPreview(previewId).catch(() => {});
       }
 
       if (this.semaphore.activeCount >= this.semaphore.max) {
