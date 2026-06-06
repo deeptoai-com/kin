@@ -33,11 +33,14 @@ plan for what's left. Owner-set: **Now = Slimming only.**
 one-time package→repo link); zero Mastra references ✅.
 
 ### 🔵 NEXT — Deployment completeness + capability lists
-- **Path A completeness** — `docker-compose.yml` bundles Traefik + the `preview-auth` router
-  (Traefik **v3** `HostRegexp`) so the "recommended baseline" self-host path actually runs previews.
-- **Agent code sandbox** — fix the registration sequencing bug (call `ensureSandbox()` *before*
-  checking `sandboxStatus().state`; today it reads `state=null` and never registers bash) + ensure
-  bubblewrap in the image → chat-side bash/Python execution works on the deploys.
+- [x] **Agent code sandbox** — fixed the registration sequencing bug (eager `ensureSandbox()`
+      before the check; `state=null` → bash never registered). Verified live (srt active). *(PR #112)*
+- [~] **Path A completeness** — new **`docker-compose.prod.yml`**: bundled Traefik (direct socket,
+      no shim) + websecure/TLS + the `preview-auth` router (v3 `HostRegexp`) + the preview wildcard
+      cert. **Two TLS options**: Let's Encrypt DNS-01 (default) + Cloudflare Origin CA (`infra/prod/dynamic/`).
+      Locally verified (compose parses, labels interpolate, Traefik flags valid, services = the proven
+      tunnel stack); **definitive test = a real Linux VPS** (direct-socket routing + LE wildcard issuance
+      + public HTTPS). Guide: `docs/deployment/docker-compose.md`.
 - **Skills / MCP curation ("lists")** — content refresh (skills-api `scrapedAt`/ETag), admin
   curation UI for the official catalog, an **MCP catalog/picker**, and fix the stale "coming soon" copy.
 

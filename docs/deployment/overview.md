@@ -18,7 +18,7 @@
 
 | Path | Who it's for | What you manage | Compose file |
 |---|---|---|---|
-| **A. Docker Compose (self-managed)** | **Anyone self-hosting on a VPS / their own box. Recommended baseline.** | The host + a reverse proxy (Traefik, bundled) | `docker-compose.yml` |
+| **A. Docker Compose (self-managed)** | **Anyone self-hosting on a VPS / their own box. Recommended baseline.** | The host + a reverse proxy (Traefik, bundled) | `docker-compose.prod.yml` |
 | **B. Dokploy (managed PaaS)** | Teams who want a UI + managed Traefik/TLS/domains (this is how the maintainers run it) | A Dokploy install | `docker-compose.dokploy.yml` |
 | **C. Cloudflare Tunnel (workstation / behind NAT)** | A dev box, home server, or workstation with **no public inbound** — full-feature trials with the least infra | The host only (TLS + DNS handled by Cloudflare; tunnel is outbound-only) | `docker-compose.tunnel.yml` |
 
