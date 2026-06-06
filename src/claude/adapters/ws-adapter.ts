@@ -114,6 +114,7 @@ type InboundMessage =
   | { type: 'abort' }
   | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live' }
   | { type: 'stop_preview'; sessionId?: string }
+  | { type: 'share_preview'; previewId: string; sessionId?: string }
   | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny' }
   | { type: 'ping' };
 
@@ -617,6 +618,16 @@ export async function startPreview(
 
 export async function stopPreview(sessionId?: string): Promise<void> {
   await send({ type: 'stop_preview', sessionId: sessionId ?? currentSessionId });
+}
+
+/**
+ * Mark a running preview as public (Option A share toggle). The backend drops
+ * the forward-auth gate for this preview and pins it alive, then replies with an
+ * updated `preview_state` (public:true, shareUrl). The bare share link then
+ * works for anyone who opens it (on a publicly-resolvable domain).
+ */
+export async function sharePreview(previewId: string, sessionId?: string): Promise<void> {
+  await send({ type: 'share_preview', previewId, sessionId: sessionId ?? currentSessionId });
 }
 
 /**

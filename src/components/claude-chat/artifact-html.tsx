@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useMemo, useState, type FC, type Ref } from 'react'
-import { AlertTriangle, Info, Loader2, Play } from 'lucide-react'
-import { startPreview } from '~/claude/adapters'
+import { AlertTriangle, Check, Info, Loader2, Play, Share2 } from 'lucide-react'
+import { sharePreview, startPreview } from '~/claude/adapters'
 import { useSessionPreview } from '~/lib/hooks/use-session-workbench'
 
 export interface HTMLArtifactProps {
@@ -67,6 +67,7 @@ export const HTMLArtifact: FC<HTMLArtifactProps> = ({ content, title, iframeRef 
 
   const preview = useSessionPreview()
   const [starting, setStarting] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -88,6 +89,35 @@ export const HTMLArtifact: FC<HTMLArtifactProps> = ({ content, title, iframeRef 
   const runPreview = () => {
     setStarting(true)
     void startPreview().catch(() => setStarting(false))
+  }
+
+  // Bare, token-free origin of the running preview — the link safe to share.
+  // Prefer the backend-confirmed shareUrl; otherwise derive it from the live URL.
+  const shareUrl =
+    preview?.shareUrl ||
+    (preview?.url
+      ? (() => {
+          try {
+            return new URL(preview.url as string).origin + '/'
+          } catch {
+            return ''
+          }
+        })()
+      : '')
+
+  // Copy the link immediately (inside the click gesture so the clipboard write
+  // is allowed), then tell the backend to make this preview public so the link
+  // works for anyone who opens it.
+  const onShare = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard may be blocked (insecure context); the URL is shown below to copy manually.
+    }
+    if (preview?.previewId) void sharePreview(preview.previewId).catch(() => {})
   }
 
   return (
@@ -116,7 +146,26 @@ export const HTMLArtifact: FC<HTMLArtifactProps> = ({ content, title, iframeRef 
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               {busy ? '运行中…' : liveUrl ? '重新运行' : '运行预览'}
             </button>
+            {liveUrl && (
+              <button
+                type="button"
+                onClick={() => void onShare()}
+                title="复制公开链接，分享给他人在浏览器打开"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 font-medium text-amber-900 transition hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+                {copied ? '已复制' : '分享'}
+              </button>
+            )}
           </div>
+          {liveUrl && shareUrl && (preview?.public || copied) && (
+            <div className="flex items-center gap-1.5 pl-5 text-[11px] text-amber-800 dark:text-amber-300">
+              <Share2 className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                公开链接：<span className="font-mono">{shareUrl}</span>
+              </span>
+            </div>
+          )}
           {(busy || failed) && (
             <div className="flex items-center gap-1.5 pl-5 text-[11px] text-amber-800 dark:text-amber-300">
               {failed ? (

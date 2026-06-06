@@ -110,11 +110,52 @@ export class PreviewRuntime {
     return this.active.get(previewId) || null;
   }
 
+  getStateByHost(host) {
+    if (!host) return null;
+    const wanted = String(host).toLowerCase();
+    for (const state of this.active.values()) {
+      if (state.host && state.host.toLowerCase() === wanted) return state;
+    }
+    return null;
+  }
+
+  // A preview is "public" once the user has explicitly shared it (Option A:
+  // public-link toggle). Public previews skip the forward-auth cookie gate
+  // (see ws-server `/__oxy/preview/authorize`) and are pinned alive (no
+  // idle-reap), so a shared link keeps working for anyone who opens it.
+  isPublicHost(host) {
+    const state = this.getStateByHost(host);
+    return !!(state && state.public);
+  }
+
   touchPreview(previewId) {
     const state = this.active.get(previewId);
     if (!state) return null;
     state.lastAccessAt = Date.now();
     return state;
+  }
+
+  // Flip a running preview to public and return a state-shaped payload (so the
+  // caller can broadcast it over `preview_state`). `shareUrl` is the bare,
+  // token-free origin URL — it works for anyone because authorize bypasses the
+  // cookie for public hosts. Returns null if the preview isn't running.
+  sharePreview(previewId) {
+    const state = this.active.get(previewId);
+    if (!state || state.status !== 'ready') return null;
+    state.public = true;
+    state.lastAccessAt = Date.now();
+    const shareUrl = `${this.protocol}://${state.host}/`;
+    state.shareUrl = shareUrl;
+    return {
+      sessionId: state.sessionId,
+      previewId,
+      mode: state.mode,
+      status: state.status,
+      url: state.url,
+      manifest: state.manifest,
+      public: true,
+      shareUrl,
+    };
   }
 
   async stopPreview(previewId, reason = 'stopped') {
@@ -138,6 +179,7 @@ export class PreviewRuntime {
     const stopped = [];
     for (const [previewId, state] of this.active.entries()) {
       if (state.status !== 'ready') continue;
+      if (state.public) continue; // shared previews are pinned alive
       if (now - state.lastAccessAt <= this.idleTimeoutMs) continue;
       try {
         const next = await this.stopPreview(previewId, 'idle timeout');

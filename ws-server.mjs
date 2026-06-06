@@ -292,6 +292,7 @@ const BUSINESS_MESSAGE_TYPES = new Set([
   'abort',
   'start_preview',
   'stop_preview',
+  'share_preview',
   'approval_response',
 ]);
 
@@ -808,6 +809,20 @@ async function handlePreviewHttp(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/__oxy/preview/authorize') {
+    // Public (user-shared) previews bypass the cookie gate entirely so anyone
+    // with the link can open them. The forward-auth middleware still runs; we
+    // just always answer "ok" for hosts the user explicitly marked public.
+    const publicState = previewRuntime.getStateByHost(host);
+    if (publicState?.public) {
+      previewRuntime.touchPreview(publicState.previewId);
+      res.writeHead(200, {
+        'content-type': 'text/plain; charset=utf-8',
+        'x-oxygenie-preview-id': publicState.previewId,
+        'x-oxygenie-preview-public': '1',
+      });
+      res.end('ok');
+      return true;
+    }
     const verified = previewAuth.verifyCookie(req.headers.cookie || '', { host });
     if (!verified) {
       res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' });
@@ -944,6 +959,39 @@ async function handleStartPreview(ws, message) {
       mode,
       status: 'error',
       error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function handleSharePreview(ws, message) {
+  try {
+    const previewId = message.previewId;
+    if (!previewId) {
+      sendMessage(ws, {
+        type: 'error',
+        code: 'invalid_message',
+        message: 'Missing previewId for share_preview',
+        retriable: false,
+      });
+      return;
+    }
+    const state = previewRuntime.sharePreview(previewId);
+    if (!state) {
+      sendMessage(ws, {
+        type: 'error',
+        code: 'preview_share_failed',
+        message: 'Preview is not running. Start the preview before sharing.',
+        retriable: true,
+      });
+      return;
+    }
+    sendPreviewState(ws, state);
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'preview_share_failed',
+      message: error instanceof Error ? error.message : String(error),
+      retriable: true,
     });
   }
 }
@@ -1600,6 +1648,10 @@ async function handleMessage(ws, msg) {
 
     case 'stop_preview':
       await handleStopPreview(ws, message);
+      break;
+
+    case 'share_preview':
+      await handleSharePreview(ws, message);
       break;
 
     case 'approval_response': {

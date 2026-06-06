@@ -9,6 +9,7 @@ export {
   cancelActiveRun,
   startPreview,
   stopPreview,
+  sharePreview,
   respondApproval,
   abort,
   resumeSession,

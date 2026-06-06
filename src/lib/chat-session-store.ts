@@ -118,6 +118,11 @@ export type PreviewState = {
   status: 'detecting' | 'installing' | 'building' | 'ready' | 'error' | 'stopped';
   url?: string;
   error?: string;
+  // Set once the user shares the preview (Option A public-link toggle): the
+  // preview bypasses the forward-auth gate and is pinned alive. `shareUrl` is
+  // the bare, token-free link anyone can open.
+  public?: boolean;
+  shareUrl?: string;
 };
 
 // Ask-mode HITL: a pending tool-approval request, pushed by the worker over WS
