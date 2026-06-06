@@ -664,9 +664,9 @@ services:
 
 **关键不变量(踩错任一 → 部署失败):**
 
-1. **镜像 off-server 构建 → 推 GHCR → Dokploy 只拉取**。SSR 打包峰值 >8G,在 Dokploy 主机和
-   标准 7G CI runner 上都会 OOM。`docker-compose.dokploy.yml` 用 `image:`+`pull_policy: always`(**非 `build:`**)。
-   构建命令带 `--build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false`(跳过 playwright/libreoffice)。
+1. **镜像 off-server 构建 → 推 GHCR → Dokploy 只拉取**。SSR 打包峰值大,在 Dokploy 主机和
+   标准 7G CI runner 上易 OOM。`docker-compose.dokploy.yml` 用 `image:`+`pull_policy: always`(**非 `build:`**)。
+   (playwright/libreoffice 已于 2026-06 **彻底移除**,镜像默认精简,无需再传 `--build-arg INSTALL_*`。)
 2. **`APP_NAME_SANITIZED` 每个部署必须唯一**。卷名 `${APP_NAME_SANITIZED}-data` 是**全局名**,撞了会复用
    别的栈的数据卷(连带其旧密码)→ migrate 28P01。
 3. **`DATABASE_URL` 在 compose 内从 `POSTGRES_*` 拼**(单一来源),不要独立传 `DATABASE_URL`(会与

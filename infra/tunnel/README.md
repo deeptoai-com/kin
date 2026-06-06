@@ -48,7 +48,7 @@ Point both at the tunnel (replace `<TID>` with the tunnel id from step 2):
 ## 4. Build the image + bring it up
 The image is built **natively** on this host (fast on an arm64 Mac; no GHCR needed):
 ```bash
-docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+docker build -t oxygenie:local .
 # env: APP_IMAGE=oxygenie APP_TAG=local APP_HOSTNAME=oxygenie.cc + the secrets
 set -a; . ~/oxygenie-deploy/secrets.env; set +a
 export APP_IMAGE=oxygenie APP_TAG=local

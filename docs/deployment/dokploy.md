@@ -77,17 +77,15 @@ Building on the Dokploy host OOMs. Build on a capable machine and push to GHCR:
 echo "$(gh auth token)" | docker login ghcr.io -u <gh-user> --password-stdin
 docker buildx create --name oxybuilder --driver docker-container --bootstrap --use
 
-# build amd64 + push (Dokploy hosts are x86_64; build args skip the heavy tools)
+# build amd64 + push (Dokploy hosts are x86_64)
 docker buildx build --builder oxybuilder --platform linux/amd64 \
-  --build-arg INSTALL_BROWSER=false \
-  --build-arg INSTALL_OFFICE=false \
   -t ghcr.io/<gh-user>/oxygenie/app:latest \
   --push .
 ```
 
-> `INSTALL_BROWSER`/`INSTALL_OFFICE=false` skip Playwright Chromium + LibreOffice —
-> ~minutes faster and a much smaller image. These tools are too heavy to run in the
-> sandbox anyway and are slated for removal (see [Known follow-ups](#known-follow-ups)).
+> Playwright Chromium + LibreOffice were **removed from the image** (2026-06) — they were too
+> heavy to run in the sandbox. The image is lean by default; no build flags needed. (Office-
+> conversion and server-side-screenshot Skills degrade accordingly.)
 > `VITE_WS_URL` is **not** baked: the frontend computes `wss://<current-host>/ws/agent`
 > at runtime, so one image works for any domain.
 
@@ -168,7 +166,6 @@ Traefik routes `/ws` correctly — that's the agent-chat lifeline.
 | Symptom | Root cause | Fix |
 |---|---|---|
 | Deploy "Cancelled" after ~5 min; build log dies at `vite:reporter` (SSR) | SSR bundle build peaks > available RAM → OOM-killed (Dokploy host) / 6 h hang (7 GB GitHub runner) | **Build off-server** (≥16 GB) → GHCR; Dokploy pulls. Don't `build:` in the compose. |
-| Build crawls for 20 min+ at `playwright install --with-deps` | Emulated apt + Chromium/LibreOffice install is extremely slow | `--build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false` |
 | migrate `exit 1`; deploy log only says "didn't complete successfully" | `up -d` swallows container stdout | Read the **migrate container** log (Dokploy → Logs → `*-migrate`), not the deployment log |
 | `pull access denied` / image won't pull | GHCR package private | Make package public, or add a Dokploy registry credential |
 | `volume "<x>-data" already exists but was created for project …` then `28P01` | Global volume names collided with a previous stack → Postgres reused its data volume + creds | Set a **unique** `APP_NAME_SANITIZED` |

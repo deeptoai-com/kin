@@ -101,7 +101,7 @@ CLAUDE_CODE_SUBAGENT_MODEL=glm-5.1
 ### 5. Build the image natively, then bring the stack up
 ```bash
 # native build (fast on arm64 Mac; skips playwright + libreoffice)
-docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+docker build -t oxygenie:local .
 
 set -a; . ~/oxygenie-deploy/secrets.env; set +a
 export APP_IMAGE=oxygenie APP_TAG=local

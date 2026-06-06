@@ -152,10 +152,10 @@ Universal SSL covers the apex + one wildcard level (so previews are single-level
 ### 16 GB Mac mini — build natively (on the mini)
 ```bash
 cd ~/oxygenie
-docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+docker build -t oxygenie:local .
 ```
-`INSTALL_BROWSER/OFFICE=false` skip Playwright + LibreOffice (not needed; keeps the image
-lean). The result is a ~4 GB native arm64 image tagged `oxygenie:local`.
+The result is a ~4 GB native arm64 image tagged `oxygenie:local`. (Playwright + LibreOffice
+were removed from the image in 2026-06, so it's lean by default — no build flags needed.)
 
 ### 8 GB Mac mini — build elsewhere, then load
 On **another Apple-Silicon Mac with 16 GB+** (same `docker build` as above), then:
@@ -258,7 +258,7 @@ power failure".)
 ### Update to a new version
 ```bash
 cd ~/oxygenie && git pull
-docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .   # (8 GB: rebuild off-box + load)
+docker build -t oxygenie:local .   # (8 GB: rebuild off-box + load)
 set -a; . ~/oxygenie-deploy/secrets.env; set +a; export APP_IMAGE=oxygenie APP_TAG=local
 docker compose -f docker-compose.tunnel.yml -p oxygenie up -d   # recreates only what changed
 ```

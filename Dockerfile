@@ -36,7 +36,7 @@ WORKDIR /app
 # Install dependencies (with lockfile)
 COPY package.json pnpm-lock.yaml ./
 RUN echo "=== Memory before pnpm install ===" && free -m && \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile && \
+    pnpm install --frozen-lockfile && \
     echo "=== Memory after pnpm install ===" && free -m
 
 # Copy source and build
@@ -55,14 +55,9 @@ RUN echo "=== Memory before build ===" && free -m && \
 # ---- Stage 2: Runtime --------------------------------------------------------
 FROM node:24-bookworm-slim AS runner
 
-# ---- Image-size controls (default ON = unchanged behavior) -------------------
-# Two heavy, optional capability groups dominate the image size:
-#   * LibreOffice (~1GB)  -> only needed for office/doc-conversion Skills
-#   * Playwright chromium (~1.2GB) -> only needed for server-side screenshot Skills
-# Build a lean (~2.5GB) image for environments that don't use those Skills:
-#   docker build --build-arg INSTALL_OFFICE=false --build-arg INSTALL_BROWSER=false .
-ARG INSTALL_OFFICE=true
-ARG INSTALL_BROWSER=true
+# LibreOffice (~1GB) and Playwright/chromium (~1.2GB) were REMOVED (2026-06): too heavy
+# to run inside the sandbox, and the image no longer ships them. Office-conversion and
+# server-side-screenshot Skills degrade accordingly. The lean image is the only image now.
 
 # Core runtime deps: Python data stack + sandbox tools (bubblewrap/socat/ripgrep)
 # + lightweight doc tools (qpdf, pandoc). LibreOffice is installed separately below.
@@ -87,14 +82,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pandoc \
   && rm -rf /var/lib/apt/lists/*
 
-# Optional: LibreOffice (office/doc-conversion Skills). ~1GB. Gate with INSTALL_OFFICE.
-RUN if [ "$INSTALL_OFFICE" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends \
-        libreoffice-calc-nogui \
-        libreoffice-writer-nogui \
-      && rm -rf /var/lib/apt/lists/*; \
-    else echo "Skipping LibreOffice (INSTALL_OFFICE=$INSTALL_OFFICE)"; fi
-
 # Python packages for Skills
 # - markitdown-mcp: MCP server for document conversion
 # - pypdf, pdfplumber, reportlab: PDF skill dependencies
@@ -116,23 +103,13 @@ ENV PORT=5000
 
 # Install runtime dependencies (keep dev tools for migrations/worker)
 COPY package.json pnpm-lock.yaml ./
-RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 
 # Non-root user (Debian adduser/addgroup syntax)
 RUN addgroup --gid 1001 nodejs \
   && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" nodejs
-
-# Playwright browsers (chromium) for server-side screenshots. ~1.2GB.
-# Optional: gate with INSTALL_BROWSER (re-declared here; ARGs are stage-scoped).
-ARG INSTALL_BROWSER=true
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} \
-  && if [ "$INSTALL_BROWSER" = "true" ]; then \
-       npx playwright install --with-deps chromium; \
-     else echo "Skipping chromium (INSTALL_BROWSER=$INSTALL_BROWSER)"; fi \
-  && chown -R nodejs:nodejs ${PLAYWRIGHT_BROWSERS_PATH}
 
 # Copy build output and runtime assets
 # TanStack Start outputs to .output/

@@ -9,7 +9,7 @@
 # Cloudflare terminates TLS at the edge; the tunnel→Traefik hop is plain HTTP.
 #
 # Bring up (image built natively on the host as oxygenie:local):
-#   docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+#   docker build -t oxygenie:local .
 #   set -a; . ~/oxygenie-deploy/secrets.env; set +a
 #   export APP_IMAGE=oxygenie APP_TAG=local
 #   docker compose -f docker-compose.tunnel.yml up -d
