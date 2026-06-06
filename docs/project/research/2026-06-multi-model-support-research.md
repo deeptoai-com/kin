@@ -144,6 +144,13 @@ mode B lands.
 
 ## 5. Phased scope
 
+> **Scope update (owner steer 2026-06-07):** v1 is **not** limited to a single gateway. Any
+> Anthropic-protocol model that is *currently usable* (reachable + authed + model-accepted), incl.
+> **across connections/accounts**, must be switchable; a **health probe gates the menu**. The
+> authoritative spec is **`prd/2026-06-multi-model-switching-prd.md`** — it folds the old "mode B"
+> (per-request cross-provider env routing) into v1. The table below is kept for the original effort
+> reasoning; defer to the PRD where they differ.
+
 | Phase | Scope | Effort |
 |---|---|---|
 | **MVP (tomorrow)** | Same-gateway (ARK) model switch: registry config (curated ARK models) + `model` plumbing (store→adapter→ws-server→worker, validated) + real composer picker + `query({model})`. **No** baseURL/token switching, **no** DB. | S–M |

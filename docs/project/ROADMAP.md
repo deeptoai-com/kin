@@ -34,13 +34,15 @@ one-time package→repo link); zero Mastra references ✅.
 
 ### 🔵 NEXT — Deployment completeness + capability lists
 - [ ] **🎯 Multi-model selection (owner-set focus, 2026-06-07)** — let users pick the model per run
-      instead of the single startup `ANTHROPIC_MODEL`. **MVP = same-gateway (ARK) model switch**:
-      a curated model registry + `model` plumbing that mirrors the proven `skillSlug`/`permissionTier`
-      path (store → ws-adapter `chat` msg → ws-server validate → worker) + a real composer picker
-      (replacing the cosmetic "GLM 5.0" badge) + `query({ model })`. Cross-provider env-routing,
-      DB-backed admin registry, and failover are later phases. Stays within **SDK 0.2.112 / ARK**
-      (Anthropic-compatible gateways only). Research + phased plan:
-      `research/2026-06-multi-model-support-research.md`.
+      instead of the single startup `ANTHROPIC_MODEL`. **v1 = switch among any Anthropic-protocol model,
+      across connections/accounts** (owner steer 2026-06-07 — not limited to one gateway): a YAML-config
+      registry of connections+models (secrets via env-var names) + a **health probe** that gates the menu
+      (a model is selectable only when reachable+authed+model-accepted) + `model` plumbing mirroring the
+      proven `skillSlug`/`permissionTier` path + **per-request worker-env routing** (baseURL/auth/model/
+      aliases) + a real composer picker (replacing the cosmetic "GLM 5.0" badge) + `query({ model })`.
+      DB-backed admin registry + persistence = v2; failover/capability-gating = Phase 4. Stays within
+      **SDK 0.2.112** (Anthropic-protocol gateways only). **Spec: `prd/2026-06-multi-model-switching-prd.md`**;
+      rationale: `research/2026-06-multi-model-support-research.md`.
 - [x] **Agent code sandbox** — fixed the registration sequencing bug (eager `ensureSandbox()`
       before the check; `state=null` → bash never registered). Verified live (srt active). *(PR #112)*
 - [x] **Path A completeness** — **`docker-compose.prod.yml`**: bundled Traefik + websecure/TLS + the
