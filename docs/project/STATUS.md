@@ -5,6 +5,20 @@
 
 ## Current position (one-paragraph snapshot)
 
+**2026-06-06 (later) — Phase C is fully closed: Path A done + preview sharing shipped.** Path A
+(`docker-compose.prod.yml`) is now **verified on a real Linux VM** (Ubuntu 22.04 / Docker 29 via
+Multipass) — migrate exit 0, /health 200, /ws/agent 426, http→https 301, preview ensure→install→start
++ subdomain forward-auth all green; the VM run **caught + fixed the Docker 28/29 daemon-min-API issue**
+(Traefik v3.5's pinned client v1.24 rejected on a direct socket → added the nginx `dockerproxy` shim,
+`/vX.Y/`→`/v1.44/`, #113/#114). Preview UX closed out: deliverable card gated to **end-of-turn** (#115)
+and a **share = public-link toggle** (#116 — `/__oxy/preview/authorize` bypass for public hosts +
+pinned-alive while shared → token-free `<id>.<domain>/` link); lifecycle + sharing documented
+(README(_CN) + v1 plan §8, #117). Mac browser-tested locally via mkcert + dnsmasq (trusted
+`*.oxygenie.local`). Also repointed the `ai-pr-docs` (ChangeDoc/AI-review) workflow OpenRouter→**ARK**
+(`/api/coding/v3`, `doubao-seed-2.0-code`, `ARK_API_KEY`, #118). **One residual**: Path A LE DNS-01
+wildcard issuance not yet exercised against real public DNS (the VM used a local-only domain). All
+merged to `main`.
+
 **2026-06-06 — Phase C real-preview is DONE and the product is deployed + verified live; roadmap
 reset (Now = Slimming).** Real-preview v1 (PR #107) + the front-end seam shipped, then a real-world
 test drove three end-to-end fixes — Traefik **v3 `HostRegexp`** (the "preview 404"; never a
@@ -13,8 +27,8 @@ appears), and the agent **no longer self-installs** (the preview engine does ins
 plus a **shared preview dependency cache** (`/pm-cache` + `infra/preview/warm-cache.sh`, cold ≈15 s →
 warm ≈4 s). Three deploy paths with authoritative guides (`docs/deployment/{overview,dokploy,tunnel,
 mac-mini}.md`): **B/Dokploy** (live) and **C/Cloudflare-Tunnel on a Mac** (live + full preview +
-sandbox verified end-to-end over the public path); **A/Compose** partial (preview routing not yet
-bundled). All merged to `main` (`78f46af`). **Roadmap reset to Now/Next/Later in `ROADMAP.md` —
+sandbox verified end-to-end over the public path); **A/Compose** now bundled + **VM-verified** on
+Linux/Docker 29 (#113/#114 — see the later snapshot above). All merged to `main` (`78f46af`). **Roadmap reset to Now/Next/Later in `ROADMAP.md` —
 owner-set Now = Slimming only** (remove Mastra + playwright + libreoffice → restore free CI build);
 Next = Path A preview routing + agent code-sandbox fix + Skills/MCP curation; Later = multi-model + CI
 hard gates + accounting.
@@ -106,7 +120,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Phase 0.5 — Execution-runtime + single-host concurrency** | ✅ Done (ExecutionRuntime #39, DockerBackend #41, B3 #42, C4 #43/#45, S1 #48, S2 #51, S3 #52, S5 #53) — single 16G/8-core ~50 concurrent target |
 | **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
 | **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 + Wave 1 merged (#60); **Wave 2 (Ask/Act + HITL tool approval) merged + owner-tested** (2026-06-04, `feat/ask-act-hitl`); + Cowork single-source chat S1/S2 merged. Remaining: nested sub-agent tree, responsive workbench drawer |
-| **Phase C — Real preview engine + deployment** | ✅ Done (PR #107 + end-to-end fixes + dep cache + 3 deploy paths; live on `oxygenie.cc`, merged `78f46af`, 2026-06-06) |
+| **Phase C — Real preview engine + deployment** | ✅ Done (PR #107 + E2E fixes + dep cache + **all 3 deploy paths** incl. Path A VM-verified on Linux/Docker 29 #113/#114; end-of-turn deliverable card #115; **preview sharing / public link** #116; lifecycle docs #117; live on `oxygenie.cc`, 2026-06-06) |
 | **Slimming (NOW)** — remove Mastra + playwright + libreoffice → free CI build | ✅ Mastra (#109) + playwright/libreoffice (#110) removed & merged; **CI build OOM fixed** (build.yml builds slim image on 7G runner). Only the GHCR push needs a one-time package→repo link to auto-publish. *(2026-06-06)* |
 | Phase 4 — Multi-model & scale | ⬜ Not started (Later) |
 
@@ -222,7 +236,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 | Make tests CI-runnable (unit/e2e split + services) | M | Then make `test` a hard gate |
 | Fix TS errors | S–M | Good starter task; then make `typecheck` a hard gate |
 | Sandbox Python/Bash exec — adopt `srt` + env allowlist | M | **Critical** (Risk #1); via Phase 0.5 `ExecutionRuntime` + Anthropic `srt` |
-| `changedoc` (ai-pr-docs) needs `OPENAI_API_KEY` secret | S (chore) | Deferred by decision; or disable the AI workflows |
+| `changedoc` (ai-pr-docs) — provider = ARK | S (chore) | Repointed OpenRouter→**ARK** `/api/coding/v3` + `doubao-seed-2.0-code` + `ARK_API_KEY` (#118). To go green: ensure `ARK_API_KEY` is visible to the `ai-review` Environment (`pull_request_target` → new config effective next PR). Not a quality gate. Optional: gate behind an `ai-review` label to stop red on every PR. |
 | Archive old public repo `constructa-starter` | S (chore) | Avoid two-public-repo confusion |
 | Bump gitleaks/checkout actions off Node 20 | S (chore) | Deprecation forced ~2026-06-16 |
 | **Workspace (项目) as a first-class concept** | L | Decouple Workspace from Conversation; let new-chat pick "existing workspace vs new"; conversations belong to a workspace (stable absolute path). Today每对话=独立 workspace（`getSessionWorkspace`, 1:1）。L2 in `research/2026-06-conversation-persistence-resume-comparison.md`; subsumes the persistence 治本. Owner-deferred 2026-06 (do 治标 first). |
@@ -235,8 +249,8 @@ file → done). The earlier GLM-plan blocker is resolved.
 | ✅ ~~NOW · Remove Mastra entirely~~ | L | **Done — PR #109.** Backend + all UI surfaces + deps + schema + docs. |
 | ✅ ~~NOW · Remove playwright + libreoffice~~ | M | **Done — PR #110.** Dockerfile blocks + ARGs + `playwright` dep + render-png route/UI. Lean image is the only image now. |
 | **🟢 NOW · Re-enable free CI build (last step)** | XS | **Build OOM fixed** (build.yml builds the slim image on the 7G runner). Remaining: one-time GHCR **package→repo link** (`oxygenie/app` → Manage Actions access → add `foreveryh/oxygenie` Write) → push-main auto-publish goes green. |
-| **🔵 NEXT · Path A: bundle Traefik + preview-auth** | M | `docker-compose.yml` has no bundled proxy/preview routing → the "recommended baseline" path can't run previews. Add Traefik + the `preview-auth` router (Traefik **v3** `HostRegexp`). |
-| **🔵 NEXT · Agent code sandbox: fix srt registration sequencing** | M | `ws-query-worker.mjs` reads `sandboxStatus().state` **before** `ensureSandbox()` runs → `state=null` → bash tool never registers. Call `ensureSandbox()` first + ensure bubblewrap in the image → chat-side bash/Python works. |
+| ✅ ~~NEXT · Path A: bundle Traefik + preview-auth~~ | M | **Done — `docker-compose.prod.yml` (#113/#114).** Bundled Traefik + preview-auth (v3 `HostRegexp`) + wildcard cert + `dockerproxy` shim (Docker 28/29 API min); LE DNS-01 + CF Origin CA. **VM-verified** on Ubuntu 22.04/Docker 29. Residual: LE issuance vs real public DNS untested. |
+| ✅ ~~NEXT · Agent code sandbox: fix srt registration sequencing~~ | M | **Done — PR #112.** Eager `ensureSandbox()` before the `sandboxStatus()` check (was `state=null` → bash never registered); bubblewrap in image. Verified live (srt active). |
 | **🔵 NEXT · MCP catalog/picker + fix stale "coming soon" copy** | M | No curated MCP picker yet; `skills.content.ts` "enabling … coming soon" copy is outdated (Skills shipped). Pairs with the Skills curation rows above. |
 | **🟣 LATER · Multi-model: registry + routing/failover** | L | Phase 4. Picker is cosmetic today (hardcoded GLM/ARK). Within the **SDK 0.2.112 / ARK** constraint; per-capability key split. |
 | **🟣 LATER · Revisit `ENABLE_STRUCTURED_OUTPUTS` (off)** | M | Coupled to the artifact/structured-output strategy; Phase C now done → resolve the StructuredOutput-leak root cause instead of keeping the flag forced-off. |
@@ -250,6 +264,18 @@ file → done). The earlier GLM-plan blocker is resolved.
 - `test` — non-blocking (suite is e2e/integration; needs DB + live server in CI).
 
 ## Decision log
+
+- **2026-06-06 (later)** — **Phase C 收口:Path A 完成 + 预览分享上线 + changedoc 切 ARK。结论:Phase C 全部完成。**
+  ① **Path A**(`docker-compose.prod.yml`)在**真 Linux VM**(Ubuntu 22.04 / Docker 29,Multipass)验证通过
+  (migrate/health/WS/重定向/预览 forward-auth 全绿);此 VM run **逮到并修了 Docker 28/29 守护进程最低 API**
+  问题(Traefik v3.5 客户端 v1.24 在直连 socket 被拒 → 加 nginx `dockerproxy` 改写 `/vX.Y/`→`/v1.44/`,#113/#114)。
+  **遗留**:LE DNS-01 泛域名签发未在真公网 DNS 上跑过(VM 用本地域名;配置与已验证的 CF/Origin-CA 栈共用)。
+  ② **预览体验收尾**:成果物卡**收到整轮结束**才显示(#115);**分享=公开链接切换**(#116——`/__oxy/preview/
+  authorize` 对 public host 放行 + 分享期间钉住常驻 → 无 token 的 `<id>.<域名>/` 链接,任何人可开)。Mac 本机
+  用 mkcert + dnsmasq 受信泛域名证书完成浏览器验证。生命周期+分享写入 README(_CN) + v1 计划 §8(#117)。
+  ③ **changedoc**:`ai-pr-docs`(ChangeDoc/AI-review)从 OpenRouter 切到 **ARK**(`/api/coding/v3`、
+  `doubao-seed-2.0-code`、`ARK_API_KEY`,#118)。注:`pull_request_target` 跑基分支版本,新配置**下个 PR 起**
+  生效;变绿还需 `ARK_API_KEY` 对 `ai-review` Environment 可见。
 
 - **2026-06-06** — **Phase C 真预览全链路打通 + Mac/Tunnel 部署上线 + 路线图重置**。
   ① **真预览 E2E 修复**(实测驱动):Traefik **v3 `HostRegexp`** 修预览 404 —— v2 命名组

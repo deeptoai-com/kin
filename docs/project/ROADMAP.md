@@ -35,12 +35,16 @@ one-time package→repo link); zero Mastra references ✅.
 ### 🔵 NEXT — Deployment completeness + capability lists
 - [x] **Agent code sandbox** — fixed the registration sequencing bug (eager `ensureSandbox()`
       before the check; `state=null` → bash never registered). Verified live (srt active). *(PR #112)*
-- [~] **Path A completeness** — new **`docker-compose.prod.yml`**: bundled Traefik (direct socket,
-      no shim) + websecure/TLS + the `preview-auth` router (v3 `HostRegexp`) + the preview wildcard
-      cert. **Two TLS options**: Let's Encrypt DNS-01 (default) + Cloudflare Origin CA (`infra/prod/dynamic/`).
-      Locally verified (compose parses, labels interpolate, Traefik flags valid, services = the proven
-      tunnel stack); **definitive test = a real Linux VPS** (direct-socket routing + LE wildcard issuance
-      + public HTTPS). Guide: `docs/deployment/docker-compose.md`.
+- [x] **Path A completeness** — **`docker-compose.prod.yml`**: bundled Traefik + websecure/TLS + the
+      `preview-auth` router (v3 `HostRegexp`) + the preview wildcard cert, plus the **`dockerproxy`
+      API-version shim** (Docker 28/29 raised the daemon min API to 1.40; Traefik v3.5's pinned client
+      v1.24 is rejected on a direct socket — the nginx shim rewrites `/vX.Y/`→`/v1.44/`). **Two TLS
+      options**: Let's Encrypt DNS-01 (default) + Cloudflare Origin CA (`infra/prod/dynamic/`).
+      **Verified on a real Linux VM** (Ubuntu 22.04 / Docker 29 via Multipass): migrate exit 0,
+      /health 200, /ws/agent 426, http→https 301, preview ensure→install→start + subdomain
+      forward-auth, userns/bwrap OK — this VM run is what caught the shim bug. *(PR #113/#114)*
+      **Residual**: LE DNS-01 wildcard issuance not yet exercised against real public DNS (the VM used
+      a local-only domain; config is shared with the proven CF/Origin-CA stacks). Guide: `docs/deployment/docker-compose.md`.
 - **Skills / MCP curation ("lists")** — content refresh (skills-api `scrapedAt`/ETag), admin
   curation UI for the official catalog, an **MCP catalog/picker**, and fix the stale "coming soon" copy.
 
@@ -71,11 +75,18 @@ deployable by a team. **Shipped + verified live on `oxygenie.cc`.**
       (CTA now appears), agent **no longer self-installs** (prompt: preview engine does install/build/serve).
 - [x] **Shared preview dependency cache** — `/pm-cache` volume across previews + `warm-cache.sh`
       (cold ≈15 s → warm ≈4 s installs).
-- [x] **Three deploy paths** — B/Dokploy (live), C/Cloudflare-Tunnel (Mac, live + verified), with
-      authoritative guides (`docs/deployment/{overview,dokploy,tunnel,mac-mini}.md`).
+- [x] **All three deploy paths** — A/Compose-VPS (`docker-compose.prod.yml`, **VM-verified** on
+      Ubuntu 22.04/Docker 29; LE DNS-01 + CF Origin CA; `dockerproxy` shim), B/Dokploy (live),
+      C/Cloudflare-Tunnel (Mac, live + verified), with authoritative guides
+      (`docs/deployment/{overview,docker-compose,dokploy,tunnel,mac-mini}.md`).
+- [x] **Preview UX + sharing** — deliverable card gated to **end-of-turn** so 「打开成果物/运行预览」
+      only shows once the whole turn finishes (#115); **share = public-link toggle** (#116:
+      `/__oxy/preview/authorize` bypass for public hosts + pinned-alive while shared → token-free
+      `<id>.<domain>/` link anyone can open); preview lifecycle + sharing documented in README(_CN) +
+      the v1 plan §8 (#117). Mac local browser test via mkcert + dnsmasq (trusted wildcard cert).
 
-**Exit criteria:** met — full preview + sandbox verified end-to-end over the public path; deploy
-guides written. *(Path A compose-bundled preview routing carries over to NEXT.)*
+**Exit criteria:** met — full preview + sandbox verified end-to-end over the public path; **all three
+deploy paths shipped** (Path A VM-verified on Linux/Docker 29); preview sharing + lifecycle done & documented.
 
 ---
 
