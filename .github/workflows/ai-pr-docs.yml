@@ -52,9 +52,9 @@ jobs:
       - name: Configure Qwen Code provider & model
         env:
           # Volcengine ARK coding gateway, OpenAI-compatible path (/api/coding/v3).
-          # Reuses the existing ARK_API_KEY secret (ARK Bearer token); ensure it's
-          # available to the 'ai-review' environment (repo- or env-level secret).
-          OPENAI_API_KEY: ${{ secrets.ARK_API_KEY }}
+          # OPENAI_API_KEY secret = the ARK Bearer token (one key, generic name to
+          # match the CLI's env var). Set on the 'ai-review' environment.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           echo "::add-mask::${OPENAI_API_KEY}"
           {
