@@ -16,7 +16,7 @@ import { resolveMcpServerConfigs } from './src/claude/mcp/manager.js';
 import { runPython } from './src/claude/python/runner.js';
 import { generateImage } from './src/claude/glm-image/runner.js';
 import { runBash } from './src/claude/bash/runner.js';
-import { sandboxStatus } from './src/claude/execution/sandbox.js';
+import { ensureSandbox, sandboxStatus } from './src/claude/execution/sandbox.js';
 import { getExecutionRuntime } from './src/claude/execution/index.js';
 
 // Read configuration from environment
@@ -486,6 +486,11 @@ async function startRun(request) {
     //      the container IS the sandbox (--network none, --cap-drop ALL, non-root, etc.)
     // macOS local dev: set EXEC_RUNTIME=docker to enable bash (srt is off on macOS by design).
     // If neither is available → tool NOT registered; Claude cannot call bash at all.
+    // Initialize the OS sandbox (srt) FIRST — otherwise sandboxStatus() returns the
+    // uninitialized state (null) and bash is never registered even when srt IS available
+    // (Linux + seccomp=unconfined). ensureSandbox is idempotent + cached, so this is the
+    // single eager init; the per-exec runners reuse it. (Fixes: bash silently disabled.)
+    await ensureSandbox(config.cwd);
     const { state: sandboxState } = sandboxStatus();
     const runtimeName = getExecutionRuntime().name;
     const sandboxReady = sandboxState === 'active' || runtimeName === 'docker';
