@@ -14,6 +14,12 @@ const PREVIEW_PIDS = Number(process.env.PREVIEW_PIDS || 256);
 const PREVIEW_NETWORK = process.env.PREVIEW_DOCKER_NETWORK || process.env.PREVIEW_TRAEFIK_NETWORK || 'bridge';
 const PREVIEW_AUTH_URL = process.env.PREVIEW_FORWARD_AUTH_URL || 'http://app:3001/__oxy/preview/authorize';
 const CONTROLLER_CONTAINER = process.env.PREVIEW_CONTROLLER_CONTAINER || os.hostname();
+// Shared package-manager cache across ALL preview containers, so installs reuse
+// already-downloaded packages instead of re-fetching from the registry every run.
+// Mounted at PM_CACHE_DIR; npm/pnpm/yarn are pointed at it via env (see createContainer).
+// Per-app node_modules stays isolated (each preview gets its own volume).
+const PM_CACHE_VOLUME = process.env.PREVIEW_PM_CACHE_VOLUME || 'oxy-preview-pm-cache';
+const PM_CACHE_DIR = '/pm-cache';
 
 function json(res, status, payload) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -201,6 +207,12 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
       'COREPACK_ENABLE_DOWNLOAD_PROMPT=0',
       'HOME=/tmp',
       'CI=1',
+      // Point every package manager at the shared cache mounted at PM_CACHE_DIR so
+      // installs reuse downloads across previews. pnpm/yarn read npm_config_* too.
+      `npm_config_cache=${PM_CACHE_DIR}/npm`,
+      'npm_config_prefer_offline=true',
+      `npm_config_store_dir=${PM_CACHE_DIR}/pnpm-store`,
+      `YARN_CACHE_FOLDER=${PM_CACHE_DIR}/yarn`,
     ],
     Cmd: [
       'sh',
@@ -212,6 +224,9 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
         // Non-recursive: give the preview user write access to the workspace root
         // (lockfiles, build output dir) without rewriting ownership of user source files.
         `chown ${shellQuote(PREVIEW_USER)} ${shellQuote(workdir)} 2>/dev/null || true`,
+        // Shared PM cache: own the top dir so the unprivileged user can populate it
+        // (subdirs it creates are already owned by it; non-recursive keeps this cheap).
+        `mkdir -p ${shellQuote(PM_CACHE_DIR)} && chown ${shellQuote(PREVIEW_USER)} ${shellQuote(PM_CACHE_DIR)} 2>/dev/null || true`,
         'tail -f /dev/null',
       ].join(' && '),
     ],
@@ -225,6 +240,12 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
           Type: 'volume',
           Source: nodeModulesVolume(previewId),
           Target: nodeModulesTarget,
+        },
+        {
+          // Shared across all previews — the package-manager download cache.
+          Type: 'volume',
+          Source: PM_CACHE_VOLUME,
+          Target: PM_CACHE_DIR,
         },
       ],
       Memory: parseBytes(PREVIEW_MEMORY),

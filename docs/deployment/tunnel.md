@@ -136,6 +136,18 @@ preview-controller spins up a sandbox container, Traefik picks it up by label, a
 `https://<id>.oxygenie.cc` after the one-time-token → cookie hand-off. Code execution (Python
 etc.) runs in the same sandbox.
 
+### 8. (Optional) Pre-warm the dependency cache — faster first preview
+Every preview container mounts a **shared package-manager cache** (`/pm-cache`, the
+`oxy-preview-pm-cache` volume) and points npm/pnpm/yarn at it, so installs reuse downloads
+instead of re-fetching every run (measured: cold ≈ 15s → warm ≈ 4s for a React+Vite app).
+The cache self-warms as you use it; to seed the common frameworks up front so even the very
+first preview is fast, run once:
+```bash
+bash infra/preview/warm-cache.sh           # react/react-dom/vite/vue/typescript/tailwind…
+# add more:  PREVIEW_WARM_DEPS="svelte @sveltejs/vite-plugin-svelte" bash infra/preview/warm-cache.sh
+```
+This applies to **all** deploy paths (the cache lives in the preview controller, not the proxy).
+
 ---
 
 ## Troubleshooting (issues actually hit bringing this up on macOS/OrbStack)
