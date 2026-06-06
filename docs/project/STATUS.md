@@ -1,9 +1,23 @@
 # OxyGenie — Status (Living Memory)
 
 > **This is the living memory of the project. Update it whenever state changes.**
-> Last updated: **2026-06-04**
+> Last updated: **2026-06-06**
 
 ## Current position (one-paragraph snapshot)
+
+**2026-06-06 — Phase C real-preview is DONE and the product is deployed + verified live; roadmap
+reset (Now = Slimming).** Real-preview v1 (PR #107) + the front-end seam shipped, then a real-world
+test drove three end-to-end fixes — Traefik **v3 `HostRegexp`** (the "preview 404"; never a
+Dokploy/Swarm issue), artifact-card **retarget to the most-previewable file** (the 运行预览 CTA now
+appears), and the agent **no longer self-installs** (the preview engine does install/build/serve) —
+plus a **shared preview dependency cache** (`/pm-cache` + `infra/preview/warm-cache.sh`, cold ≈15 s →
+warm ≈4 s). Three deploy paths with authoritative guides (`docs/deployment/{overview,dokploy,tunnel,
+mac-mini}.md`): **B/Dokploy** (live) and **C/Cloudflare-Tunnel on a Mac** (live + full preview +
+sandbox verified end-to-end over the public path); **A/Compose** partial (preview routing not yet
+bundled). All merged to `main` (`78f46af`). **Roadmap reset to Now/Next/Later in `ROADMAP.md` —
+owner-set Now = Slimming only** (remove Mastra + playwright + libreoffice → restore free CI build);
+Next = Path A preview routing + agent code-sandbox fix + Skills/MCP curation; Later = multi-model + CI
+hard gates + accounting.
 
 **2026-06-04 — Skills integration (S1–S4) is DONE, merged, and owner-tested.** The Skills
 subsystem moved from a filesystem skills-store to a **DB catalog** model
@@ -92,9 +106,24 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Phase 0.5 — Execution-runtime + single-host concurrency** | ✅ Done (ExecutionRuntime #39, DockerBackend #41, B3 #42, C4 #43/#45, S1 #48, S2 #51, S3 #52, S5 #53) — single 16G/8-core ~50 concurrent target |
 | **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
 | **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 + Wave 1 merged (#60); **Wave 2 (Ask/Act + HITL tool approval) merged + owner-tested** (2026-06-04, `feat/ask-act-hitl`); + Cowork single-source chat S1/S2 merged. Remaining: nested sub-agent tree, responsive workbench drawer |
-| Phase 4 — Multi-model & scale | ⬜ Not started |
+| **Phase C — Real preview engine + deployment** | ✅ Done (PR #107 + end-to-end fixes + dep cache + 3 deploy paths; live on `oxygenie.cc`, merged `78f46af`, 2026-06-06) |
+| **Slimming (NOW)** — remove Mastra + playwright + libreoffice → free CI build | ⬜ Not started (owner-set Now focus 2026-06-06) |
+| Phase 4 — Multi-model & scale | ⬜ Not started (Later) |
 
 ## Done (most recent first)
+
+- ✅ **Phase C real-preview deployed + verified live** (merge `78f46af`, 2026-06-06): real-preview v1
+  (PR #107) + front-end seam, then 3 real-world-test fixes — Traefik **v3 `HostRegexp`** (the preview
+  404, *not* Swarm), artifact-card **retarget → most-previewable file** (CTA shows), agent
+  **no-self-install** (preview engine installs/builds/serves) — + **shared preview dep cache**
+  (`/pm-cache` + `infra/preview/warm-cache.sh`, cold ≈15 s → warm ≈4 s). Verified end-to-end over the
+  public path (CF → tunnel → Traefik → app, and `<id>.oxygenie.cc` preview). Invariant recorded:
+  CLAUDE.md #11 (v3 HostRegexp). *(2026-06-06)*
+- ✅ **Deployment: 3 paths + guides** (2026-06-06): **C/Cloudflare-Tunnel** (`docker-compose.tunnel.yml`
+  + `infra/tunnel/*`; Mac/OrbStack, no public IP — bundled Traefik + `dockerproxy` API-version shim +
+  cloudflared) **live + full-feature verified**; **B/Dokploy** live; **A/Compose** partial (preview
+  routing not bundled — NEXT). Authoritative guides `docs/deployment/{overview,dokploy,tunnel,mac-mini}.md`
+  (incl. the from-scratch Mac mini 8GB/16GB recipe — the build-RAM decision). *(2026-06-06)*
 
 - ✅ **Skills integration S1–S4** (PRs #90–#99, owner-tested 2026-06-04): DB catalog replaces the
   FS skills-store. **S1** `skill_catalog`+caches, curated-100 seed, seed-on-`migrate`, browse +
@@ -192,6 +221,16 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Skills: admin curation of the catalog** | M | Admin UI to add/edit/remove **official** `skill_catalog` entries (editorial fields, default flags, sort) — currently the curated set is seed-only (`db:seed`); only user-added (`scope='user'`) skills are admin-manageable via `/admin/skills`. |
 | **Skills: team/org-level sharing** | L | Promote a user-added/uploaded skill (`scope='user'`) to org-shared (visible to the whole team), vs today's per-owner visibility + admin governance. PRD non-goal for this round; needs an `org` scope + unique-index rework. |
 | **Skills: composer "browse all installed" picker + inline form (optional)** | S–M | A dedicated composer picker listing **all** installed My-Skills → select → inline fillable variable form → compose. Today covered by context-badges (session-active skills + 「使用」 + examples) + A2Composer form (DB schema); this would be a convenience enhancement. PRD S4b-2 (partial). |
+| **🟢 NOW · Remove Mastra entirely** | L | `src/mastra/**` (~10 files), deps (`@mastra/*` + `ai`/`@ai-sdk/*` Mastra-only), routes (`api/chat.tsx`, `api/threads/**`, `api/workflow/pr-creator/**`), DB `mastra-thread.schema` + migration, CLAUDE.md dual-SDK. Verify Claude-Agent-SDK chat path unaffected. Unblocks CI build OOM. Owner decision: permanent. |
+| **🟢 NOW · Remove playwright + libreoffice** | M | Dockerfile install blocks + `INSTALL_BROWSER`/`INSTALL_OFFICE` ARGs + `playwright` dep + code paths. ~2 GB image + CI heap. Screenshot/office-conversion skills degrade (document). Owner decision: permanent. |
+| **🟢 NOW · Re-enable free CI build** | S–M | After slimming, the SSR build should fit the 7 GB GitHub runner → turn `build.yml` push-main GHCR auto-publish back on. |
+| **🔵 NEXT · Path A: bundle Traefik + preview-auth** | M | `docker-compose.yml` has no bundled proxy/preview routing → the "recommended baseline" path can't run previews. Add Traefik + the `preview-auth` router (Traefik **v3** `HostRegexp`). |
+| **🔵 NEXT · Agent code sandbox: fix srt registration sequencing** | M | `ws-query-worker.mjs` reads `sandboxStatus().state` **before** `ensureSandbox()` runs → `state=null` → bash tool never registers. Call `ensureSandbox()` first + ensure bubblewrap in the image → chat-side bash/Python works. |
+| **🔵 NEXT · MCP catalog/picker + fix stale "coming soon" copy** | M | No curated MCP picker yet; `skills.content.ts` "enabling … coming soon" copy is outdated (Skills shipped). Pairs with the Skills curation rows above. |
+| **🟣 LATER · Multi-model: registry + routing/failover** | L | Phase 4. Picker is cosmetic today (hardcoded GLM/ARK). Within the **SDK 0.2.112 / ARK** constraint; per-capability key split. |
+| **🟣 LATER · Revisit `ENABLE_STRUCTURED_OUTPUTS` (off)** | M | Coupled to the artifact/structured-output strategy; Phase C now done → resolve the StructuredOutput-leak root cause instead of keeping the flag forced-off. |
+| **🟣 LATER · Wire accounting (Phase 2)** | M | `spendOneCredit` never called; persist per-run cost/tokens; enable audit log; stop logging raw message content (PII). |
+| **🟣 LATER · Email-verify self-host UX + P16 version recording + deprecated-fn cleanup** | S | The "verify your email" banner on a self-host is friction; P16 artifact version recording paused (`ENABLE_VERSION_RECORDING=false`); `syncOldUserSkills`/`getSkillStatus` are `@deprecated`. |
 
 ## Known weakened gates (intentionally non-blocking until backlog done)
 
@@ -200,6 +239,24 @@ file → done). The earlier GLM-plan blocker is resolved.
 - `test` — non-blocking (suite is e2e/integration; needs DB + live server in CI).
 
 ## Decision log
+
+- **2026-06-06** — **Phase C 真预览全链路打通 + Mac/Tunnel 部署上线 + 路线图重置**。
+  ① **真预览 E2E 修复**(实测驱动):Traefik **v3 `HostRegexp`** 修预览 404 —— v2 命名组
+  `HostRegexp(`{name:regexp}`)` 在 v3 **静默不匹配**,`<id>.域名/__oxy/preview/auth` 直接 404;**此前
+  误判为 Dokploy-Swarm,实为通用 bug**,已修 `docker-compose.{tunnel,dokploy}.yml` 并记 **CLAUDE.md 不变量 #11**。
+  artifact 卡**改指向最可预览文件**(流式时 package.json 先到建卡、index.html 后到不再另建卡 → 运行预览 CTA 出现);
+  agent **不再自装依赖**(系统提示:沙箱按设计禁网,装/构建/serve 交预览引擎)。
+  ② **预览依赖共享缓存**(`/pm-cache` 卷 + `infra/preview/warm-cache.sh`,冷 ≈15s → 暖 ≈4s)。
+  ③ **Mac + Cloudflare Tunnel 部署(Path C)**:`docker-compose.tunnel.yml` + `infra/tunnel/*`,无公网入站;
+  OrbStack docker-API 版本问题用 nginx `dockerproxy` 改写 `/vX.Y/`→`/v1.44/`;live + 全功能(预览+沙箱)
+  公网端到端验证;沉淀 `docs/deployment/{overview,tunnel,mac-mini}.md`(含从零 Mac mini 8GB/16GB 指南——
+  **核心是构建内存:16G 本机构建、8G 需异机构建后导入**)。全部并入 `main`(`78f46af`)。
+  **注**:推送**绕过了 main 分支保护**(owner admin 权限)、CI 必需检查未运行——代码为线上实测验证,正式 CI 门未跑;
+  外部贡献仍应走 PR。
+  ④ **路线图重置(Now/Next/Later,见 `ROADMAP.md`):owner 定 Now = 仅瘦身**(移除 Mastra + playwright +
+  libreoffice → 恢复 7G runner 免费 CI 构建 + push-main 自动发 GHCR)。Next = Path A 预览路由补全 + agent
+  代码沙箱注册时序修复(`state=null`)+ Skills/MCP 策展(含 MCP 目录/选择器);Later = 多模型(registry/路由/
+  failover,守 SDK 0.2.112/ARK 约束)+ CI 硬门禁(typecheck/validate-routes/test)+ 计费接通(Phase 2)。
 
 - **2026-06-05** — **✅ `oxygenie.cc` 在 Dokploy 上线成功**（/health 200、/ 200、/ws/agent 426、TLS via CF）。
   闯过 **8 个部署卡点**,根因 + 修法已沉淀到 **`docs/deployment/dokploy.md`**(7 步指南 + 卡点根因表):

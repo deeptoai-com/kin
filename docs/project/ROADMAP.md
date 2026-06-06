@@ -9,6 +9,71 @@ and **exit criteria**. Track live progress in [`STATUS.md`](./STATUS.md).
 
 ---
 
+## 🧭 Current focus — Now / Next / Later (set 2026-06-06)
+
+The phase plan below (0 → 4 + Skills) is largely delivered. This is the **live, ordered**
+plan for what's left. Owner-set: **Now = Slimming only.**
+
+### 🟢 NOW — Slimming & open-source CI
+**Goal:** drop the heavyweight bits so the project builds on free CI and ships lean.
+- [ ] **Remove Mastra entirely** — `src/mastra/**` (~10 files), deps (`@mastra/*`, and `ai`/
+      `@ai-sdk/*` kept only for Mastra), routes (`api/chat.tsx`, `api/threads/**`,
+      `api/workflow/pr-creator/**`), DB schema (`mastra-thread.schema.ts` + its migration), and
+      the dual-SDK sections in `CLAUDE.md`. Chat runs on the Claude Agent SDK path — verify
+      unaffected. *(Owner decision: remove permanently.)*
+- [ ] **Remove playwright + libreoffice permanently** — Dockerfile install blocks + `INSTALL_BROWSER`/
+      `INSTALL_OFFICE` ARGs, the `playwright` dep, any code paths. Document that screenshot/office-
+      conversion skills degrade. *(Owner decision: remove permanently.)*
+- [ ] **Re-enable free CI build** — once the SSR build fits the 7 GB GitHub runner, turn
+      `build.yml` push-main GHCR auto-publish back on (so contributors needn't build on 16 GB locally).
+
+**Exit:** image ≈ ≤2.5 GB, `pnpm build` peak under the CI runner's RAM, GHCR auto-publish green,
+zero Mastra references.
+
+### 🔵 NEXT — Deployment completeness + capability lists
+- **Path A completeness** — `docker-compose.yml` bundles Traefik + the `preview-auth` router
+  (Traefik **v3** `HostRegexp`) so the "recommended baseline" self-host path actually runs previews.
+- **Agent code sandbox** — fix the registration sequencing bug (call `ensureSandbox()` *before*
+  checking `sandboxStatus().state`; today it reads `state=null` and never registers bash) + ensure
+  bubblewrap in the image → chat-side bash/Python execution works on the deploys.
+- **Skills / MCP curation ("lists")** — content refresh (skills-api `scrapedAt`/ETag), admin
+  curation UI for the official catalog, an **MCP catalog/picker**, and fix the stale "coming soon" copy.
+
+### 🟣 LATER — Multi-model, gates, accounting, polish
+- **Multi-model** (Phase 4) — model registry + routing/failover + per-capability key split, within
+  the **SDK 0.2.112 / ARK** constraint (no 0.3.x-only features). The current picker is cosmetic.
+- **CI hard gates** (Phase 0 remainder) — typecheck, validate-routes (29 REST routes), test
+  (Postgres service container); TS-ify `ws-server.mjs`/`ws-query-worker.mjs` + typed WS protocol.
+- **Accounting** (Phase 2 wiring) — call `spendOneCredit`, persist per-run cost/tokens, enable the
+  audit log, stop logging raw message content (PII).
+- **Misc** — revisit `ENABLE_STRUCTURED_OUTPUTS` now Phase C is done; email-verify self-host UX;
+  P16 artifact version recording (paused); deprecated-fn cleanup (`syncOldUserSkills`, `getSkillStatus`).
+
+---
+
+## Phase C — Real preview engine + deployment — ✅ DONE (2026-06-06)
+
+**Goal:** users see agent-generated multi-file apps actually run, and the whole product is
+deployable by a team. **Shipped + verified live on `oxygenie.cc`.**
+
+- [x] **Real-preview v1 backend** — `PreviewRuntime` + `preview-controller` sidecar (sole
+      docker-socket holder) creating per-preview sandbox containers + Traefik labels; one-time
+      token → cookie forward-auth; `.oxygenie/app.json` manifest. *(PR #107)*
+- [x] **Front-end seam** — `previewState` in the store + ws-adapter + `useSessionPreview`;
+      「运行预览」CTA on the index.html artifact → live iframe.
+- [x] **End-to-end fixes** (from a real-world test): Traefik **v3 `HostRegexp`** (the preview 404
+      — was misattributed to Dokploy/Swarm), artifact-card **retarget to the most-previewable file**
+      (CTA now appears), agent **no longer self-installs** (prompt: preview engine does install/build/serve).
+- [x] **Shared preview dependency cache** — `/pm-cache` volume across previews + `warm-cache.sh`
+      (cold ≈15 s → warm ≈4 s installs).
+- [x] **Three deploy paths** — B/Dokploy (live), C/Cloudflare-Tunnel (Mac, live + verified), with
+      authoritative guides (`docs/deployment/{overview,dokploy,tunnel,mac-mini}.md`).
+
+**Exit criteria:** met — full preview + sandbox verified end-to-end over the public path; deploy
+guides written. *(Path A compose-bundled preview routing carries over to NEXT.)*
+
+---
+
 ## Phase 0 — Foundation (enable safe, parallel contribution)
 
 **Goal:** anyone of any skill level can contribute safely, in parallel, with
@@ -129,9 +194,10 @@ multi-user integration tests remain (tracked above / HUMAN-REVIEW).
 
 **Goal:** match Deep Agents' harness strengths, on top of our platform advantages.
 
-- [ ] **Todo / plan panel** (surface `TodoWrite` as structured UI).
-- [ ] **First-class sub-agent panel** (nested input/output, not regex-detected).
-- [ ] **Human-in-the-loop tool approval** (approve / reject / edit round-trip).
+- [x] **Todo / plan panel** (surface `TodoWrite` as structured UI). *(Wave 1, #60)*
+- [~] **First-class sub-agent panel** — flat Task list done (Wave 1); **nested tree** still pending
+      (needs `parent_tool_use_id` on tool-call parts).
+- [x] **Human-in-the-loop tool approval** (Ask/Act + approve/reject round-trip). *(Wave 2, `feat/ask-act-hitl`, owner-tested 2026-06-04)*
 - [ ] **Checkpointing / durable run resume** (resume an interrupted run, not just reload history).
 - [ ] **Context management** (summarization / compaction; memory layer).
 - [ ] Unify shared logic so the two runtimes can't fork (skill-sync, path guards).
