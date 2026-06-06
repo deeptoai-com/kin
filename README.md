@@ -227,6 +227,16 @@ ANTHROPIC_MODEL="ark-code-latest"
 - **Live Preview**: Real-time preview and editing of generated artifacts
 - **Artifact Panel**: Dedicated panel for viewing and managing all artifacts
 
+### Live Preview & Sharing (Sandbox)
+
+Multi-file web apps (HTML that references relative JS/CSS siblings) run in a **per-session sandbox container** served on a dedicated subdomain (`<preview-id>.<domain>`), so scripts, `localStorage`, and forms work for real — unlike the inline single-file blob preview.
+
+- **On-demand, not always-on**: a sandbox starts when you click **Run Preview (运行预览)**; it is never kept warm.
+- **Idle lifecycle — when it gets destroyed**: a running preview is reaped after **5 minutes of inactivity** (`PREVIEW_IDLE_TIMEOUT_MS`, default `300000`). The idle clock resets on **every HTTP request to the preview**, and the reaper scans every **30 s**, so actual teardown is ~5–5.5 min after the *last* request. ⚠️ An open-but-idle tab does **not** keep it alive — a static SPA stops making requests after it loads; only refreshes / new requests extend it.
+- **Capacity cap**: at most **4** active previews at once (`MAX_ACTIVE_PREVIEWS`). Starting a 5th does **not** evict an older one — it returns "capacity reached, try again after one goes idle".
+- **Other teardown triggers**: manual stop (`stop_preview`), and any app/stack restart or redeploy (in-memory preview state is lost).
+- **Share = public link**: **Share (分享)** copies a token-free `https://<preview-id>.<domain>/` link and marks the preview **public** — it bypasses the per-browser auth gate (so anyone can open it) and is **pinned alive (no idle reap)** while shared, until manually stopped or the stack restarts. External access requires a **publicly-resolvable** preview domain (e.g. `*.oxygenie.cc`); a local-only domain (e.g. `*.oxygenie.local`) resolves only on the host that configured it.
+
 ### Python Code Execution
 
 - **Sandboxed Environment**: Secure, isolated Python execution per session

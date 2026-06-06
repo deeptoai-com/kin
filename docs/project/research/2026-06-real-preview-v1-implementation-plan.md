@@ -110,4 +110,31 @@ PREVIEW_MEMORY=512m~1g
 - **需要 Docker**（preview provider=docker）；纯无 Docker 环境回退到轻量 Sandpack/WebContainers（仅简单单组件）。
 - 与本地 hybrid 模式（`start-production.mjs` 跑在宿主、非每会话 Docker）协调：preview 容器仍经 `preview-controller`/docker socket 起；确认本地开发者机器有 Docker。
 - 最大坑（架构师点名）：① 别把常驻 dev server 当默认；② 子路径反代复杂度（Vite base/HMR ws/绝对路径/history fallback）——所以子域名主线；③ preview 与主站同源（最危险捷径）；④ npm install 生命周期；⑤ 别硬改 DockerBackend 成长驻；⑥ 缺 active 上限会瞬时击穿。
+
+## 8. 预览生命周期与分享（已落地口径，2026-06）
+
+> 本节记录**实际落地的固定值与语义**（计划里写的是区间 `5~10min` / `4~6`，落地取下限）。代码：`src/preview/runtime.js`（`PreviewRuntime`）、`ws-server.mjs`（heartbeat 回收 + `/__oxy/preview/authorize`）。
+
+### 8.1 销毁时机（idle reaper）
+- **空闲阈值 = 5 分钟**（`PREVIEW_IDLE_TIMEOUT_MS`，默认 `300000`）。
+- **扫描周期 = 30 秒**（`HEARTBEAT_INTERVAL_MS`，与 WS 心跳共用一个 `setInterval`，回调里调 `previewRuntime.reapIdlePreviews(...)`）。
+- **计时基准 = `lastAccessAt`**，由 `touchPreview()` 刷新；触发点：① bootstrap token 兑换 `/__oxy/preview/auth?t=`；② **每次** forward-auth 的 `/__oxy/preview/authorize`（即对子域名的每个请求）。
+- 结论：实际销毁发生在**最后一次访问后 ~5 ~ 5.5 分钟**；只回收 `status==='ready'` 的预览。
+- ⚠️「标签页开着」≠「在访问」：静态 SPA 加载后不再发请求 → 开着但闲置的标签页照样被回收。
+
+### 8.2 容量上限
+- 同时活跃预览 **≤ 4**（`MAX_ACTIVE_PREVIEWS`，Semaphore）；**install/build 中的也占名额**。
+- 不做 LRU 驱逐：达上限时**新预览直接报错**「容量已满，等某个空闲回收后再试」，**不**挤掉旧的。
+
+### 8.3 其他销毁触发
+- 手动 `stop_preview`：立即销毁并释放名额。
+- app / 栈重启或重部署：内存 `active` Map 丢失，预览失效（容器可能残留为孤儿）。
+
+### 8.4 分享 = 公开链接（Option A，公开切换 / PR #116）
+- 「分享」把预览标记 **public**，返回**无 token 的裸链接** `<protocol>://<host>/`。
+- **鉴权绕过**：forward-auth 中间件**仍挂在**路由上（不动容器 / 不改 Traefik 标签）；`/__oxy/preview/authorize` 对 public host **直接返回 200**，仅对被分享的预览跳过 cookie 闸。
+- **常驻**：`reapIdlePreviews` **跳过 `public` 的预览** → 分享期间钉住不被 5 分钟回收，直到手动停止或栈重启。
+- **代价**：public 预览会一直占用 1 个 `MAX_ACTIVE_PREVIEWS` 名额（自托管可信团队场景可接受；`stop_preview` 释放）。
+- **对外可达前提**：需**可公网解析**的预览域名（如 `*.oxygenie.cc`）；仅本机解析域名（如 `*.oxygenie.local`）只在配置它的机器上有效。
+- 实现：`PreviewRuntime.sharePreview / isPublicHost / getStateByHost`、`ws-server` 的 `share_preview` 处理 + authorize public-bypass、`ws-adapter.sharePreview()`、`PreviewState.{public,shareUrl}`、`artifact-html.tsx` 的「分享」按钮。
 </content>
