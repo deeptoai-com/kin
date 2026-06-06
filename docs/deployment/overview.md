@@ -63,6 +63,8 @@ tears down preview containers via the Docker API (plain `docker`, no Swarm).
 - **Path A — [Docker Compose](docker-compose.md)** ← start here if you're self-hosting.
 - **Path B — [Dokploy](dokploy.md)** ← managed platform.
 - **Path C — [Cloudflare Tunnel](tunnel.md)** ← workstation / home server / behind NAT.
+  - **[Mac mini, from scratch](mac-mini.md)** ← a complete, linear recipe for Path C on a
+    fresh Apple-Silicon Mac (covers the 8 GB vs 16 GB build decision + day-2 operations).
 
 ## Common requirements
 
