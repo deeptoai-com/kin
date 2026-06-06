@@ -14,21 +14,23 @@ and **exit criteria**. Track live progress in [`STATUS.md`](./STATUS.md).
 The phase plan below (0 → 4 + Skills) is largely delivered. This is the **live, ordered**
 plan for what's left. Owner-set: **Now = Slimming only.**
 
-### 🟢 NOW — Slimming & open-source CI
+### 🟢 NOW — Slimming & open-source CI — ✅ mostly done (2026-06-06)
 **Goal:** drop the heavyweight bits so the project builds on free CI and ships lean.
-- [ ] **Remove Mastra entirely** — `src/mastra/**` (~10 files), deps (`@mastra/*`, and `ai`/
-      `@ai-sdk/*` kept only for Mastra), routes (`api/chat.tsx`, `api/threads/**`,
-      `api/workflow/pr-creator/**`), DB schema (`mastra-thread.schema.ts` + its migration), and
-      the dual-SDK sections in `CLAUDE.md`. Chat runs on the Claude Agent SDK path — verify
-      unaffected. *(Owner decision: remove permanently.)*
-- [ ] **Remove playwright + libreoffice permanently** — Dockerfile install blocks + `INSTALL_BROWSER`/
-      `INSTALL_OFFICE` ARGs, the `playwright` dep, any code paths. Document that screenshot/office-
-      conversion skills degrade. *(Owner decision: remove permanently.)*
-- [ ] **Re-enable free CI build** — once the SSR build fits the 7 GB GitHub runner, turn
-      `build.yml` push-main GHCR auto-publish back on (so contributors needn't build on 16 GB locally).
+- [x] **Remove Mastra entirely** — `src/mastra/**`, deps (`@mastra/*` + `ai` + `@ai-sdk/*`),
+      routes (`api/chat`, `api/threads/**`, `api/workflow/**`, `agents/ai-chat`, `agents/ai-workflow`),
+      the AI-SDK chat UI + `ai-elements/**`, `mastra-thread` schema, every UI surface (sidebar/menu/
+      homepage), and the dual-SDK docs. *(PR #109)*
+- [x] **Remove playwright + libreoffice permanently** — Dockerfile install blocks + the
+      `INSTALL_BROWSER`/`INSTALL_OFFICE` ARGs + the `playwright` dep + the render-png route/UI. The
+      lean image is now the only image. *(PR #110)*
+- [~] **Re-enable free CI build** — **build OOM is FIXED**: `build.yml` (7 GB runner) now builds the
+      slim image to completion (verified on the #110 main run — no OOM). It currently fails only at the
+      GHCR **push** (`denied: write_package`) because the `oxygenie/app` package was created manually
+      and has **no linked repo**. One-time fix: package → *Manage Actions access* → add `foreveryh/oxygenie`
+      (Write), then re-run build.yml. After that, push-main auto-publish is green.
 
-**Exit:** image ≈ ≤2.5 GB, `pnpm build` peak under the CI runner's RAM, GHCR auto-publish green,
-zero Mastra references.
+**Exit:** SSR build completes under the CI runner's RAM ✅; GHCR auto-publish green (pending the
+one-time package→repo link); zero Mastra references ✅.
 
 ### 🔵 NEXT — Deployment completeness + capability lists
 - **Path A completeness** — `docker-compose.yml` bundles Traefik + the `preview-auth` router

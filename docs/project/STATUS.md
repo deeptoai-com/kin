@@ -107,10 +107,21 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
 | **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 + Wave 1 merged (#60); **Wave 2 (Ask/Act + HITL tool approval) merged + owner-tested** (2026-06-04, `feat/ask-act-hitl`); + Cowork single-source chat S1/S2 merged. Remaining: nested sub-agent tree, responsive workbench drawer |
 | **Phase C — Real preview engine + deployment** | ✅ Done (PR #107 + end-to-end fixes + dep cache + 3 deploy paths; live on `oxygenie.cc`, merged `78f46af`, 2026-06-06) |
-| **Slimming (NOW)** — remove Mastra + playwright + libreoffice → free CI build | ⬜ Not started (owner-set Now focus 2026-06-06) |
+| **Slimming (NOW)** — remove Mastra + playwright + libreoffice → free CI build | ✅ Mastra (#109) + playwright/libreoffice (#110) removed & merged; **CI build OOM fixed** (build.yml builds slim image on 7G runner). Only the GHCR push needs a one-time package→repo link to auto-publish. *(2026-06-06)* |
 | Phase 4 — Multi-model & scale | ⬜ Not started (Later) |
 
 ## Done (most recent first)
+
+- ✅ **Slimming: Mastra + playwright + libreoffice removed → CI build OOM fixed** (PRs #109/#110,
+  2026-06-06). #109 removed Mastra entirely (backend, the `ai-chat`/`ai-workflow` + `api/*` routes,
+  the AI-SDK chat UI + `ai-elements/**`, the sidebar/menu/homepage surfaces, `@mastra/*`+`ai`+`@ai-sdk/*`
+  deps, schema, docs). #110 removed playwright + libreoffice (Dockerfile blocks + ARGs + `playwright`
+  dep + the render-png route/UI) so the lean image is the only image. **Result: `build.yml` on the 7G
+  GitHub runner now builds the slim image to completion (no OOM)** — verified on the #110 main run; it
+  fails only at the GHCR push (`denied: write_package`) because the `oxygenie/app` package has no linked
+  repo (created manually). One-time fix: package → Manage Actions access → add `foreveryh/oxygenie`
+  (Write). Mac redeployed on the slim image (UI no longer shows the Mastra surfaces). Image 4.23→4.02 GB.
+  Kept `ZHIPU_API_KEY` (Claude GLM-image tool + Zhipu MCP). *(2026-06-06)*
 
 - ✅ **Phase C real-preview deployed + verified live** (merge `78f46af`, 2026-06-06): real-preview v1
   (PR #107) + front-end seam, then 3 real-world-test fixes — Traefik **v3 `HostRegexp`** (the preview
@@ -221,9 +232,9 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Skills: admin curation of the catalog** | M | Admin UI to add/edit/remove **official** `skill_catalog` entries (editorial fields, default flags, sort) — currently the curated set is seed-only (`db:seed`); only user-added (`scope='user'`) skills are admin-manageable via `/admin/skills`. |
 | **Skills: team/org-level sharing** | L | Promote a user-added/uploaded skill (`scope='user'`) to org-shared (visible to the whole team), vs today's per-owner visibility + admin governance. PRD non-goal for this round; needs an `org` scope + unique-index rework. |
 | **Skills: composer "browse all installed" picker + inline form (optional)** | S–M | A dedicated composer picker listing **all** installed My-Skills → select → inline fillable variable form → compose. Today covered by context-badges (session-active skills + 「使用」 + examples) + A2Composer form (DB schema); this would be a convenience enhancement. PRD S4b-2 (partial). |
-| **🟢 NOW · Remove Mastra entirely** | L | `src/mastra/**` (~10 files), deps (`@mastra/*` + `ai`/`@ai-sdk/*` Mastra-only), routes (`api/chat.tsx`, `api/threads/**`, `api/workflow/pr-creator/**`), DB `mastra-thread.schema` + migration, CLAUDE.md dual-SDK. Verify Claude-Agent-SDK chat path unaffected. Unblocks CI build OOM. Owner decision: permanent. |
-| **🟢 NOW · Remove playwright + libreoffice** | M | Dockerfile install blocks + `INSTALL_BROWSER`/`INSTALL_OFFICE` ARGs + `playwright` dep + code paths. ~2 GB image + CI heap. Screenshot/office-conversion skills degrade (document). Owner decision: permanent. |
-| **🟢 NOW · Re-enable free CI build** | S–M | After slimming, the SSR build should fit the 7 GB GitHub runner → turn `build.yml` push-main GHCR auto-publish back on. |
+| ✅ ~~NOW · Remove Mastra entirely~~ | L | **Done — PR #109.** Backend + all UI surfaces + deps + schema + docs. |
+| ✅ ~~NOW · Remove playwright + libreoffice~~ | M | **Done — PR #110.** Dockerfile blocks + ARGs + `playwright` dep + render-png route/UI. Lean image is the only image now. |
+| **🟢 NOW · Re-enable free CI build (last step)** | XS | **Build OOM fixed** (build.yml builds the slim image on the 7G runner). Remaining: one-time GHCR **package→repo link** (`oxygenie/app` → Manage Actions access → add `foreveryh/oxygenie` Write) → push-main auto-publish goes green. |
 | **🔵 NEXT · Path A: bundle Traefik + preview-auth** | M | `docker-compose.yml` has no bundled proxy/preview routing → the "recommended baseline" path can't run previews. Add Traefik + the `preview-auth` router (Traefik **v3** `HostRegexp`). |
 | **🔵 NEXT · Agent code sandbox: fix srt registration sequencing** | M | `ws-query-worker.mjs` reads `sandboxStatus().state` **before** `ensureSandbox()` runs → `state=null` → bash tool never registers. Call `ensureSandbox()` first + ensure bubblewrap in the image → chat-side bash/Python works. |
 | **🔵 NEXT · MCP catalog/picker + fix stale "coming soon" copy** | M | No curated MCP picker yet; `skills.content.ts` "enabling … coming soon" copy is outdated (Skills shipped). Pairs with the Skills curation rows above. |
