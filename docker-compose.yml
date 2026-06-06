@@ -217,6 +217,9 @@ services:
     # Required so bubblewrap (srt exec sandbox) can create user namespaces in-container.
     security_opt:
       - seccomp=unconfined
+      # AppArmor (Ubuntu/Debian hosts) also blocks the unprivileged user namespaces
+      # srt needs; the default docker profile must be lifted too, not just seccomp.
+      - apparmor=unconfined
     depends_on:
       db:
         condition: service_healthy

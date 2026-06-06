@@ -1,56 +1,63 @@
 # Deployment Overview
 
-OxyGenie supports multiple deployment options. Choose based on your infrastructure and preferences.
-
-## Deployment Options
-
-| Method | Best For | Complexity | Links |
-|--------|----------|------------|-------|
-| **Docker Compose** | Single server, quick start, self-host | Low | [Guide](docker-compose.md) |
-| **Dokploy** | Managed platform, Traefik, multi-app | Medium | [Guide](dokploy.md) |
-| **Dokku + CI/CD** | GitHub Actions → Dokku | Medium | [GitHub workflow](../../.github/workflows/deploy.yml) |
-
----
-
-## Quick Comparison
-
-### Docker Compose
-
-- **Pros**: One command, local or VPS, full control
-- **Cons**: Manual SSL (or Caddy/nginx), single host
-- **Files**: `docker-compose.yml`, `.env`, `.env.docker`
-- **Command**: `pnpm docker:up` (or full `docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build`)
-
-### Dokploy
-
-- **Pros**: Traefik (auto SSL), UI, multi-app on same host
-- **Cons**: Requires Dokploy setup
-- **Files**: `docker-compose.dokploy.yml`, `infra/deploy/env.dokploy.example`
-- **Docs**: [Dokploy Deployment Guide](dokploy.md) → [Full guide (Chinese)](../../infra/deploy/DOKPLOY_DEPLOYMENT.md)
-
-### Dokku + GitHub Actions
-
-- **Pros**: Push to deploy, Git-based workflow
-- **Cons**: Needs Dokku server, GitHub secrets
-- **Flow**: `workflow_dispatch` → build image → SCP to server → `docker compose` + `dokku git:from-image`
-- **Details**: See [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml) and [infra/deploy/](../../infra/deploy/)
+> **Architecture stance (read this first).**
+> **OxyGenie is a standard single-node Docker Compose application. It does NOT require
+> Docker Swarm, Kubernetes, or any cluster orchestrator.** Every service (Postgres,
+> Redis, MinIO, Meilisearch, the app, the worker, the preview controller) is a plain
+> Docker container. You can run the whole thing with `docker compose up` on one host.
+>
+> Docker Swarm is **neither required nor a design target.** (The Dokploy platform happens
+> to use Swarm internally for *its own* components — its dashboard and Traefik — but
+> OxyGenie deploys on Dokploy as a normal Compose app, not as a Swarm workload. Nothing in
+> OxyGenie depends on Swarm features.) Verified: the full stack — including the Phase C
+> preview engine — runs on plain Docker (no Swarm).
 
 ---
 
-## Common Requirements
+## The two supported paths
 
-All deployment methods need:
+| Path | Who it's for | What you manage | Compose file |
+|---|---|---|---|
+| **A. Docker Compose (self-managed)** | **Anyone self-hosting on a VPS / their own box. Recommended baseline.** | The host + a reverse proxy (Traefik, bundled) | `docker-compose.yml` |
+| **B. Dokploy (managed PaaS)** | Teams who want a UI + managed Traefik/TLS/domains (this is how the maintainers run it) | A Dokploy install | `docker-compose.dokploy.yml` |
 
-1. **PostgreSQL** (with pgvector) – database
-2. **Redis** – background jobs (BullMQ)
-3. **Meilisearch** – search
-4. **MinIO** (or S3) – file storage
-5. **Environment variables** – see [.env.example](../../.env.example)
+Both run the **same images and the same app**. They differ only in **who runs the
+reverse proxy / TLS / DNS**:
+
+- **Path A** bundles its own Traefik in the compose file, so `docker compose up` gives you
+  a complete stack (app + TLS + the wildcard subdomain routing the Phase C preview needs).
+  You bring a domain + (for previews) a wildcard DNS record.
+- **Path B** uses Dokploy's existing Traefik. You set domains + certs in Dokploy; OxyGenie's
+  containers attach to Dokploy's network.
+
+> **Legacy:** an older Dokku + GitHub-Actions flow exists (`.github/workflows/deploy.yml`,
+> `infra/deploy/`). It is not a supported path going forward — use A or B.
 
 ---
 
-## Next Steps
+## What the preview feature needs (both paths)
 
-- [Docker Compose Deployment](docker-compose.md) – step-by-step for single-server
-- [Dokploy Deployment](dokploy.md) – Traefik-based managed deployment
-- [Troubleshooting](../troubleshooting.md) – common deployment issues
+The Phase C "real preview" runs each multi-file app in its own sandbox container and serves
+it on a **wildcard subdomain** (`<id>.<your-domain>`) behind the reverse proxy, gated by a
+one-time-token → cookie forward-auth. So both paths require:
+
+1. A **reverse proxy that reads container labels** (Traefik) — bundled in A, provided by Dokploy in B.
+2. A **wildcard DNS record** `*.<your-domain>` → the host.
+3. A **TLS cert that covers the wildcard** (single-level `*.<domain>`; see the per-path guides).
+
+The preview controller is the only component that talks to the Docker socket; it creates and
+tears down preview containers via the Docker API (plain `docker`, no Swarm).
+
+---
+
+## Pick your guide
+
+- **Path A — [Docker Compose](docker-compose.md)** ← start here if you're self-hosting.
+- **Path B — [Dokploy](dokploy.md)** ← managed platform.
+
+## Common requirements
+
+- A Linux host with Docker + the Compose plugin (Path A) or a Dokploy install (Path B).
+- A domain you control + DNS access (Cloudflare etc.) for the app host and the preview wildcard.
+- Secrets: Postgres/MinIO/Meili passwords, `BETTER_AUTH_SECRET`, and an LLM gateway key
+  (ARK `ANTHROPIC_AUTH_TOKEN` by default). See each guide's env section.

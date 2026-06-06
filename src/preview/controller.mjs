@@ -408,6 +408,11 @@ async function stopPreview(body) {
   return { stopped: true };
 }
 
+async function statusPreview(body) {
+  const existing = await inspectContainer(containerName(body.previewId));
+  return { exists: !!existing, running: !!existing?.State?.Running };
+}
+
 async function route(req, res) {
   if (req.method === 'GET' && req.url === '/health') {
     json(res, 200, { ok: true });
@@ -432,6 +437,11 @@ async function route(req, res) {
   if (req.url === '/v1/preview/start') {
     const result = await startPreview(body);
     json(res, 200, { ok: true, output: result.build.output, durationMs: result.build.durationMs });
+    return;
+  }
+  if (req.url === '/v1/preview/status') {
+    const result = await statusPreview(body);
+    json(res, 200, { ok: true, ...result });
     return;
   }
   if (req.url === '/v1/preview/stop') {
