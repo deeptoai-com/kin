@@ -14,8 +14,10 @@ Internet ──TLS──▶ Traefik (:443, bundled)  ──reads container label
    └─ <id>.your-domain   → preview sandbox container (4173), forward-auth gated
 ```
 
-> On a normal Linux Docker host Traefik talks to the docker socket **directly** — the macOS
-> `dockerproxy` shim from the tunnel path is **not needed here**.
+> The compose bundles a tiny `dockerproxy` (nginx) in front of the docker socket. **Docker
+> 28/29+ raised the daemon's minimum API to 1.40, which rejects Traefik's pinned v1.24 client**
+> ("client version 1.24 is too old") — on *any* OS, not just macOS. The shim rewrites the API
+> version so Traefik works; it's harmless on older Docker. (Verified live on Docker 29 / Ubuntu.)
 
 ---
 

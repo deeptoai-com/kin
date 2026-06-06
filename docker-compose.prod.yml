@@ -348,6 +348,9 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=oxygenie-net"
+      # Talk to docker through the version-rewrite shim: Docker 28/29+ raised the daemon's
+      # minimum API to 1.40, which rejects Traefik's pinned v1.24 client. See `dockerproxy`.
+      - "--providers.docker.endpoint=tcp://dockerproxy:2375"
       - "--entrypoints.web.address=:80"
       # Redirect all plain HTTP → HTTPS
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -369,9 +372,25 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - le-data:/letsencrypt
       - ./infra/prod/dynamic:/etc/traefik/dynamic:ro
+    depends_on:
+      - dockerproxy
+    restart: unless-stopped
+    networks:
+      - proxy
+
+  # Version-rewrite proxy for the docker socket. **Docker 28/29+ raised the daemon's minimum
+  # API to 1.40**, which rejects Traefik's pinned v1.24 client ("client version 1.24 is too
+  # old. Minimum supported API version is 1.40"). This nginx rewrites /vX.Y/ → /v1.44/ so
+  # Traefik works on modern Docker — this is NOT macOS-specific; verified needed on Docker 29
+  # / Ubuntu too. Harmless on older Docker. (Shares infra/tunnel/nginx.conf.)
+  dockerproxy:
+    image: nginx:alpine
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-dockerproxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infra/tunnel/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
     networks:
       - proxy

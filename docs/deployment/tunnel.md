@@ -43,10 +43,12 @@ Cloudflare edge (TLS, *.oxygenie.cc)
    `APP_TAG=local`, and every app service uses `pull_policy: never` (don't try to pull a local tag).
 5. **ARK auth** uses `ANTHROPIC_AUTH_TOKEN` (Bearer) — do **not** set `ANTHROPIC_API_KEY`
    (setting it makes the SDK switch to `x-api-key` and ARK rejects it). Same as every other path.
-6. **macOS only (OrbStack / Docker Desktop): the `dockerproxy` shim is required.** Traefik's
-   docker provider pins API `v1.24`; the macOS daemon's minimum is `1.40` → `"client version
-   1.24 is too old"`. `dockerproxy` (nginx) rewrites `/vX.Y/...` → `/v1.44/...`. **On a plain
-   Linux Docker host you don't need it** — point Traefik at the socket directly (see the bottom).
+6. **The `dockerproxy` shim is required on OrbStack/Docker Desktop AND on Docker 28/29+.**
+   Traefik's docker provider pins API `v1.24`; a daemon whose minimum is `1.40` rejects it →
+   `"client version 1.24 is too old"`. This hits **macOS (OrbStack/Docker Desktop)** *and*
+   **modern Docker on any OS** (Docker 28/29 raised the minimum to 1.40 — verified on Docker 29
+   / Ubuntu). `dockerproxy` (nginx) rewrites `/vX.Y/...` → `/v1.44/...`. Only **old Linux Docker
+   (≤27)** can skip it and point Traefik at the socket directly (see the bottom).
 
 ---
 
@@ -165,11 +167,12 @@ This applies to **all** deploy paths (the cache lives in the preview controller,
 
 ---
 
-## Running on a plain Linux host (no `dockerproxy` needed)
+## Old Linux Docker (≤27): you may drop `dockerproxy`
 
-The `dockerproxy` shim exists **only** because macOS Docker daemons reject Traefik's pinned API
-version. On a normal Linux Docker host, delete the `dockerproxy` service and point Traefik at
-the socket directly:
+The `dockerproxy` shim exists because Traefik's docker provider pins API `v1.24`, which daemons
+with a minimum of `1.40` reject — that's **macOS (OrbStack/Docker Desktop)** *and* **Docker
+28/29+ on any OS**. Only on **older Linux Docker (≤27)** can you delete the `dockerproxy` service
+and point Traefik at the socket directly:
 
 ```yaml
   traefik:
