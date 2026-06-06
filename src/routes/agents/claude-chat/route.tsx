@@ -1967,9 +1967,12 @@ const HistoricalMessageImpl: FC<{
                   />
                 )}
 
-                {/* Artifact Button — one deliverable card per turn, with the
-                    real file name / title (not a generic "{TYPE} 成果物"). */}
-                {artifact && artifact.type !== 'image' && (
+                {/* Artifact Button — one deliverable card per turn, with the real file
+                    name / title. Gated on !isRunning so the "打开成果物 / 运行预览" card only
+                    appears once the WHOLE turn is done — not mid-build (a half-written
+                    multi-file app would preview broken + waste a build). Live writes still
+                    show in the turn-card's activity stream during the turn. */}
+                {artifact && artifact.type !== 'image' && !isRunning && (
                   <div className="mt-3">
                     <ArtifactButton
                       type={artifact.type}
