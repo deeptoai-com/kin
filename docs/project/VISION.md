@@ -8,8 +8,8 @@
 
 OxyGenie is a **self-hosted, team-scale, autonomous Claude-agent workspace** —
 a deployable Claude-Desktop-class platform that a team runs on its own
-infrastructure. It is built on **TanStack Start** (SSR + Nitro) and deliberately
-runs **two agent runtimes side by side**:
+infrastructure. It is built on **TanStack Start** (SSR + Nitro) and runs on a single
+**process-isolated Claude Agent SDK runtime**:
 
 > ### ⭐ Intended use & audience — settled 2026-06 (the north star; check every design against this to avoid drift)
 >
@@ -39,14 +39,14 @@ runs **two agent runtimes side by side**:
 >    and it just works," not elastic public-SaaS scale.
 >
 
-1. **Process-isolated Claude Agent SDK runtime** (the real interactive loop).
-   A standalone WebSocket server (`ws-server.mjs`) authenticates each socket
-   against the web app, then **spawns a fresh child process per message**
-   (`ws-query-worker.mjs`) that calls `@anthropic-ai/claude-agent-sdk`'s
-   `query()` inside a per-session sandbox workspace with a per-user
-   `CLAUDE_HOME`, a path-security guard, dynamic MCP servers, and on-disk Skills.
-2. **In-process Mastra runtime** (`src/mastra`) over HTTP/SSE for
-   file-analysis / workflow tasks, currently on Zhipu GLM.
+A standalone WebSocket server (`ws-server.mjs`) authenticates each socket against the
+web app, then **spawns a fresh child process per message** (`ws-query-worker.mjs`) that
+calls `@anthropic-ai/claude-agent-sdk`'s `query()` inside a per-session sandbox workspace
+with a per-user `CLAUDE_HOME`, a path-security guard, dynamic MCP servers, and on-disk Skills.
+
+> A second, in-process **Mastra** runtime (HTTP/SSE; file-analysis / workflows) existed
+> earlier; it was **removed in 2026-06** (along with playwright/libreoffice) to simplify to
+> one SDK and restore free CI builds. Don't reintroduce a second agent SDK.
 
 Around these sits a conventional SaaS stack: Better Auth + organizations,
 Drizzle/Postgres, Polar billing, a BullMQ worker, S3/MinIO, Meilisearch.
@@ -111,7 +111,8 @@ WebSocket protocol and the Claude Agent SDK.
 - Add new REST API routes under `src/routes/api/*` (use Server Functions).
 - Weaken or bypass cross-tenant isolation for convenience.
 - Migrate wholesale to Deep Agents, or over-engineer ahead of need.
-- Let the two runtimes (Claude SDK vs Mastra) silently fork shared logic.
+- Reintroduce a second agent SDK / runtime (Mastra was removed 2026-06) — extend the
+  single Claude Agent SDK path instead.
 
 ## 7. Pointers
 

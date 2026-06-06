@@ -11,11 +11,7 @@ export const FEATURE_CONFIG = {
   skills: true,           // Skills Store page - enabled
   mcpStore: true,         // MCP Store page - enabled
 
-  // Section 2: AI SDK (using @ai-sdk/react + AI Elements)
-  aiChat: true,           // AI SDK Chat - enabled (with file attachments)
-  aiWorkflow: true,       // AI SDK Workflow - enabled
-
-  // Section 3: Other
+  // Section 2: Other
   documents: true,        // Documents / KB page - enabled
   dashboard: false,       // Dashboards page - hidden
 

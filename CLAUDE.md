@@ -16,27 +16,17 @@
 
 本项目基于 **TanStack Start** 构建，提供 SSR、路由、服务端函数等现代全栈能力。
 
-### 双 SDK 架构
+### Agent 运行时（单一 SDK）
 
-项目集成了两套 AI Agent SDK，各有分工：
-
-| 特性 | Claude Agent SDK | Mastra AI SDK |
-|------|-----------------|---------------|
-| **主要职责** | 交互式聊天 + 代码执行 | 文件分析 + 工作流编排 |
-| **通信方式** | WebSocket（持久连接） | HTTP/SSE（请求-响应） |
-| **LLM** | Claude (Anthropic API) | 可配置（OpenAI 兼容） |
-| **执行模型** | 子进程隔离 | 进程内 |
-| **沙盒环境** | ✅ 支持（Per-Session） | ❌ 不支持 |
-| **会话恢复** | ✅ 原生支持 | ❌ 需自行实现 |
-| **文档获取** | 需通过 Web 搜索 | MCP 工具支持 |
+项目**只用 Claude Agent SDK**（交互式聊天 + 代码执行 + 真预览，经 WebSocket 持久连接、
+子进程隔离、Per-Session 沙盒、原生会话恢复）。**Mastra 已于 2026-06 彻底移除**（连同
+playwright / libreoffice，瘦身以恢复免费 CI 构建）——不要再引入第二套 Agent SDK / Vercel
+AI SDK（`ai` / `@ai-sdk/*`），如需新增 LLM 网关能力走「多模型」路线（见 ROADMAP「Later」）。
 
 ### MCP (Model Context Protocol) 状态
 
-**当前状态**: 未配置
-
-- Claude Agent SDK 原生支持 MCP，会在 session metadata 中暴露 `mcp_servers` 字段
-- Mastra SDK 的文档可通过 MCP 工具获取（如 `mastraDocs`、`mastraMigration`）
-- 项目本身暂未配置 MCP 服务器
+- Claude Agent SDK 原生支持 MCP（`src/claude/mcp/**`），会在 session metadata 暴露 `mcp_servers`。
+- 团队精选的 MCP 目录/选择器尚在路线图「Next」（见 ROADMAP）。
 
 ---
 
@@ -189,143 +179,6 @@ ENABLE_STRUCTURED_OUTPUTS=false  # 默认关闭，详见 docs/.../2026-06-real-p
 
 ---
 
-## Mastra AI SDK 集成注意事项
-
-### 版本信息
-- `@mastra/core`: `1.0.0-beta.19` (v1 Beta)
-- `@mastra/ai-sdk`: `1.0.0-beta.12` (用于 AI SDK UI 集成)
-- `ai`: `^5.0.47` (Vercel AI SDK 核心包)
-- `@ai-sdk/react`: `^3.0.11` (Vercel AI SDK React 集成)
-
-### 核心文件
-
-| 文件 | 职责 |
-|------|------|
-| `src/mastra/index.ts` | Mastra 实例，注册 Agent 和 Workflow |
-| `src/mastra/agents/chat-agent.ts` | Chat Agent 定义 |
-| `src/mastra/tools/*.ts` | 自定义工具（如 S3 文件获取） |
-| `src/mastra/workflows/*.ts` | 工作流定义 |
-
-### 文档获取方式
-
-Mastra SDK 支持通过 **MCP 工具** 获取文档：
-- `mastraDocs`: 获取官方文档
-- `mastraExamples`: 获取代码示例
-- `mastraMigration`: 获取迁移指南
-- `mastraChanges`: 获取 changelog
-
-### API 变化 (v1 重要！)
-
-Mastra v1 的 Agent API 发生了重大变化：
-
-| 旧 API (v0.x) | 新 API (v1) | 说明 |
-|---------------|-------------|------|
-| `streamVNext()` | `stream()` | 标准流式 API |
-| `generateVNext()` | `generate()` | 标准生成 API |
-| `stream()` | `streamLegacy()` | 仅支持 AI SDK v4 模型 |
-| `generate()` | `generateLegacy()` | 仅支持 AI SDK v4 模型 |
-
-### 正确的集成方式 (v1)
-
-**后端 API 路由** (`/src/routes/api/chat.tsx`):
-```typescript
-import { handleChatStream } from '@mastra/ai-sdk';
-import { createUIMessageStreamResponse } from 'ai';
-import { mastra } from '~/mastra';
-
-export const Route = createFileRoute('/api/chat')({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        const params = await request.json();
-        const stream = await handleChatStream({
-          mastra,
-          agentId: 'chat-agent',
-          params,
-        });
-        return createUIMessageStreamResponse({ stream });
-      },
-    },
-  },
-});
-```
-
-**前端组件** (`/src/components/ai-sdk-chat.tsx`):
-```typescript
-import { useChat } from '@ai-sdk/react';
-
-const { messages, sendMessage, status, regenerate } = useChat({
-  api: '/api/chat',
-});
-```
-
-### 常见错误和陷阱
-
-❌ **错误方式** - 直接使用 Agent 的流式方法：
-```typescript
-// v1 中这些方法签名变了，不能直接这样用
-agent.streamVNext(messages)  // v1 中已改名为 stream()
-stream.toUIMessageStreamResponse()  // 不存在
-```
-
-✅ **正确方式** - 使用 `@mastra/ai-sdk` 的工具函数：
-```typescript
-import { handleChatStream } from '@mastra/ai-sdk';
-import { createUIMessageStreamResponse } from 'ai';
-
-const stream = await handleChatStream({
-  mastra,
-  agentId: 'your-agent-id',
-  params,  // { messages: [...] }
-});
-return createUIMessageStreamResponse({ stream });
-```
-
-### 官方文档参考
-
-集成 AI SDK UI 时，**必须先查阅官方文档**：
-- [Using AI SDK UI](https://mastra.ai/guides/v1/build-your-ui/ai-sdk-ui)
-- [Migration: VNext to Standard APIs](https://mastra.ai/guides/v1/migrations/vnext-to-standard-apis)
-- [Agent Upgrade Guide](https://mastra.ai/guides/v1/migrations/upgrade-to-v1/agent)
-
-### 流式响应格式
-
-API 返回的 Server-Sent Events (SSE) 格式：
-- `{"type":"start","messageId":"..."}` - 消息开始
-- `{"type":"reasoning-start","id":"..."}` - 推理开始
-- `{"type":"text-delta","id":"...","delta":"..."}` - 文本增量
-- `{"type":"tool-input-start",...}` - 工具调用开始
-- `{"type":"finish"}` - 完成
-
-### GLM-5.0 模型配置
-
-Mastra v1 内置智谱 AI 支持，使用 `zhipuai/` 前缀：
-
-**Agent 定义** (`/src/mastra/agents/chat-agent.ts`):
-```typescript
-import { Agent } from '@mastra/core/agent';
-
-export const chatAgent = new Agent({
-  name: 'chat-agent',
-  instructions: '...',
-  model: 'zhipuai/glm-5.0',  // Mastra 内置 model gateway
-  tools: { /* ... */ },
-});
-```
-
-**环境变量** (`.env`):
-```bash
-# Zhipu AI API Key (Mastra 内置网关)
-ZHIPU_API_KEY=your_api_key_here
-```
-
-**可用模型**：
-- `zhipuai/glm-4.5` (131K context)
-- `zhipuai/glm-4.6` (205K context)
-- `zhipuai/glm-5.0` (205K context)
-- 以及 air、flash 等轻量版本
-
----
 
 ## TanStack Start 核心规则（来自 .ruler/AGENTS.md）
 
@@ -655,8 +508,6 @@ function ParentIndex() {
 }
 ```
 
-**详细规范**：见 `src/routes/agents/ai-workflow/CLAUDE.md`
-
 ---
 
 ## Docker 修改规则（强制执行）
@@ -834,5 +685,5 @@ services:
     直接 404、预览打不开(此前被误判为 Dokploy-Swarm 路由问题)。compose 里写 `\\.`(YAML→`\.`)、
     `$$`(compose 插值→`$` 末尾锚)。已修于 `docker-compose.{tunnel,dokploy}.yml`。
 
-> **遗留**:CI(7G runner)构建仍会 OOM → 待砍 Mastra + playwright + libreoffice 瘦身后,恢复
-> `build.yml` push-main 自动构建 GHCR(开源贡献者就不必本地 16G 构建)。
+> **瘦身进行中**:**Mastra 已移除（2026-06）**；仍待砍 **playwright + libreoffice**，之后确认 SSR
+> 构建可在 7G runner 内完成 → 恢复 `build.yml` push-main 自动构建 GHCR(开源贡献者就不必本地 16G 构建)。

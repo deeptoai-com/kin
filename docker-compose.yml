@@ -254,8 +254,8 @@ services:
       # Internal URL for server-side API calls (inside container)
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
-      # Mastra Agent (Zhipu AI GLM-5.0 via Mastra built-in gateway)
-      ZHIPU_API_KEY: ${ZHIPU_API_KEY:?}
+      # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}

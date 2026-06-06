@@ -10,6 +10,5 @@ export * from './session-document.schema';
 export * from './message-attachment.schema';
 export * from './knowledge-base.schema';
 export * from './kb-document.schema';
-export * from './mastra-thread.schema';
 export * from './profile.schema';
 export * from './skill-catalog.schema';

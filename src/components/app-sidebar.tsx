@@ -14,10 +14,8 @@ import {
   SidebarMenuItem,
 } from '~/components/ui/sidebar';
 import DashboardIcon from 'virtual:icons/ri/dashboard-line';
-import ChatIcon from 'virtual:icons/ri/chat-3-line';
 import ImageIcon from 'virtual:icons/ri/image-line';
 import FileTextIcon from 'virtual:icons/ri/file-text-line';
-import FlowChartIcon from 'virtual:icons/ri/flow-chart';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
 import AppsIcon from 'virtual:icons/ri/apps-2-line';
@@ -64,25 +62,7 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
       ],
       hasDivider: true,
     },
-    // Section 2: AI SDK (using @ai-sdk/react + AI Elements)
-    {
-      items: [
-        {
-          title: content.nav.aiChat,
-          url: '/agents/ai-chat',
-          icon: ChatIcon,
-          enabled: FEATURE_CONFIG.aiChat,
-        },
-        {
-          title: content.nav.aiWorkflow,
-          url: '/agents/ai-workflow',
-          icon: FlowChartIcon,
-          enabled: FEATURE_CONFIG.aiWorkflow,
-        },
-      ],
-      hasDivider: true,
-    },
-    // Section 3: Other
+    // Section 2: Other
     {
       items: [
         {

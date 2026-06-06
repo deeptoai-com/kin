@@ -207,10 +207,6 @@ function RouteComponent() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.additionalFeatures.mastraAiChat}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
                   {content.techStack.additionalFeatures.betterAuth}
                 </li>
                 <li className="flex items-center gap-2">
@@ -238,7 +234,7 @@ function RouteComponent() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-8 md:grid-cols-2">
+        <div className="mt-12 mx-auto max-w-3xl">
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <Badge className="mb-2 w-fit">{content.architecture.deeptoai.badge}</Badge>
@@ -255,26 +251,6 @@ function RouteComponent() {
                 <li>• {content.architecture.deeptoai.feature4}</li>
                 <li>• {content.architecture.deeptoai.feature5}</li>
                 <li>• {content.architecture.deeptoai.feature6}</li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Badge variant="secondary" className="mb-2 w-fit">{content.architecture.mastra.badge}</Badge>
-              <CardTitle className="text-xl">{content.architecture.mastra.title}</CardTitle>
-              <CardDescription className="text-base">
-                {content.architecture.mastra.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• {content.architecture.mastra.feature1}</li>
-                <li>• {content.architecture.mastra.feature2}</li>
-                <li>• {content.architecture.mastra.feature3}</li>
-                <li>• {content.architecture.mastra.feature4}</li>
-                <li>• {content.architecture.mastra.feature5}</li>
-                <li>• {content.architecture.mastra.feature6}</li>
               </ul>
             </CardContent>
           </Card>

@@ -25,8 +25,6 @@ export function SiteHeader() {
       "/agents/skills": "skills",
       "/agents/billing": "billing",
       "/agents/settings/billing": "billingSettings",
-      "/agents/ai-chat": "aiChat",
-      "/agents/ai-workflow": "aiWorkflow",
     }
     return titleMap[path] || "agent"
   }

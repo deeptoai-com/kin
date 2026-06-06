@@ -276,7 +276,7 @@ services:
       # OAuth Providers (frontend - Client ID only)
       VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-      # Mastra Agent (Zhipu AI GLM via Mastra built-in gateway) — optional, not used in ARK-only deploy
+      # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
       # do NOT set ANTHROPIC_API_KEY (it would make the SDK use x-api-key instead of Bearer).

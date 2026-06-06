@@ -29,18 +29,6 @@ export function Header() {
           >
             {content.nav.skillsStore}
           </Link>
-          <Link
-            to="/agents/ai-chat"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {content.nav.aiChat}
-          </Link>
-          <Link
-            to="/agents/ai-workflow"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {content.nav.aiWorkflow}
-          </Link>
           <a
             href="https://x.com/Stephen4171127"
             target="_blank"
