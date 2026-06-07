@@ -1,6 +1,6 @@
 {
-  "id": "f05ea8d9-0386-4248-9795-b1f93b64f107",
-  "prevId": "d9eebdf2-d45d-4817-bb29-69f589dfb6d8",
+  "id": "4c3a488f-9098-4cee-ae54-d73f3353b927",
+  "prevId": "f05ea8d9-0386-4248-9795-b1f93b64f107",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2846,6 +2846,261 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.model_connection": {
+      "name": "model_connection",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_style": {
+          "name": "auth_style",
+          "type": "model_auth_style",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'bearer'"
+        },
+        "token_env": {
+          "name": "token_env",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anthropic_version": {
+          "name": "anthropic_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'2023-06-01'"
+        },
+        "custom_headers": {
+          "name": "custom_headers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alias_opus": {
+          "name": "alias_opus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alias_sonnet": {
+          "name": "alias_sonnet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alias_haiku": {
+          "name": "alias_haiku",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alias_subagent": {
+          "name": "alias_subagent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.model_definition": {
+      "name": "model_definition",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tags": {
+          "name": "tags",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "model_definition_connection_id_model_connection_id_fk": {
+          "name": "model_definition_connection_id_model_connection_id_fk",
+          "tableFrom": "model_definition",
+          "tableTo": "model_connection",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.model_health": {
+      "name": "model_health",
+      "schema": "",
+      "columns": {
+        "model_id": {
+          "name": "model_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "health": {
+          "name": "health",
+          "type": "model_health",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "last_probe_at": {
+          "name": "last_probe_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "probe_error": {
+          "name": "probe_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "model_health_model_id_model_definition_id_fk": {
+          "name": "model_health_model_id_model_definition_id_fk",
+          "tableFrom": "model_health",
+          "tableTo": "model_definition",
+          "columnsFrom": [
+            "model_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -2918,6 +3173,23 @@
         "upstream",
         "builtin",
         "upload"
+      ]
+    },
+    "public.model_auth_style": {
+      "name": "model_auth_style",
+      "schema": "public",
+      "values": [
+        "bearer",
+        "x-api-key"
+      ]
+    },
+    "public.model_health": {
+      "name": "model_health",
+      "schema": "public",
+      "values": [
+        "healthy",
+        "unhealthy",
+        "unknown"
       ]
     }
   },
