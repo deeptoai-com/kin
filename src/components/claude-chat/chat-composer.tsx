@@ -45,6 +45,7 @@ import { SessionFilesPanel } from './session-files-panel';
 import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
 import { type PermissionInfo } from './permission-badge';
 import { PermissionTierSelector } from './permission-tier-selector';
+import { ModelPicker } from './model-picker';
 import { ToolbarStatus, type AgentStatusType } from './claude-status';
 import { McpStatusIndicator } from './mcp-status-indicator';
 import { useIntlayer } from 'react-intlayer';
@@ -465,15 +466,8 @@ export function ChatComposer({
             />
           </div>
           <div className="flex items-center gap-2">
-            {/* Model indicator - only show when not running */}
-            {!isRunning && (
-              <div
-                className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
-                title="当前模型"
-              >
-                <span className="font-serif text-[14px] text-foreground">GLM 5.0</span>
-              </div>
-            )}
+            {/* Model picker (multi-model) - only show when not running */}
+            {!isRunning && <ModelPicker />}
 
             {/* Workspace Toggle Button - only show when not running */}
             {!isRunning && (
