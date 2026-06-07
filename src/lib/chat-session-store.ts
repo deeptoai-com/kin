@@ -183,7 +183,8 @@ interface ChatSessionState {
   selectedTier?: InteractionMode;
 
   // Selected model id for this conversation (multi-model). undefined → server uses
-  // the configured default. Ephemeral per-session UI choice (DB-persisted in PR7).
+  // the configured default. Per-conversation UI choice, persisted per-session in
+  // localStorage (PR8) and restored on session switch/resume.
   selectedModelId?: string;
 
   // Actions
@@ -408,6 +409,39 @@ function resolveToolResult(
   };
 }
 
+// ── Per-conversation model preference (PR8) ───────────────────────────────────
+// The selected model is a UI preference (the server re-validates + rejects on every
+// send), so per CLAUDE.md's data-layering it lives in localStorage, keyed by
+// sessionId — so switching/resuming a conversation restores its model, surviving
+// reload. (Per-browser; a DB column would add cross-device sync — future upgrade.)
+const MODEL_PREF_KEY = 'oxy:session-model';
+
+function readModelPrefMap(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(MODEL_PREF_KEY) || '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function readModelPref(sessionId: string | null): string | undefined {
+  if (!sessionId) return undefined;
+  return readModelPrefMap()[sessionId];
+}
+
+function writeModelPref(sessionId: string | null, modelId: string | undefined): void {
+  if (typeof window === 'undefined' || !sessionId) return;
+  try {
+    const map = readModelPrefMap();
+    if (modelId) map[sessionId] = modelId;
+    else delete map[sessionId];
+    window.localStorage.setItem(MODEL_PREF_KEY, JSON.stringify(map));
+  } catch {
+    /* localStorage unavailable (private mode / quota) — preference is best-effort */
+  }
+}
+
 export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   currentSessionId: null,
   messages: [],
@@ -431,10 +465,12 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setSelectedModelId: (selectedModelId) => {
     set({ selectedModelId });
+    writeModelPref(get().currentSessionId, selectedModelId);
   },
 
   setSessionId: (sessionId) => {
-    set({ currentSessionId: sessionId });
+    // Restore this conversation's remembered model (undefined → server default).
+    set({ currentSessionId: sessionId, selectedModelId: readModelPref(sessionId) });
   },
 
   setMessages: (messages) => {
