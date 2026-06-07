@@ -67,6 +67,14 @@ events.on('failed', ({ jobId, failedReason }) =>
     logger.info('[worker] scheduled probe-models', { cron: probeCron })
   }
 
+  // Probe once on boot (default on) so freshly-seeded models become selectable in
+  // minutes instead of waiting for the first 6h tick. Set MODEL_PROBE_ON_BOOT=false
+  // to disable.
+  if ((process.env.MODEL_PROBE_ON_BOOT ?? 'true').toLowerCase() !== 'false') {
+    await queue.add('probe-models', {}, { jobId: `probe-boot-${Date.now()}` })
+    logger.info('[worker] queued probe-models on boot')
+  }
+
   if (process.env.SEARCH_REINDEX_ON_BOOT === 'true') {
     await queue.add('reindex-all', {}, { jobId: `reindex-${Date.now()}` })
     logger.info('[worker] queued reindex-all on boot')
