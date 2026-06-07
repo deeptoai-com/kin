@@ -15,8 +15,13 @@ import {
   listModelsAdmin,
   setModelEnabled,
   setDefaultModelById,
+  upsertConnection,
+  deleteConnection,
+  upsertModel,
+  deleteModel,
   type AdminModelRow,
 } from '~/server/models/registry';
+import { AUTH_STYLES } from '~/server/models/model-config';
 import { systemQueue } from '~/jobs/queues';
 
 const requireAdmin = async () => {
@@ -63,5 +68,63 @@ export const reprobeModelsFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await requireAdmin();
     await systemQueue.add('probe-models', data.modelId ? { modelId: data.modelId } : {});
+    return { ok: true };
+  });
+
+// ── CRUD (PR6b) ───────────────────────────────────────────────────────────────
+
+const idRe = /^[a-zA-Z0-9._/-]+$/;
+
+const connectionInputSchema = z.object({
+  id: z.string().min(1).regex(idRe),
+  label: z.string().min(1),
+  baseUrl: z.string().url(),
+  authStyle: z.enum(AUTH_STYLES),
+  tokenEnv: z.string().min(1),
+  anthropicVersion: z.string().optional(),
+  aliasOpus: z.string().nullish(),
+  aliasSonnet: z.string().nullish(),
+  aliasHaiku: z.string().nullish(),
+  aliasSubagent: z.string().nullish(),
+});
+
+const modelInputSchema = z.object({
+  id: z.string().min(1).regex(idRe),
+  label: z.string().min(1),
+  connectionId: z.string().min(1),
+  model: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const upsertConnectionFn = createServerFn({ method: 'POST' })
+  .inputValidator(connectionInputSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await upsertConnection({ ...data, aliasOpus: data.aliasOpus ?? null, aliasSonnet: data.aliasSonnet ?? null, aliasHaiku: data.aliasHaiku ?? null, aliasSubagent: data.aliasSubagent ?? null });
+    return { ok: true };
+  });
+
+export const deleteConnectionFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ id: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await deleteConnection(data.id);
+    return { ok: true };
+  });
+
+export const upsertModelFn = createServerFn({ method: 'POST' })
+  .inputValidator(modelInputSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await upsertModel(data);
+    return { ok: true };
+  });
+
+export const deleteModelFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ id: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await deleteModel(data.id);
     return { ok: true };
   });

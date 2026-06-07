@@ -249,3 +249,82 @@ export async function setDefaultModelById(id: string): Promise<void> {
   await db.update(modelDefinition).set({ isDefault: false }).where(eq(modelDefinition.isDefault, true));
   await db.update(modelDefinition).set({ isDefault: true }).where(eq(modelDefinition.id, id));
 }
+
+// ── Admin CRUD (PR6b) ─────────────────────────────────────────────────────────
+// Definitions live in the DB; secrets stay in env (tokenEnv NAME only). Adding a
+// connection here records its tokenEnv; the value must exist in the server env.
+
+export type ConnectionInput = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  authStyle: AuthStyle;
+  tokenEnv: string;
+  anthropicVersion?: string;
+  aliasOpus?: string | null;
+  aliasSonnet?: string | null;
+  aliasHaiku?: string | null;
+  aliasSubagent?: string | null;
+};
+
+export type ModelInput = {
+  id: string;
+  label: string;
+  connectionId: string;
+  model: string;
+  tags?: string[];
+  enabled?: boolean;
+};
+
+/** Create or update a connection (upsert by id). */
+export async function upsertConnection(c: ConnectionInput): Promise<void> {
+  const values = {
+    id: c.id,
+    label: c.label,
+    baseUrl: c.baseUrl,
+    authStyle: c.authStyle,
+    tokenEnv: c.tokenEnv,
+    anthropicVersion: c.anthropicVersion || '2023-06-01',
+    aliasOpus: c.aliasOpus ?? null,
+    aliasSonnet: c.aliasSonnet ?? null,
+    aliasHaiku: c.aliasHaiku ?? null,
+    aliasSubagent: c.aliasSubagent ?? null,
+  };
+  await db
+    .insert(modelConnection)
+    .values(values)
+    .onConflictDoUpdate({ target: modelConnection.id, set: { ...values, updatedAt: new Date() } });
+}
+
+/** Delete a connection (cascades to its models + health rows). */
+export async function deleteConnection(id: string): Promise<void> {
+  await db.delete(modelConnection).where(eq(modelConnection.id, id));
+}
+
+/** Create or update a model (upsert by id). Verifies the connection exists. */
+export async function upsertModel(m: ModelInput): Promise<void> {
+  const [conn] = await db
+    .select({ id: modelConnection.id })
+    .from(modelConnection)
+    .where(eq(modelConnection.id, m.connectionId))
+    .limit(1);
+  if (!conn) throw new Error(`Unknown connection "${m.connectionId}"`);
+  const values = {
+    id: m.id,
+    label: m.label,
+    connectionId: m.connectionId,
+    model: m.model,
+    tags: m.tags ?? [],
+    enabled: m.enabled ?? true,
+  };
+  await db
+    .insert(modelDefinition)
+    .values(values)
+    .onConflictDoUpdate({ target: modelDefinition.id, set: { ...values, updatedAt: new Date() } });
+  await db.insert(modelHealth).values({ modelId: m.id, health: 'unknown' }).onConflictDoNothing();
+}
+
+/** Delete a model (cascades to its health row). */
+export async function deleteModel(id: string): Promise<void> {
+  await db.delete(modelDefinition).where(eq(modelDefinition.id, id));
+}
