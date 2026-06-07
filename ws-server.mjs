@@ -25,6 +25,7 @@ import { shouldReapIdle } from './src/server/concurrency/idle-reaper.js';
 import { resolveEffectivePermission } from './src/lib/permission-tier.js';
 import { PreviewAuth } from './src/preview/auth.js';
 import { PreviewRuntime } from './src/preview/runtime.js';
+import { buildWorkerEnv } from './src/server/models/build-worker-env.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1024,8 +1025,41 @@ async function handleStopPreview(ws, message) {
  * Handle chat message using child process for user and session isolation
  * Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
  */
+// ── Multi-model: resolve the selected model's connection metadata (token-free)
+// from the web app, with a short-TTL cache so it stays off the per-message hot path
+// (arch finding A4). Secrets never cross the wire — the endpoint returns only the
+// tokenEnv NAME; the token value stays here in process.env. Contract:
+// src/server/models/resolve-contract.ts.
+const MODEL_RESOLVE_TTL_MS = Number(process.env.MODEL_RESOLVE_TTL_MS) || 60_000;
+const modelResolveCache = new Map(); // modelId → { meta: object|null, expiresAt: number }
+
+async function resolveModelForChat(cookie, modelId) {
+  if (!modelId) return null;
+  const cached = modelResolveCache.get(modelId);
+  if (cached && cached.expiresAt > Date.now()) return cached.meta;
+  try {
+    const response = await fetch(`${APP_URL}/api/models/resolve/${encodeURIComponent(modelId)}`, {
+      headers: { cookie: cookie || '' },
+    });
+    if (response.status === 404) {
+      modelResolveCache.set(modelId, { meta: null, expiresAt: Date.now() + MODEL_RESOLVE_TTL_MS });
+      return null;
+    }
+    if (!response.ok) {
+      console.error(`[WS Server] model resolve failed (${response.status}) for ${modelId}`);
+      return undefined; // transient — distinguish from a definitive 404 (null)
+    }
+    const meta = await response.json();
+    modelResolveCache.set(modelId, { meta, expiresAt: Date.now() + MODEL_RESOLVE_TTL_MS });
+    return meta;
+  } catch (error) {
+    console.error('[WS Server] model resolve error:', error);
+    return undefined; // transient
+  }
+}
+
 async function handleChat(ws, prompt, resumeSessionId, options = {}) {
-  const { silentInit = false, skillSlug = null, permissionTier = null } = options;
+  const { silentInit = false, skillSlug = null, permissionTier = null, model: selectedModel = null } = options;
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -1103,7 +1137,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     }
 
     // Build environment for worker process
-    const workerEnv = { ...process.env };
+    let workerEnv = { ...process.env };
     // Set both CLAUDE_HOME and HOME - SDK might use either
     workerEnv.CLAUDE_HOME = claudeHome;
     workerEnv.HOME = claudeHome;  // Override HOME so os.homedir() returns user dir
@@ -1115,6 +1149,35 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     }
     if (config.model) workerEnv.ANTHROPIC_MODEL = config.model;
     workerEnv.ENABLE_TOOL_SEARCH = 'auto:10';  // Enable Tool Search when many MCP tools available
+
+    // Multi-model: if the client selected a model, route THIS run to its connection.
+    // Per owner decision #2, reject (don't silently fall back) on an unknown/disabled/
+    // unhealthy/unresolvable selection. No selection → keep the deployment default above.
+    if (selectedModel) {
+      const meta = await resolveModelForChat(ws.cookie, selectedModel);
+      if (meta === undefined) {
+        sendMessage(ws, { type: 'error', code: 'model_resolve_failed', message: 'Could not resolve the selected model right now. Please retry.', retriable: true });
+        return;
+      }
+      if (meta === null) {
+        sendMessage(ws, { type: 'error', code: 'model_not_found', message: `Selected model "${selectedModel}" no longer exists. Pick another model.`, retriable: false });
+        return;
+      }
+      if (!meta.enabled || meta.health !== 'healthy') {
+        const why = !meta.enabled ? 'disabled' : meta.health;
+        sendMessage(ws, { type: 'error', code: 'model_unavailable', message: `Selected model "${meta.id}" is currently ${why}. Pick another model.`, retriable: false });
+        return;
+      }
+      try {
+        // buildWorkerEnv returns a fresh env (copies workerEnv, sets ANTHROPIC_* and
+        // DELETES the unused auth var) — reassign so the deletion takes effect.
+        workerEnv = buildWorkerEnv(meta, workerEnv);
+        console.log(`[WS Server] Routed run to model ${meta.id} (connection ${meta.connectionId})`);
+      } catch (error) {
+        sendMessage(ws, { type: 'error', code: 'model_config_error', message: error instanceof Error ? error.message : String(error), retriable: false });
+        return;
+      }
+    }
 
     // Fetch permission info from API (includes organization settings)
     const permissionInfo = await fetchPermissionInfo(ws.cookie);
@@ -1480,6 +1543,7 @@ async function handleMessage(ws, msg) {
       await handleChat(ws, message.content, message.sessionId, {
         skillSlug: message.skillSlug,
         permissionTier: message.permissionTier,
+        model: message.model,
       });
       break;
 
