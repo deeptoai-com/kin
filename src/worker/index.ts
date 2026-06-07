@@ -5,6 +5,7 @@ import { Worker, Queue, QueueEvents, JobsOptions } from 'bullmq'
 import { logger } from '~/lib/logger'
 import { runDailyCreditRefill } from './processors/dailyCreditRefill.ts'
 import { reindexDocuments } from './processors/reindexDocuments.ts'
+import { probeModels } from './processors/probeModels.ts'
 
 const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
@@ -25,6 +26,9 @@ const worker = new Worker(
       case 'reindex-all':
         logger.info('[worker] running reindex-all job')
         return reindexDocuments()
+      case 'probe-models':
+        logger.info('[worker] running probe-models job')
+        return probeModels((job.data as { modelId?: string } | undefined)?.modelId)
       default:
         logger.warn(`[worker] Unknown job "${job.name}" - ignoring`)
     }
@@ -52,6 +56,15 @@ events.on('failed', ({ jobId, failedReason }) =>
     const opts: JobsOptions = { repeat: { pattern: cron }, jobId: 'daily-credit-refill' }
     await queue.add('daily-credit-refill', {}, opts)
     logger.info('[worker] scheduled daily-credit-refill', { cron })
+  }
+
+  // Model health probe (multi-model): re-check every model's connection on a cadence
+  // (default every 6h) so the picker/board only offer currently-usable models.
+  const probeCron = process.env.MODEL_PROBE_CRON ?? '0 */6 * * *'
+  const hasProbe = existing.some((j) => j.name === 'probe-models' && j.cron === probeCron)
+  if (!hasProbe) {
+    await queue.add('probe-models', {}, { repeat: { pattern: probeCron }, jobId: 'probe-models' })
+    logger.info('[worker] scheduled probe-models', { cron: probeCron })
   }
 
   if (process.env.SEARCH_REINDEX_ON_BOOT === 'true') {
