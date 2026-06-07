@@ -194,6 +194,13 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      # Multi-model health probe (runs here): needs the ARK Bearer token to call
+      # {baseUrl}/v1/messages. baseUrl/model come from the DB; the token is read by
+      # name (tokenEnv). Probes on boot + every 6h.
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MODEL_PROBE_ON_BOOT: ${MODEL_PROBE_ON_BOOT:-true}
+      MODEL_PROBE_CRON: ${MODEL_PROBE_CRON:-0 */6 * * *}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     command: ['npx', 'tsx', 'src/worker/index.ts']
@@ -288,6 +295,9 @@ services:
       ANTHROPIC_DEFAULT_OPUS_MODEL: ${ANTHROPIC_DEFAULT_OPUS_MODEL:-}
       ANTHROPIC_DEFAULT_HAIKU_MODEL: ${ANTHROPIC_DEFAULT_HAIKU_MODEL:-}
       CLAUDE_CODE_SUBAGENT_MODEL: ${CLAUDE_CODE_SUBAGENT_MODEL:-}
+      # Multi-model: non-secret JSON of connections+models (seeds the DB on boot).
+      # Secrets stay in env by tokenEnv name (e.g. ANTHROPIC_AUTH_TOKEN above).
+      OXY_MODELS_SEED: ${OXY_MODELS_SEED:-}
       # Gemini API for skill icon generation
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
