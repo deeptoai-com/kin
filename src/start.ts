@@ -17,6 +17,16 @@ if (import.meta.env.SSR) {
       throw error;
     }
   }
+
+  // Seed the multi-model registry from OXY_MODELS_SEED (or the legacy ANTHROPIC_*
+  // fallback) into the DB. Idempotent (onConflictDoNothing) — admin edits win.
+  // Best-effort: never block startup if seeding fails.
+  try {
+    const { seedModelsFromEnv } = await import('~/server/models/registry');
+    await seedModelsFromEnv();
+  } catch (error) {
+    console.error('[Startup] Model registry seed failed (non-fatal):', error);
+  }
 } else {
   // Client init (captures console + network)
   await import('~/lib/observability/sentry.client')
