@@ -1,0 +1,189 @@
+/* OxyGenie marketing homepage — JumpX V4 "editorial dev-tool · 荧光绿".
+   Self-contained + light-first (intentional dark blocks inside). Scoped under
+   `.oxy-home` so it never leaks into the app shell and is theme-independent. */
+
+.oxy-home {
+  --paper: #f3f2ec; --paper-hi: #fbfaf6; --panel: #eae8e0; --panel-2: #e1ded3;
+  --code: #f0ece2; --ink: #1a1917; --ink-2: #56534c; --ink-3: #8b877d;
+  --line: #dad6cb; --line-2: #c7c2b4;
+  --green-deep: #128a45; --green-press: #0c6b34; --green-soft: #dcefe0; --green: #2fdd68;
+  --font: "JetBrains Mono", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.oxy-home ::selection { background: var(--green-deep); color: var(--paper-hi); }
+.oxy-home a { color: inherit; text-decoration: none; }
+.oxy-home .wrap { max-width: 1240px; margin: 0 auto; padding: 0 40px; }
+.oxy-home .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+.oxy-home .eyebrow b { color: var(--green-deep); font-weight: 700; }
+.oxy-home .code { font-family: var(--mono); background: var(--code); border: 1px solid var(--line); border-radius: 3px; padding: 1px 7px; font-size: .86em; color: var(--green-deep); }
+.oxy-home .cur { display: inline-block; width: .5em; height: 1em; background: var(--green-deep); transform: translateY(.12em); margin-left: .06em; animation: oxy-bl 1.1s steps(1) infinite; }
+@keyframes oxy-bl { 50% { opacity: 0; } }
+.oxy-home .reveal { transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+.oxy-home.js .reveal { opacity: 0; transform: translateY(22px); }
+.oxy-home.js .reveal.in { opacity: 1; transform: none; }
+
+/* buttons */
+.oxy-home .btn-go { font-family: var(--mono); font-weight: 600; font-size: 14px; background: var(--green); color: var(--ink); padding: 13px 22px; border-radius: 4px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 9px; transition: background .25s; }
+.oxy-home .btn-go:hover { background: #27c95c; }
+.oxy-home .btn-go .ar { transition: transform .25s; }
+.oxy-home .btn-go:hover .ar { transform: translateX(4px); }
+.oxy-home .btn-ghost { font-family: var(--mono); font-weight: 500; font-size: 14px; background: transparent; color: var(--ink); padding: 13px 20px; border-radius: 4px; border: 1px solid var(--line-2); cursor: pointer; transition: border-color .25s; display: inline-flex; align-items: center; gap: 9px; }
+.oxy-home .btn-ghost:hover { border-color: var(--ink); }
+
+/* hero */
+.oxy-home .hero { position: relative; padding: 92px 0 84px; }
+.oxy-home .hero .tag { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .04em; margin-bottom: 30px; }
+.oxy-home .hero .tag b { color: var(--green-deep); font-weight: 600; }
+.oxy-home .hero h1 { font-weight: 900; font-size: clamp(50px, 8.2vw, 112px); line-height: 1.16; letter-spacing: 0; hanging-punctuation: allow-end; text-wrap: pretty; }
+.oxy-home .hero h1 .soft { font-weight: 400; color: var(--ink-2); }
+.oxy-home .hero h1 .cl { color: var(--green-deep); }
+.oxy-home .hero .sub { display: flex; justify-content: space-between; align-items: flex-end; gap: 40px; margin-top: 46px; flex-wrap: wrap; }
+.oxy-home .hero .sub p { max-width: 600px; font-size: 17px; line-height: 1.9; color: var(--ink-2); font-weight: 300; }
+.oxy-home .hero .sub p b { color: var(--ink); font-weight: 500; }
+.oxy-home .hero .comment { font-family: var(--mono); font-size: 13px; color: var(--ink-3); margin-top: 14px; }
+.oxy-home .hero .comment b { color: var(--green-deep); font-weight: 500; }
+.oxy-home .metaboard { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; font-family: var(--mono); }
+.oxy-home .metaboard div { padding: 14px 20px; border-right: 1px solid var(--line); font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
+.oxy-home .metaboard div:last-child { border-right: none; }
+.oxy-home .metaboard div span { display: block; color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 5px; }
+.oxy-home .hero-cta { display: flex; gap: 12px; margin-top: 40px; flex-wrap: wrap; }
+
+/* concept */
+.oxy-home .concept { padding: 24px 0 104px; }
+.oxy-home .concept .lead { display: grid; grid-template-columns: .9fr 1.1fr; gap: 56px; align-items: start; margin-top: 30px; }
+.oxy-home .concept h2 { font-weight: 900; font-size: clamp(28px, 3.8vw, 46px); line-height: 1.2; letter-spacing: 0; hanging-punctuation: allow-end; text-wrap: pretty; }
+.oxy-home .concept h2 .soft { font-weight: 400; color: var(--ink-2); }
+.oxy-home .concept h2 .cl { color: var(--green-deep); }
+.oxy-home .concept .body { font-size: 16px; line-height: 1.9; color: var(--ink-2); font-weight: 300; }
+.oxy-home .concept .body p + p { margin-top: 18px; }
+.oxy-home .concept .body b { color: var(--ink); font-weight: 500; }
+.oxy-home .princip { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 66px; border-top: 1px solid var(--ink); }
+.oxy-home .princip .p { padding: 28px 28px 28px 0; border-right: 1px solid var(--line); position: relative; }
+.oxy-home .princip .p:last-child { border-right: none; padding-right: 0; }
+.oxy-home .princip .num { font-family: var(--mono); font-size: 12px; color: var(--green-deep); letter-spacing: .06em; font-weight: 600; }
+.oxy-home .princip h3 { font-weight: 700; font-size: 21px; margin: 14px 0 11px; letter-spacing: 0; }
+.oxy-home .princip p { font-size: 14px; line-height: 1.7; color: var(--ink-2); font-weight: 300; }
+
+/* features */
+.oxy-home .features { padding: 90px 0; border-top: 1px solid var(--line); }
+.oxy-home .features h2 { font-weight: 900; font-size: clamp(28px, 3.8vw, 46px); line-height: 1.2; letter-spacing: 0; margin-top: 22px; }
+.oxy-home .features h2 .cl { color: var(--green-deep); }
+.oxy-home .fgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 48px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.oxy-home .fcard { padding: 30px 28px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--paper-hi); transition: background .2s; }
+.oxy-home .fcard:hover { background: var(--green-soft); }
+.oxy-home .fcard:nth-child(3n) { border-right: none; }
+.oxy-home .fcard:nth-child(n+4) { border-bottom: none; }
+.oxy-home .fcard .ix { font-family: var(--mono); font-size: 11px; color: var(--green-deep); letter-spacing: .06em; font-weight: 600; }
+.oxy-home .fcard h3 { font-weight: 700; font-size: 18px; margin: 12px 0 9px; letter-spacing: 0; }
+.oxy-home .fcard p { font-size: 13.5px; line-height: 1.7; color: var(--ink-2); font-weight: 300; }
+
+/* product mock */
+.oxy-home .product { padding: 90px 0 104px; border-top: 1px solid var(--line); }
+.oxy-home .product .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 30px; flex-wrap: wrap; }
+.oxy-home .product h2 { font-weight: 900; font-size: clamp(28px, 3.8vw, 46px); margin-top: 22px; line-height: 1.2; letter-spacing: 0; }
+.oxy-home .product h2 .cl { color: var(--green-deep); }
+.oxy-home .product .note { font-size: 13px; color: var(--ink-2); font-weight: 300; max-width: 300px; line-height: 1.7; font-family: var(--mono); }
+.oxy-home .app { margin-top: 46px; background: var(--paper-hi); border: 1px solid var(--ink); border-radius: 6px; overflow: hidden; box-shadow: 0 30px 60px -34px rgba(40,30,20,.4); }
+.oxy-home .app-top { display: flex; align-items: center; justify-content: space-between; padding: 13px 22px; border-bottom: 1px solid var(--line); background: var(--panel); font-family: var(--mono); }
+.oxy-home .app-top .l { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-3); }
+.oxy-home .app-top .l b { color: var(--ink); font-weight: 600; }
+.oxy-home .app-top .l .cl { color: var(--green-deep); }
+.oxy-home .app-top .st { font-size: 11px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.oxy-home .app-top .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; }
+.oxy-home .app-body { display: grid; grid-template-columns: 248px 1fr 224px; }
+.oxy-home .side { border-right: 1px solid var(--line); padding: 24px 20px; background: var(--paper); }
+.oxy-home .side .cap, .oxy-home .rail .cap { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px; }
+.oxy-home .sess { padding: 11px 12px; border-radius: 4px; font-family: var(--mono); font-size: 13px; margin-bottom: 6px; color: var(--ink-2); border: 1px solid transparent; }
+.oxy-home .sess.on { background: var(--green-soft); color: var(--ink); border-color: var(--line); }
+.oxy-home .sess .w { display: block; font-size: 10px; color: var(--ink-3); margin-top: 3px; letter-spacing: .04em; }
+.oxy-home .chat { padding: 30px 34px; }
+.oxy-home .chat .eyebrow { font-size: 11px; }
+.oxy-home .bubble { margin-top: 18px; }
+.oxy-home .bubble .who { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: .06em; margin-bottom: 7px; }
+.oxy-home .bubble.user .tx { font-size: 15px; color: var(--ink); font-weight: 500; line-height: 1.6; }
+.oxy-home .bubble.ai .tx { font-size: 14.5px; color: var(--ink-2); font-weight: 300; line-height: 1.8; }
+.oxy-home .term { margin-top: 18px; background: var(--ink); border-radius: 6px; overflow: hidden; font-family: var(--mono); border: 1px solid var(--ink); }
+.oxy-home .term .bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 11px; color: var(--ink-3); }
+.oxy-home .term .bar i { width: 9px; height: 9px; border-radius: 50%; background: #3a3833; }
+.oxy-home .term .bar i.r { background: var(--green); }
+.oxy-home .term .body { padding: 16px 18px; font-size: 13px; line-height: 1.85; color: #cfccc3; }
+.oxy-home .term .body .c { color: #6f6c64; }
+.oxy-home .term .body .g { color: #7bbf7b; }
+.oxy-home .term .body .k { color: var(--green); }
+.oxy-home .term .body .tcur { display: inline-block; background: var(--green); width: .5em; height: 1.05em; vertical-align: -2px; }
+.oxy-home .rail { border-left: 1px solid var(--line); padding: 24px 20px; background: var(--paper); }
+.oxy-home .deliv { padding: 13px 0; border-bottom: 1px solid var(--line); font-family: var(--mono); }
+.oxy-home .deliv:last-child { border-bottom: none; }
+.oxy-home .deliv .s { font-size: 10px; letter-spacing: .06em; display: inline-block; padding: 2px 6px; border-radius: 3px; margin-bottom: 7px; }
+.oxy-home .deliv.ok .s { background: var(--ink); color: var(--paper); }
+.oxy-home .deliv.now .s { background: var(--green); color: var(--ink); }
+.oxy-home .deliv .s.wait { border: 1px solid var(--line-2); color: var(--ink-3); }
+.oxy-home .deliv .tx { font-family: var(--font); font-size: 13px; line-height: 1.45; color: var(--ink); font-weight: 400; }
+.oxy-home .deliv.ok .tx { color: var(--ink-3); }
+
+/* models (dark) */
+.oxy-home .models { background: var(--ink); color: var(--paper); padding: 90px 0; }
+.oxy-home .models .eyebrow { color: var(--paper); }
+.oxy-home .models .eyebrow b { color: var(--green); }
+.oxy-home .models h2 { font-weight: 900; font-size: clamp(28px, 3.8vw, 48px); margin-top: 22px; line-height: 1.12; letter-spacing: 0; color: var(--paper); }
+.oxy-home .models h2 .cl { color: var(--green); }
+.oxy-home .models .lede { margin-top: 16px; max-width: 560px; font-size: 15px; line-height: 1.85; color: #bdb9b0; font-weight: 300; }
+.oxy-home .mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 44px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; overflow: hidden; }
+.oxy-home .mrow { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-right: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12); }
+.oxy-home .mrow:nth-child(2n) { border-right: none; }
+.oxy-home .mrow:nth-child(n+3) { border-bottom: none; }
+.oxy-home .mrow .nm { font-weight: 700; font-size: 16px; letter-spacing: 0; }
+.oxy-home .mrow .id { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+.oxy-home .mrow .h { font-family: var(--mono); font-size: 11px; display: flex; align-items: center; gap: 8px; color: #bdb9b0; }
+.oxy-home .mrow .h i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; }
+.oxy-home .mnote { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-top: 18px; line-height: 1.7; }
+.oxy-home .mnote b { color: var(--green); font-weight: 500; }
+
+/* deploy */
+.oxy-home .deploy { padding: 90px 0; border-top: 1px solid var(--line); }
+.oxy-home .deploy .lead { display: grid; grid-template-columns: .95fr 1.05fr; gap: 48px; align-items: center; }
+.oxy-home .deploy h2 { font-weight: 900; font-size: clamp(28px, 3.6vw, 44px); line-height: 1.2; letter-spacing: 0; margin-top: 20px; }
+.oxy-home .deploy h2 .cl { color: var(--green-deep); }
+.oxy-home .deploy p { font-size: 15px; line-height: 1.85; color: var(--ink-2); font-weight: 300; margin-top: 16px; max-width: 440px; }
+.oxy-home .deploy p b { color: var(--ink); font-weight: 500; }
+.oxy-home .term.light { box-shadow: 0 30px 60px -34px rgba(40,30,20,.45); }
+
+/* footer */
+.oxy-home .foot { background: var(--ink); color: var(--paper); padding: 84px 0 46px; }
+.oxy-home .foot .big { font-weight: 900; font-size: clamp(44px, 8vw, 118px); line-height: 1.08; letter-spacing: 0; hanging-punctuation: allow-end; }
+.oxy-home .foot .big .cl { color: var(--green); }
+.oxy-home .foot .big .cur { background: var(--green); vertical-align: baseline; }
+.oxy-home .foot .frow { display: flex; justify-content: space-between; align-items: flex-end; gap: 30px; margin-top: 42px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,.14); padding-top: 28px; }
+.oxy-home .foot .fmeta { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--ink-3); line-height: 1.9; }
+.oxy-home .foot .fmeta b { color: var(--green); font-weight: 500; }
+.oxy-home .foot .nbtn { font-family: var(--mono); font-weight: 600; font-size: 13px; background: var(--paper); color: var(--ink); padding: 9px 18px; border-radius: 3px; transition: background .25s; }
+.oxy-home .foot .nbtn:hover { background: var(--green); }
+
+@media (max-width: 1000px) {
+  .oxy-home .concept .lead { grid-template-columns: 1fr; gap: 28px; }
+  .oxy-home .princip { grid-template-columns: 1fr; }
+  .oxy-home .princip .p { border-right: none; border-bottom: 1px solid var(--line); padding: 24px 0; }
+  .oxy-home .fgrid { grid-template-columns: 1fr 1fr; }
+  .oxy-home .fcard:nth-child(3n) { border-right: 1px solid var(--line); }
+  .oxy-home .fcard:nth-child(2n) { border-right: none; }
+  .oxy-home .fcard:nth-child(n+4) { border-bottom: 1px solid var(--line); }
+  .oxy-home .fcard:nth-child(n+5) { border-bottom: none; }
+  .oxy-home .app-body { grid-template-columns: 1fr; }
+  .oxy-home .side, .oxy-home .rail { border: none; border-bottom: 1px solid var(--line); }
+  .oxy-home .mgrid { grid-template-columns: 1fr; }
+  .oxy-home .mrow { border-right: none; }
+  .oxy-home .deploy .lead { grid-template-columns: 1fr; gap: 28px; }
+}
+@media (max-width: 680px) {
+  .oxy-home .wrap { padding: 0 22px; }
+  .oxy-home .fgrid { grid-template-columns: 1fr; }
+  .oxy-home .fcard { border-right: none !important; }
+  .oxy-home .hero { padding: 64px 0 56px; }
+}

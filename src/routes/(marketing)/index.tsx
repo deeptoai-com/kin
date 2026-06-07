@@ -1,333 +1,366 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
-import { Button } from '~/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
-import { Badge } from '~/components/ui/badge';
-import {
-  MessageSquare,
-  Sparkles,
-  CheckCircle2,
-  ArrowRight,
-  Code2,
-  Database,
-  Palette,
-  Cpu,
-  Zap,
-  Box,
-  GitBranch,
-  BarChart3,
-} from 'lucide-react';
-import GradientOrb from '~/components/gradient-orb';
+import '~/styles/marketing-home.css';
 
 export const Route = createFileRoute('/(marketing)/')({
   component: RouteComponent,
 });
 
+const GH = 'https://github.com/foreveryh/oxygenie';
+const GH_DEPLOY = 'https://github.com/foreveryh/oxygenie/blob/main/docs/deployment/dokploy.md';
+
 function RouteComponent() {
-  const content = useIntlayer('marketing');
+  const c = useIntlayer('home');
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      {/* Hero Section */}
-      <section className="container relative z-0 mx-auto flex flex-col items-center px-4 pt-20 pb-16 text-center md:pt-32 md:pb-24">
-        <GradientOrb className="-translate-x-1/2 absolute top-0 left-1/2 z-[-1] transform" />
-
-        <Badge variant="secondary" className="mb-4 px-4 py-1">
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          {content.hero.badge}
-        </Badge>
-
-        <h1 className="max-w-4xl font-bold text-4xl text-foreground md:text-6xl lg:text-7xl">
-          {content.hero.title}
-        </h1>
-
-        <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-          {content.hero.subtitle}
-        </p>
-
-        <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-          <Button size="lg" asChild className="rounded-full px-8">
-            <Link to="/agents/claude-chat">
-              {content.hero.primaryButton} <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-          <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
-            <a
-              href="https://github.com/foreveryh/oxygenie"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {content.hero.secondaryButton}
-            </a>
-          </Button>
-        </div>
-
-        <p className="mt-8 text-muted-foreground text-sm">
-          {content.hero.poweredBy}{' '}
-          <a
-            href="https://open.bigmodel.cn/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            {content.hero.poweredByLine}
-          </a>
-        </p>
-      </section>
-
-      {/* Core Features Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            {content.features.title}
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            {content.features.subtitle}
-          </p>
-        </div>
-
-        <div className="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {/* DeeptoAI Agent Chat */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <MessageSquare className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.deeptoaiChat.title}</CardTitle>
-              <CardDescription>
-                {content.features.deeptoaiChat.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {/* Skills Store */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <Box className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.skillsStore.title}</CardTitle>
-              <CardDescription>
-                {content.features.skillsStore.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {/* Artifacts */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <GitBranch className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.artifacts.title}</CardTitle>
-              <CardDescription>
-                {content.features.artifacts.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {/* Knowledge Base */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <Database className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.knowledgeBase.title}</CardTitle>
-              <CardDescription>
-                {content.features.knowledgeBase.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {/* Session Management */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <GitBranch className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.sessionManagement.title}</CardTitle>
-              <CardDescription>
-                {content.features.sessionManagement.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {/* Tool Visualization */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <Cpu className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>{content.features.toolVisualization.title}</CardTitle>
-              <CardDescription>
-                {content.features.toolVisualization.description}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
-      </section>
-
-      {/* Tech Stack Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            {content.techStack.title}
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            {content.techStack.subtitle}
-          </p>
-        </div>
-
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Code2 className="h-5 w-5 text-primary" />
-                {content.techStack.claudeChat.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.claudeChat.claudeAgentSDK}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.claudeChat.zhipuAi}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.claudeChat.websocket}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.claudeChat.assistantUi}
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-primary" />
-                {content.techStack.additionalFeatures.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.additionalFeatures.betterAuth}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.additionalFeatures.postgresql}
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  {content.techStack.additionalFeatures.shadcn}
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* Architecture Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            {content.architecture.title}
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            {content.architecture.subtitle}
-          </p>
-        </div>
-
-        <div className="mt-12 mx-auto max-w-3xl">
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <Badge className="mb-2 w-fit">{content.architecture.deeptoai.badge}</Badge>
-              <CardTitle className="text-xl">{content.architecture.deeptoai.title}</CardTitle>
-              <CardDescription className="text-base">
-                {content.architecture.deeptoai.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• {content.architecture.deeptoai.feature1}</li>
-                <li>• {content.architecture.deeptoai.feature2}</li>
-                <li>• {content.architecture.deeptoai.feature3}</li>
-                <li>• {content.architecture.deeptoai.feature4}</li>
-                <li>• {content.architecture.deeptoai.feature5}</li>
-                <li>• {content.architecture.deeptoai.feature6}</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <Card className="mx-auto max-w-2xl border-primary/20 bg-primary/5">
-          <CardContent className="flex flex-col items-center p-8 text-center md:p-12">
-            <MessageSquare className="mb-4 h-12 w-12 text-primary" />
-            <h2 className="mb-4 text-2xl font-bold md:text-3xl">
-              {content.cta.title}
-            </h2>
-            <p className="mb-8 text-muted-foreground">
-              {content.cta.subtitle}
-            </p>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <Button size="lg" className="rounded-full px-8" asChild>
-                <Link to="/agents/claude-chat">
-                  {content.cta.primaryButton} <ArrowRight className="ml-2 h-4 w-4" />
+    <div className="oxy-home">
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <section className="hero" id="top">
+        <div className="wrap">
+          <div className="tag">
+            $ oxygenie up —— <b>self-hosted</b> · multi-model · sandboxed · open-source
+          </div>
+          <h1>
+            <span className="soft">{c.hero.titleSoft}</span>
+            <br />
+            {c.hero.titleMain}
+            <span className="cl">{c.hero.titleAccent}</span>
+            <i className="cur" />
+          </h1>
+          <div className="sub">
+            <div>
+              <p>
+                <b>{c.hero.subtitleStrong}</b> {c.hero.subtitle}
+              </p>
+              <div className="comment">// self-hosted · single-org · multi-user · fully-sandboxed</div>
+              <div className="hero-cta">
+                <Link className="btn-go" to="/agents/claude-chat">
+                  {c.hero.ctaPrimary} <span className="ar">→</span>
                 </Link>
-              </Button>
-              <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
-                <Link to="/agents/skills">
-                  <Box className="mr-2 h-4 w-4" />
-                  {content.cta.secondaryButton}
-                </Link>
-              </Button>
+                <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
+                  {c.hero.ctaSecondary}
+                </a>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="metaboard">
+              <div>
+                <span>docker compose up</span>
+                {c.hero.metaDeploy}
+              </div>
+              <div>
+                <span>ARK multi-model</span>
+                {c.hero.metaModels}
+              </div>
+              <div>
+                <span>per-session</span>
+                {c.hero.metaSandbox}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Footer */}
-      <footer className="container mx-auto border-t px-4 py-8">
-        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
-          <p className="text-center text-sm text-muted-foreground">
-            {content.footer.copyright}
-          </p>
-          <p className="text-center text-sm text-muted-foreground">
-            <a
-              href="https://github.com/foreveryh/oxygenie"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {content.footer.github}
+      {/* ── Concept ───────────────────────────────────────────── */}
+      <section className="concept" id="concept">
+        <div className="wrap">
+          <span className="eyebrow">
+            <b>[01]</b> concept
+          </span>
+          <div className="lead">
+            <h2>
+              <span className="soft">{c.concept.h2Soft}</span>
+              <br />
+              {c.concept.h2Lead}
+              <span className="cl"> {c.concept.h2Accent}</span>
+            </h2>
+            <div className="body">
+              <p>{c.concept.bodyP1}</p>
+              <p>{c.concept.bodyP2}</p>
+            </div>
+          </div>
+          <div className="princip">
+            <div className="p">
+              <div className="num">01 / self-host</div>
+              <h3>{c.concept.p1Title}</h3>
+              <p>{c.concept.p1Desc}</p>
+            </div>
+            <div className="p">
+              <div className="num">02 / multi-model</div>
+              <h3>{c.concept.p2Title}</h3>
+              <p>{c.concept.p2Desc}</p>
+            </div>
+            <div className="p">
+              <div className="num">03 / sandbox</div>
+              <h3>{c.concept.p3Title}</h3>
+              <p>{c.concept.p3Desc}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ──────────────────────────────────────────── */}
+      <section className="features" id="features">
+        <div className="wrap">
+          <span className="eyebrow">
+            <b>[02]</b> features
+          </span>
+          <h2>
+            {c.features.heading} <span className="cl">{c.features.headingAccent}</span>
+          </h2>
+          <div className="fgrid">
+            <div className="fcard">
+              <div className="ix">01</div>
+              <h3>{c.features.f1Title}</h3>
+              <p>{c.features.f1Desc}</p>
+            </div>
+            <div className="fcard">
+              <div className="ix">02</div>
+              <h3>{c.features.f2Title}</h3>
+              <p>{c.features.f2Desc}</p>
+            </div>
+            <div className="fcard">
+              <div className="ix">03</div>
+              <h3>{c.features.f3Title}</h3>
+              <p>{c.features.f3Desc}</p>
+            </div>
+            <div className="fcard">
+              <div className="ix">04</div>
+              <h3>{c.features.f4Title}</h3>
+              <p>{c.features.f4Desc}</p>
+            </div>
+            <div className="fcard">
+              <div className="ix">05</div>
+              <h3>{c.features.f5Title}</h3>
+              <p>{c.features.f5Desc}</p>
+            </div>
+            <div className="fcard">
+              <div className="ix">06</div>
+              <h3>{c.features.f6Title}</h3>
+              <p>{c.features.f6Desc}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Product mock ──────────────────────────────────────── */}
+      <section className="product" id="product">
+        <div className="wrap">
+          <div className="head">
+            <div>
+              <span className="eyebrow">
+                <b>[03]</b> product
+              </span>
+              <h2>
+                {c.product.heading} <span className="cl">{c.product.headingAccent}</span>
+              </h2>
+            </div>
+            <p className="note">
+              // tool calls visible live
+              <br />
+              // output previews on tap
+            </p>
+          </div>
+
+          <div className="app">
+            <div className="app-top">
+              <div className="l">
+                <span className="cl">~/</span>oxygenie<span style={{ color: 'var(--line-2)' }}>/</span>
+                <b>claude-chat</b>
+              </div>
+              <div className="st">
+                <i /> model: glm-5.1 · sandbox · live
+              </div>
+            </div>
+            <div className="app-body">
+              <aside className="side">
+                <div className="cap">sessions</div>
+                <div className="sess on">
+                  refactor landing<span className="w">running</span>
+                </div>
+                <div className="sess">
+                  wire internal API<span className="w">resumed</span>
+                </div>
+                <div className="sess">
+                  data-clean script<span className="w">2h ago</span>
+                </div>
+                <div className="sess">
+                  weekly digest<span className="w">yesterday</span>
+                </div>
+              </aside>
+
+              <div className="chat">
+                <span className="eyebrow">
+                  <b>session</b> · refactor landing
+                </span>
+                <div className="bubble user">
+                  <div className="who">you</div>
+                  <div className="tx">Reskin the landing to JumpX, then build.</div>
+                </div>
+                <div className="bubble ai">
+                  <div className="who">oxygenie · glm-5.1</div>
+                  <div className="tx">On it — updating design tokens and verifying the build —</div>
+                </div>
+                <div className="term">
+                  <div className="bar">
+                    <i className="r" />
+                    <i />
+                    <i /> &nbsp;bash · sandbox
+                  </div>
+                  <div className="body">
+                    <span className="c"># runs in an isolated sandbox</span>
+                    <br />
+                    <span className="k">$</span> pnpm build
+                    <br />
+                    <span className="g">✓</span> built in 6.2s · 0 errors
+                    <br />
+                    <span className="k">$</span> <span className="tcur" />
+                  </div>
+                </div>
+              </div>
+
+              <aside className="rail">
+                <div className="cap">output</div>
+                <div className="deliv ok">
+                  <span className="s">[ done ]</span>
+                  <div className="tx">design tokens updated</div>
+                </div>
+                <div className="deliv now">
+                  <span className="s">[ live ]</span>
+                  <div className="tx">preview · index.html</div>
+                </div>
+                <div className="deliv">
+                  <span className="s wait">[ todo ]</span>
+                  <div className="tx">deploy to oxygenie.local</div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Models (dark) ─────────────────────────────────────── */}
+      <section className="models" id="models">
+        <div className="wrap">
+          <span className="eyebrow">
+            <b>[04]</b> models
+          </span>
+          <h2>
+            {c.models.heading} <span className="cl">{c.models.headingAccent}</span>
+            {c.models.headingTail}
+          </h2>
+          <p className="lede">{c.models.lede}</p>
+          <div className="mgrid">
+            <div className="mrow">
+              <div>
+                <div className="nm">GLM-5.1</div>
+                <div className="id">ark/glm-5.1 · default</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 3.6s
+              </div>
+            </div>
+            <div className="mrow">
+              <div>
+                <div className="nm">Doubao Seed 2.0 Code</div>
+                <div className="id">ark/doubao-code · coding</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 5.3s
+              </div>
+            </div>
+            <div className="mrow">
+              <div>
+                <div className="nm">Doubao Seed 2.0 Pro</div>
+                <div className="id">ark/doubao-pro · general</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 2.1s
+              </div>
+            </div>
+            <div className="mrow">
+              <div>
+                <div className="nm">MiniMax</div>
+                <div className="id">ark/minimax · general</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 3.5s
+              </div>
+            </div>
+          </div>
+          <div className="mnote">
+            // configured in <b>.env</b> + admin health board · per-conversation selection · selecting an
+            unhealthy model <b>errors</b>, never a silent fallback
+          </div>
+        </div>
+      </section>
+
+      {/* ── Deploy ────────────────────────────────────────────── */}
+      <section className="deploy" id="deploy">
+        <div className="wrap">
+          <div className="lead">
+            <div>
+              <span className="eyebrow">
+                <b>[05]</b> deploy
+              </span>
+              <h2>
+                {c.deploy.heading}
+                <span className="cl">{c.deploy.headingAccent}</span>
+                {c.deploy.headingTail}
+              </h2>
+              <p>{c.deploy.body}</p>
+              <div className="hero-cta">
+                <a className="btn-go" href={GH_DEPLOY} target="_blank" rel="noopener noreferrer">
+                  {c.deploy.ctaPrimary} <span className="ar">→</span>
+                </a>
+                <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
+                  {c.deploy.ctaSecondary}
+                </a>
+              </div>
+            </div>
+            <div className="term light">
+              <div className="bar">
+                <i className="r" />
+                <i style={{ background: '#3a3833' }} />
+                <i style={{ background: '#3a3833' }} /> &nbsp;deploy.sh
+              </div>
+              <div className="body">
+                <span className="c"># three steps to launch</span>
+                <br />
+                <span className="k">$</span> git clone github.com/foreveryh/oxygenie
+                <br />
+                <span className="k">$</span> cp .env.example .env <span className="c"># add ARK token</span>
+                <br />
+                <span className="k">$</span> docker compose up -d
+                <br />
+                <span className="g">✓</span> oxygenie up · https://oxygenie.local
+                <br />
+                <span className="k">$</span> <span className="tcur" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ────────────────────────────────────────────── */}
+      <footer className="foot">
+        <div className="wrap">
+          <div className="big">
+            {c.footer.bigPre}
+            <span className="cl">{c.footer.bigAccent}</span>
+            <i className="cur" />
+          </div>
+          <div className="frow">
+            <div className="fmeta">
+              <b>OxyGenie</b> · self-hosted Claude-Agent workspace
+              <br />
+              single-org · multi-user · fully-sandboxed · ARK multi-model
+              <br />
+              open-source · MIT · 2026
+            </div>
+            <a className="nbtn" href="#top">
+              ↑ top
             </a>
-            {' '}&bull;{' '}
-            <a
-              href="https://github.com/anthropics/claude-agent-kit"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {content.footer.claudeAgentSDK}
-            </a>
-            {' '}&bull;{' '}
-            <a
-              href="https://open.bigmodel.cn/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {content.footer.zhipuAi}
-            </a>
-            {' '}&bull;{' '}
-            <a
-              href="https://assistant-ui.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {content.footer.assistantUi}
-            </a>
-          </p>
+          </div>
         </div>
       </footer>
     </div>

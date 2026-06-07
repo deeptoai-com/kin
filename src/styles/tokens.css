@@ -1,6 +1,6 @@
 :root {
-  --assistant-accent: #ae5630;
-  --assistant-accent-soft: rgba(174, 86, 48, 0.16);
+  --assistant-accent: #128a45;
+  --assistant-accent-soft: rgba(18, 138, 69, 0.14);
   --assistant-step-bg: var(--background);
   --assistant-step-border: var(--border);
   --assistant-step-muted: var(--muted);
@@ -12,8 +12,8 @@
 }
 
 .dark {
-  --assistant-accent: #e07a53;
-  --assistant-accent-soft: rgba(224, 122, 83, 0.18);
+  --assistant-accent: #2fdd68;
+  --assistant-accent-soft: rgba(47, 221, 104, 0.16);
   --assistant-step-bg: var(--background);
   --assistant-step-border: var(--border);
   --assistant-step-muted: var(--muted);
