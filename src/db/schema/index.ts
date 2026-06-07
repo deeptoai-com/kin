@@ -12,3 +12,4 @@ export * from './knowledge-base.schema';
 export * from './kb-document.schema';
 export * from './profile.schema';
 export * from './skill-catalog.schema';
+export * from './model.schema';
