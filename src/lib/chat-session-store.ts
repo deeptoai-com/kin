@@ -182,6 +182,10 @@ interface ChatSessionState {
   // Holds the interaction mode ('ask' | 'act'); field name kept for wire compat.
   selectedTier?: InteractionMode;
 
+  // Selected model id for this conversation (multi-model). undefined → server uses
+  // the configured default. Ephemeral per-session UI choice (DB-persisted in PR7).
+  selectedModelId?: string;
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -209,6 +213,7 @@ interface ChatSessionState {
   addTemporarySkill: (skillSlug: string) => void;
   clearTemporarySkills: () => void;
   setSelectedTier: (mode: InteractionMode | undefined) => void;
+  setSelectedModelId: (id: string | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -418,9 +423,14 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   queueCount: 0, // Number of pending runs waiting to be processed
   temporarySkills: [],
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
+  selectedModelId: undefined,
 
   setSelectedTier: (selectedTier) => {
     set({ selectedTier });
+  },
+
+  setSelectedModelId: (selectedModelId) => {
+    set({ selectedModelId });
   },
 
   setSessionId: (sessionId) => {
