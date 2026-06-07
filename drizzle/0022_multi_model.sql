@@ -1,5 +1,5 @@
 CREATE TYPE "public"."model_auth_style" AS ENUM('bearer', 'x-api-key');--> statement-breakpoint
-CREATE TYPE "public"."model_health" AS ENUM('healthy', 'unhealthy', 'unknown');--> statement-breakpoint
+CREATE TYPE "public"."model_health_status" AS ENUM('healthy', 'unhealthy', 'unknown');--> statement-breakpoint
 CREATE TABLE "model_connection" (
 	"id" text PRIMARY KEY NOT NULL,
 	"label" text NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE "model_definition" (
 --> statement-breakpoint
 CREATE TABLE "model_health" (
 	"model_id" text PRIMARY KEY NOT NULL,
-	"health" "model_health" DEFAULT 'unknown' NOT NULL,
+	"health" "model_health_status" DEFAULT 'unknown' NOT NULL,
 	"last_probe_at" timestamp with time zone,
 	"probe_error" text,
 	"latency_ms" integer

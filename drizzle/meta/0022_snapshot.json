@@ -1,5 +1,5 @@
 {
-  "id": "4c3a488f-9098-4cee-ae54-d73f3353b927",
+  "id": "6930dda5-6ebd-4985-85ba-50be9d0156d9",
   "prevId": "f05ea8d9-0386-4248-9795-b1f93b64f107",
   "version": "7",
   "dialect": "postgresql",
@@ -3055,7 +3055,7 @@
         },
         "health": {
           "name": "health",
-          "type": "model_health",
+          "type": "model_health_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
@@ -3183,8 +3183,8 @@
         "x-api-key"
       ]
     },
-    "public.model_health": {
-      "name": "model_health",
+    "public.model_health_status": {
+      "name": "model_health_status",
       "schema": "public",
       "values": [
         "healthy",

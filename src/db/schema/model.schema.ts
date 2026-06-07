@@ -20,7 +20,10 @@ import { createdAt, updatedAt, timestamptz } from './_shared';
 export const modelAuthStyleEnum = pgEnum('model_auth_style', ['bearer', 'x-api-key']);
 
 // Probe result. unknown = never probed / probe in flight.
-export const modelHealthEnum = pgEnum('model_health', ['healthy', 'unhealthy', 'unknown']);
+// NOTE: the enum's Postgres name MUST differ from the `model_health` table name —
+// `CREATE TABLE model_health` auto-creates a type of the same name, which would
+// collide with the enum (Postgres error 42710). Hence `model_health_status`.
+export const modelHealthEnum = pgEnum('model_health_status', ['healthy', 'unhealthy', 'unknown']);
 
 // ── model_connection ─ an Anthropic-compatible endpoint + one credential (an account)
 export const modelConnection = pgTable('model_connection', {
