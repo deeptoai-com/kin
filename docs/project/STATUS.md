@@ -266,6 +266,20 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-07** — **多模型切换 完整版完成（PR1–8 + 6b）。** 用户可**每会话**选模型,跨连接/账号(任何
+  Anthropic 协议网关),仅在 healthy 时可选。落地:DB registry(`model_connection`/`model_definition`/
+  `model_health`)从 `OXY_MODELS_SEED`(+ 旧 `ANTHROPIC_*` 兜底)种子;**6h 探活**(BullMQ + 开机即探)门控菜单;
+  typed `/api/models/resolve` + **按请求 worker-env 路由**(baseURL/互斥 auth/model/alias,**不健康即报错不静默回退**);
+  composer **picker**;**`/admin/models`** 看板 **+ CRUD**;每会话记忆(localStorage)。**密钥只在 env(按 tokenEnv 名),
+  不入 DB/前端/日志。** 实测:ARK 一个 endpoint 同时供 GLM-5.1 / Doubao-Seed-2.0-Code/-Pro / MiniMax(全 200)。
+  关键决策:① 驱动 SDK 0.2.112 → 只支持 Anthropic 协议网关(OpenAI-only 需转译,Phase 4);② worker 是每请求新子进程
+  → 按请求覆写 env 即可跨账号路由,无需 0.3.x;③ AUTH_TOKEN 优先于 API_KEY → 互斥设一删一;④ alias 按连接设,
+  子代理不串账号;⑤ model 选择属 UI 偏好 → localStorage 每会话持久(DB 跨设备留作后续)。架构发现 A1(typed 内部
+  API,已用 resolve 端点立样板)/A2(drizzle 快照漂移,补了 mastra_thread reconcile;CI `generate --check` 待加)
+  见 `research/2026-06-architecture-observations.md`。PRs #126/#127/#128/#129/#130/#131/#132/#133/#134/#136/#137。
+  Spec:`prd/2026-06-multi-model-switching-prd.md`;资料包:`research/2026-06-multi-model-context-pack.md`。
+  待办(非阻塞):changedoc `generate --check` CI 护栏(A2);OpenAI-only 转译/failover/能力门控(Phase 4)。
+
 - **2026-06-07** — **本轮收工 + 下一焦点 = 多模型选择(owner 定)**。今天(06-06 会话)全部收口:Phase C 全部完成、
   分享功能上线、文档对齐、changedoc 接通 ARK(见下条)。**下一步 = 让系统支持多模型选择**,已先产出调研 +
   分阶段实施计划 `research/2026-06-multi-model-support-research.md`。要点:① 现状 = model 是启动期单一

@@ -33,16 +33,16 @@ plan for what's left. Owner-set: **Now = Slimming only.**
 one-time package→repo link); zero Mastra references ✅.
 
 ### 🔵 NEXT — Deployment completeness + capability lists
-- [ ] **🎯 Multi-model selection (owner-set focus, 2026-06-07)** — let users pick the model per run
-      instead of the single startup `ANTHROPIC_MODEL`. **v1 = switch among any Anthropic-protocol model,
-      across connections/accounts** (owner steer 2026-06-07 — not limited to one gateway): a YAML-config
-      registry of connections+models (secrets via env-var names) + a **health probe** that gates the menu
-      (a model is selectable only when reachable+authed+model-accepted) + `model` plumbing mirroring the
-      proven `skillSlug`/`permissionTier` path + **per-request worker-env routing** (baseURL/auth/model/
-      aliases) + a real composer picker (replacing the cosmetic "GLM 5.0" badge) + `query({ model })`.
-      DB-backed admin registry + persistence = v2; failover/capability-gating = Phase 4. Stays within
-      **SDK 0.2.112** (Anthropic-protocol gateways only). **Spec: `prd/2026-06-multi-model-switching-prd.md`**;
-      rationale: `research/2026-06-multi-model-support-research.md`.
+- [x] **🎯 Multi-model selection — DONE (2026-06-07)** — users pick the model per conversation,
+      across connections/accounts (any Anthropic-protocol gateway), only among currently-healthy ones.
+      Shipped: DB registry (`model_connection`/`model_definition`/`model_health`) seeded from
+      `OXY_MODELS_SEED` (+ legacy `ANTHROPIC_*` fallback); **6h health probe** (BullMQ, + probe-on-boot)
+      → menu gating; typed `/api/models/resolve` endpoint + **per-request worker-env routing**
+      (baseURL/auth/model/aliases, reject-on-unhealthy); composer **picker**; **`/admin/models`** board
+      **+ CRUD**; per-conversation memory (localStorage). Secrets stay in env (tokenEnv name only).
+      Verified: ARK serves GLM-5.1 / Doubao-Seed-2.0-Code/-Pro / MiniMax behind one endpoint (all 200).
+      *(PRs #126/#127/#129/#130/#131/#132/#133/#134/#136/#137)* Spec: `prd/2026-06-multi-model-switching-prd.md`.
+      Later (Phase 4): `fallbackModel` failover, capability-gating, cross-device (DB) model persistence.
 - [x] **Agent code sandbox** — fixed the registration sequencing bug (eager `ensureSandbox()`
       before the check; `state=null` → bash never registered). Verified live (srt active). *(PR #112)*
 - [x] **Path A completeness** — **`docker-compose.prod.yml`**: bundled Traefik + websecure/TLS + the
