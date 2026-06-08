@@ -1385,7 +1385,7 @@ function ClaudeChatSurface({
   const [composerText, setComposerText] = useState('');
   const [isA2ComposerOpen, setIsA2ComposerOpen] = useState(false);
   const [isSkillsPanelOpen, setIsSkillsPanelOpen] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<{ slug: string; name?: string } | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<{ slug: string; name?: string; hint?: string } | null>(null);
 
   // A2ComposerPanel reset handler
   const [a2ComposerKey, setA2ComposerKey] = useState(0);
@@ -1408,7 +1408,7 @@ function ClaudeChatSurface({
     }
   }, [currentSessionId, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
 
-  const handleSelectSkill = useCallback((skill: { slug: string; name?: string }) => {
+  const handleSelectSkill = useCallback((skill: { slug: string; name?: string; hint?: string }) => {
     setSelectedSkill(skill);
   }, []);
 

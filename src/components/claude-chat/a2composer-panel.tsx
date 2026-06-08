@@ -47,8 +47,8 @@ interface A2ComposerPanelProps {
   onReset?: () => void;
   /** Notify parent when panel open state changes (expanded vs minimized) */
   onOpenChange?: (open: boolean) => void;
-  /** Explicitly select a skill for this message */
-  onSkillSelect?: (skill: { slug: string; name: string }) => void;
+  /** Explicitly select a skill for this message (hint → composer placeholder) */
+  onSkillSelect?: (skill: { slug: string; name: string; hint?: string }) => void;
   /** Open a fresh conversation so a just-enabled skill loads (SDK can't hot-reload) */
   onOpenNewConversation?: () => void;
 }
@@ -156,12 +156,12 @@ export function A2ComposerPanel({
     // prompt; Tier 1 (no inputs) → empty composer, firstTaskZh shown only as a hint.
     setSelectedSlug(skill.slug);
     setVariableValues({});
-    onSkillSelect?.({ slug: skill.slug, name: displayName(skill) });
+    onSkillSelect?.({ slug: skill.slug, name: displayName(skill), hint: starterOf(skill) });
   };
 
   const enableSkill = async (skill: ComposerSkill) => {
     setRiskSkill(null);
-    onSkillSelect?.({ slug: skill.slug, name: displayName(skill) });
+    onSkillSelect?.({ slug: skill.slug, name: displayName(skill), hint: starterOf(skill) });
     try {
       // Catalog install: materialize SKILL.md to disk + record in skill_enablement.
       // Effective next conversation (SDK can't hot-reload — STATUS Skills S2).
@@ -187,7 +187,7 @@ export function A2ComposerPanel({
 
   const handleOpenNewChat = (skill: ComposerSkill) => {
     // Arm the skill in the fresh session (it's enabled now, effective next convo).
-    setPendingArmedSkill({ slug: skill.slug, name: displayName(skill) });
+    setPendingArmedSkill({ slug: skill.slug, name: displayName(skill), hint: starterOf(skill) });
     onOpenNewConversation?.();
     handleMinimize();
   };
