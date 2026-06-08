@@ -70,7 +70,11 @@ function CapabilityCenter() {
   };
 
   return (
-    <div className="container mx-auto max-w-6xl px-6 py-8">
+    // The /agents layout wraps the Outlet in an `overflow-hidden` flex shell
+    // (sized for the chat view's internal scroll). This page is a tall document,
+    // so it must own its own vertical scroll — otherwise it gets clipped.
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="container mx-auto max-w-6xl px-6 py-8">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="skills">{content.nav.skillsStore}</TabsTrigger>
@@ -102,6 +106,7 @@ function CapabilityCenter() {
         onOpenChange={setIsUploadDialogOpen}
         onSuccess={handleSkillUploadSuccess}
       />
+      </div>
     </div>
   );
 }
