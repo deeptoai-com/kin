@@ -1102,6 +1102,8 @@ function ClaudeChatSurface({
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showSessionFiles, setShowSessionFiles] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+  const pendingArmedSkill = useChatSessionStore((state) => state.pendingArmedSkill);
+  const setPendingArmedSkill = useChatSessionStore((state) => state.setPendingArmedSkill);
   const { loadSessionAttachments } = useMessageAttachments();
   const [attachmentsByMessage, setAttachmentsByMessage] = useState<Map<string, MessageAttachment[]>>(
     new Map()
@@ -1383,7 +1385,7 @@ function ClaudeChatSurface({
   const [composerText, setComposerText] = useState('');
   const [isA2ComposerOpen, setIsA2ComposerOpen] = useState(false);
   const [isSkillsPanelOpen, setIsSkillsPanelOpen] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<{ slug: string; name?: string } | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<{ slug: string; name?: string; hint?: string } | null>(null);
 
   // A2ComposerPanel reset handler
   const [a2ComposerKey, setA2ComposerKey] = useState(0);
@@ -1397,7 +1399,16 @@ function ClaudeChatSurface({
     composerRef.current?.focus();
   }, []);
 
-  const handleSelectSkill = useCallback((skill: { slug: string; name?: string }) => {
+  // Arm the skill stashed by A2Composer's "open new chat & load" once the freshly-
+  // created session is ready (the just-enabled skill is now loaded + active).
+  useEffect(() => {
+    if (currentSessionId && !isInitializingSession && pendingArmedSkill) {
+      setSelectedSkill(pendingArmedSkill);
+      setPendingArmedSkill(undefined);
+    }
+  }, [currentSessionId, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
+
+  const handleSelectSkill = useCallback((skill: { slug: string; name?: string; hint?: string }) => {
     setSelectedSkill(skill);
   }, []);
 
@@ -1539,6 +1550,7 @@ function ClaudeChatSurface({
                     onReset={handleA2ComposerReset}
                     onOpenChange={handleA2ComposerOpenChange}
                     onSkillSelect={handleSelectSkill}
+                    onOpenNewConversation={onStartSession}
                   />
                 </div>
 

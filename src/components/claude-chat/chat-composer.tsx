@@ -102,8 +102,8 @@ export interface ChatComposerProps {
   onTextChange?: (text: string) => void;
   /** Called when user sends a message */
   onSend?: () => void;
-  /** Selected skill for explicit use */
-  selectedSkill?: { slug: string; name?: string } | null;
+  /** Selected skill for explicit use (hint → composer placeholder when armed) */
+  selectedSkill?: { slug: string; name?: string; hint?: string } | null;
   /** Clear selected skill */
   onClearSelectedSkill?: () => void;
   /** Select a skill from composer UI */
@@ -431,7 +431,9 @@ export function ChatComposer({
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
             <ComposerPrimitive.Input
-              placeholder={toLocalizedString(content.chatInput.placeholderGreeting)}
+              placeholder={
+                selectedSkill?.hint || toLocalizedString(content.chatInput.placeholderGreeting)
+              }
               className="block min-h-6 w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>

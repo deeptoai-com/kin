@@ -187,6 +187,11 @@ interface ChatSessionState {
   // localStorage (PR8) and restored on session switch/resume.
   selectedModelId?: string;
 
+  // Skill to arm once the NEXT (newly-created) session is ready. Used by the
+  // A2Composer "open new chat & load" flow: the skill was just enabled (effective
+  // next conversation per SDK constraint), so we arm it in the fresh session.
+  pendingArmedSkill?: { slug: string; name?: string; hint?: string };
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -215,6 +220,7 @@ interface ChatSessionState {
   clearTemporarySkills: () => void;
   setSelectedTier: (mode: InteractionMode | undefined) => void;
   setSelectedModelId: (id: string | undefined) => void;
+  setPendingArmedSkill: (skill: { slug: string; name?: string; hint?: string } | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -458,9 +464,14 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   temporarySkills: [],
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
   selectedModelId: undefined,
+  pendingArmedSkill: undefined,
 
   setSelectedTier: (selectedTier) => {
     set({ selectedTier });
+  },
+
+  setPendingArmedSkill: (pendingArmedSkill) => {
+    set({ pendingArmedSkill });
   },
 
   setSelectedModelId: (selectedModelId) => {

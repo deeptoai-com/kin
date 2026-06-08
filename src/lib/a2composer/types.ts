@@ -31,3 +31,22 @@ export type A2ComposerStore = {
   templates: A2Template[];
   updatedAt?: string;
 };
+
+/**
+ * Composer view of a curated skill (derived from skill_catalog + per-user
+ * enablement). This is the new single source for the composer shortcuts —
+ * see docs/project/prd/2026-06-a2composer-prd.md.
+ */
+export type ComposerSkill = {
+  slug: string;
+  name: string;
+  titleZh: string | null;
+  summaryZh: string | null;
+  category: string | null;
+  level: string | null;
+  suitableForZh: string | null;
+  firstTaskZh: string | null;
+  riskNotesZh: string | null;
+  sortWeight: number;
+  enabled: boolean;
+};

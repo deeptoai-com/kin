@@ -52,6 +52,7 @@ import {
 } from '~/claude/skills';
 import { validateGitHubUrl } from '~/claude/skills/command-parser';
 import type { CatalogSchemaResult } from '~/claude/skills/catalog-schema';
+import type { ComposerSkill } from '~/lib/a2composer/types';
 import type { SkillsApiListItem } from '~/claude/skills/skills-api-client';
 
 /**
@@ -632,6 +633,58 @@ export const getCuratedSkillSchemaFn = createServerFn({ method: 'POST' })
     if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
     return await readCatalogSchema(row.id);
   });
+
+/**
+ * Composer catalog view (A2Composer redesign — see a2composer PRD).
+ *
+ * Returns curated skills (official + this user's own) with the editorial fields
+ * the composer shortcuts need + the user's per-skill `enabled` state. This is the
+ * single source for the in-conversation skill shortcuts (replaces the hand-written
+ * A2 category/template store). `enabled` skills are usable in the CURRENT session;
+ * un-enabled ones can be enabled on the spot but only load next conversation
+ * (SDK 0.2.112 can't hot-reload — STATUS Skills S2).
+ */
+export const getComposerCatalogFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<ComposerSkill[]> => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog, skillEnablement } = await import('~/db/schema');
+    const { and, eq, or, isNotNull } = await import('drizzle-orm');
+
+    const rows = await db
+      .select({
+        slug: skillCatalog.slug,
+        name: skillCatalog.name,
+        titleZh: skillCatalog.titleZh,
+        summaryZh: skillCatalog.summaryZh,
+        category: skillCatalog.category,
+        level: skillCatalog.level,
+        suitableForZh: skillCatalog.suitableForZh,
+        firstTaskZh: skillCatalog.firstTaskZh,
+        riskNotesZh: skillCatalog.riskNotesZh,
+        sortWeight: skillCatalog.sortWeight,
+        enabled: skillEnablement.enabled,
+      })
+      .from(skillCatalog)
+      .leftJoin(
+        skillEnablement,
+        and(eq(skillEnablement.catalogId, skillCatalog.id), eq(skillEnablement.userId, user.id)),
+      )
+      .where(
+        and(
+          isNotNull(skillCatalog.category),
+          or(
+            eq(skillCatalog.scope, 'official'),
+            and(eq(skillCatalog.scope, 'user'), eq(skillCatalog.ownerUserId, user.id)),
+          ),
+        ),
+      );
+
+    return rows
+      .map((r) => ({ ...r, enabled: r.enabled === true }))
+      .sort((a, b) => b.sortWeight - a.sortWeight || a.name.localeCompare(b.name));
+  },
+);
 
 /**
  * Generate (or refresh) the fillable-variable schema for a curated skill.
