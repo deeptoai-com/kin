@@ -217,18 +217,32 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
     Cmd: [
       'sh',
       '-lc',
+      // Root-stage housekeeping, run with ONLY CAP_CHOWN (DAC_OVERRIDE is dropped — see
+      // CapDrop/CapAdd below). The single power root has here is to chown; it canNOT
+      // create or write inside the app dir when that dir is owned by the preview user.
+      //
+      // Steps are joined with ';' (NOT '&&') and each is best-effort: a failing step must
+      // never skip the others — in particular the node_modules chown, which is what lets
+      // the unprivileged install write. (Bug: the old chain did `mkdir -p … .oxygenie &&
+      // chown … node_modules`; for a subdir app whose dir is owned by the preview user,
+      // root's `mkdir .oxygenie` fails for lack of DAC_OVERRIDE, short-circuiting the &&
+      // so node_modules stayed root-owned → `npm install` → EACCES.)
+      //
+      // We do NOT mkdir workdir/node_modules (both already exist: workdir via the session
+      // volume, node_modules via its own mount) and we do NOT touch `.oxygenie` here — the
+      // serve step creates it as the preview user, which owns workdir.
       [
         'corepack enable >/dev/null 2>&1 || true',
-        `mkdir -p ${shellQuote(workdir)} ${shellQuote(nodeModulesTarget)} ${shellQuote(path.posix.join(workdir, '.oxygenie'))}`,
-        `chown -R ${shellQuote(PREVIEW_USER)} ${shellQuote(nodeModulesTarget)} ${shellQuote(path.posix.join(workdir, '.oxygenie'))} 2>/dev/null || true`,
-        // Non-recursive: give the preview user write access to the workspace root
-        // (lockfiles, build output dir) without rewriting ownership of user source files.
+        // Hand the freshly-mounted (root-owned) node_modules volume to the preview user.
+        `chown -R ${shellQuote(PREVIEW_USER)} ${shellQuote(nodeModulesTarget)} 2>/dev/null || true`,
+        // Non-recursive: give the preview user the workspace root (lockfiles, build output)
+        // without rewriting ownership of user source files.
         `chown ${shellQuote(PREVIEW_USER)} ${shellQuote(workdir)} 2>/dev/null || true`,
-        // Shared PM cache: own the top dir so the unprivileged user can populate it
-        // (subdirs it creates are already owned by it; non-recursive keeps this cheap).
-        `mkdir -p ${shellQuote(PM_CACHE_DIR)} && chown ${shellQuote(PREVIEW_USER)} ${shellQuote(PM_CACHE_DIR)} 2>/dev/null || true`,
+        // Shared PM cache: own the top dir so the unprivileged user can populate it.
+        `mkdir -p ${shellQuote(PM_CACHE_DIR)} 2>/dev/null || true`,
+        `chown ${shellQuote(PREVIEW_USER)} ${shellQuote(PM_CACHE_DIR)} 2>/dev/null || true`,
         'tail -f /dev/null',
-      ].join(' && '),
+      ].join(' ; '),
     ],
     ExposedPorts: { [exposedPort]: {} },
     Labels: labels,
