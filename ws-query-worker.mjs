@@ -297,28 +297,39 @@ async function startRun(request) {
     const AUTO_ALLOW_TOOLS = new Set([
       'read', 'grep', 'glob', 'ls', 'notebookread', 'todowrite',
     ]);
+
+    // Binary documents (PDF/Office) make the SDK Read tool emit a `document` content
+    // block, which the ARK gateway rejects (400, kills the whole turn — and poisons the
+    // session history so every later resume 400s too). A markdown version is written on
+    // upload (`<file>.md` at the workspace root; the raw binary is archived under
+    // `.uploads/`). Redirect any Read of a binary doc to that `.md`.
+    // Enforced in BOTH places because they cover different permission modes:
+    //   - PreToolUse hook → fires in ALL modes incl. acceptEdits/Act (the real fix);
+    //   - canUseTool guard → covers Ask mode (default).
+    const BINARY_DOC_RE = /\.(pdf|docx?|pptx?|xlsx?|rtf|odt|epub)$/i;
+    const binaryDocReadRedirect = (rawTarget) => {
+      const target = String(rawTarget ?? '');
+      if (!BINARY_DOC_RE.test(target)) return null;
+      // The .md lives at the workspace root next to the original name, even though the
+      // raw binary is archived under `.uploads/` — strip any `.uploads/` segment.
+      const mdPath = `${target.replace(/(^|\/)\.uploads\//, '$1')}.md`;
+      return (
+        `Do not Read "${target}" directly — it is a binary document and the model ` +
+        `gateway rejects PDF/Office content (returns a 400). A plain-text Markdown ` +
+        `version is generated on upload: Read "${mdPath}" instead. If that .md does ` +
+        `not exist, tell the user the document could not be parsed (do not retry the binary).`
+      );
+    };
     const canUseTool = async (toolName, input, options = {}) => {
       // 1) Path/tenant security always runs first; a security deny is hard.
       const base = await baseCanUseTool(toolName, input, options);
       if (base.behavior === 'deny') return base;
-      // 1.5) The SDK's Read tool encodes a PDF/Office doc as a `document` content block,
-      // but the ARK gateway rejects `document` (only text/thinking/image/tool_use/
-      // tool_result) → reading a raw binary doc 400s the WHOLE turn. Redirect the model
-      // to the parsed markdown sibling (`<file>.md`, written on upload by the document
-      // parser). Soft deny (interrupt:false) so the loop continues and re-reads the .md.
+      // 1.5) Binary-doc Read → redirect to the parsed .md (Ask mode; see helper above).
+      // NOTE: in Act mode the SDK does NOT consult canUseTool for read-only tools, so
+      // this branch never fires there — the PreToolUse hook below is what catches it.
       if (String(toolName || '').toLowerCase() === 'read') {
-        const target = String(input?.file_path ?? input?.path ?? '');
-        if (/\.(pdf|docx?|pptx?|xlsx?|rtf|odt|epub)$/i.test(target)) {
-          return {
-            behavior: 'deny',
-            interrupt: false,
-            message:
-              `Do not Read "${target}" directly — it is a binary document and the model ` +
-              `gateway rejects PDF/Office content. A plain-text Markdown version is ` +
-              `generated on upload: Read "${target}.md" instead. If that .md does not ` +
-              `exist, tell the user the document could not be parsed (do not retry the binary).`,
-          };
-        }
+        const msg = binaryDocReadRedirect(input?.file_path ?? input?.path);
+        if (msg) return { behavior: 'deny', interrupt: false, message: msg };
       }
       // 2) Act mode, or a read-only tool in Ask mode → allow (no prompt).
       if (!isAskMode || AUTO_ALLOW_TOOLS.has(String(toolName || '').toLowerCase())) {
@@ -717,6 +728,30 @@ WHAT TO DO INSTEAD:
         // explicit dangerous-debug escape hatch.
         ...(dangerousDisableGuard && { allowDangerouslySkipPermissions: true }),
         ...(!dangerousDisableGuard && { canUseTool }),
+        // PreToolUse hook fires in ALL permission modes — including acceptEdits (Act),
+        // where the SDK skips canUseTool for read-only tools. This is what actually stops
+        // a binary-doc Read from emitting a `document` block (→ ARK 400). See helper above.
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                async (hookInput) => {
+                  if (hookInput?.tool_name !== 'Read') return {};
+                  const ti = hookInput.tool_input || {};
+                  const msg = binaryDocReadRedirect(ti.file_path ?? ti.path);
+                  if (!msg) return {};
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: 'PreToolUse',
+                      permissionDecision: 'deny',
+                      permissionDecisionReason: msg,
+                    },
+                  };
+                },
+              ],
+            },
+          ],
+        },
         // Note: maxThinkingTokens is handled by SDK's claude_code preset automatically
         // Enable skills loading from project (.claude/skills in cwd)
         // Note: We use symlink to share user's skills across sessions, so only 'project' is needed

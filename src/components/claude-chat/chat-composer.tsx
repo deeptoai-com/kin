@@ -68,6 +68,8 @@ type UploadedWorkspaceFile = {
   fileSize?: number;
   status: 'uploaded' | 'error';
   error?: string;
+  /** Non-fatal notice shown on the chip (e.g. a scanned PDF with no text layer). */
+  notice?: string;
 };
 
 /**
@@ -110,6 +112,9 @@ export interface ChatComposerProps {
   onClearSelectedSkill?: () => void;
   /** Select a skill from composer UI */
   onSkillSelect?: (skill: { slug: string; name: string }) => void;
+  /** Called after a sent message's attachments are persisted (so the thread can
+   *  refresh and show the file chip live, not only after a session switch). */
+  onAttachmentsPersisted?: () => void;
 }
 
 /**
@@ -149,6 +154,7 @@ async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: str
     storedPath: string;
     parsedPath?: string;
     parsedEngine?: string;
+    parseStatus?: 'parsed' | 'scanned';
   }>;
 }
 
@@ -177,6 +183,7 @@ export function ChatComposer({
   selectedSkill,
   onClearSelectedSkill,
   onSkillSelect,
+  onAttachmentsPersisted,
 }: ChatComposerProps) {
   const content = useIntlayer('claude-chat');
   const api = useAssistantApi();
@@ -184,7 +191,12 @@ export function ChatComposer({
   const composerRunConfig = useAssistantState(({ composer }) => composer.runConfig);
   const composerIsEditing = useAssistantState(({ composer }) => composer.isEditing);
   const isRunning = useThread((state) => state.isRunning);
-  const threadMessages = useThread((state) => state.messages);
+  // Persist attachments against the SAME message list the thread renders from
+  // (the chat-session store, whose user-message id is minted in route `onNew`).
+  // The assistant-ui runtime thread (`useThread`) mints a *different* id, so
+  // keying off it would store attachments under an id the renderer never looks
+  // up — the file chip would never appear.
+  const storeMessages = useChatSessionStore((state) => state.messages);
 
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -241,7 +253,7 @@ export function ChatComposer({
     const pending = pendingAttachmentsRef.current;
     if (!pending || pending.length === 0) return;
 
-    const lastUserMessage = [...threadMessages].reverse().find((msg) => msg.role === 'user');
+    const lastUserMessage = [...storeMessages].reverse().find((msg) => msg.role === 'user');
     if (!lastUserMessage || lastUserMessage.id === lastPersistedMessageIdRef.current) return;
 
     persistAttachments(currentSessionId, lastUserMessage.id, pending).then(() => {
@@ -249,8 +261,9 @@ export function ChatComposer({
       pendingAttachmentsRef.current = null;
       setUploadedFiles([]);
       setUploadError(null);
+      onAttachmentsPersisted?.();
     });
-  }, [currentSessionId, threadMessages, persistAttachments]);
+  }, [currentSessionId, storeMessages, persistAttachments, onAttachmentsPersisted]);
 
   const handleClearInput = useCallback(async () => {
     setUploadedFiles([]);
@@ -308,6 +321,9 @@ export function ChatComposer({
             mimeType: file.type,
             fileSize: file.size,
             status: 'uploaded',
+            notice: result.parseStatus === 'scanned'
+              ? '扫描件 PDF，无文字层，AI 暂时无法按文本读取'
+              : undefined,
           },
         ]));
         try {
@@ -644,10 +660,16 @@ function ComposerAttachmentsSection({ uploadedFiles, uploadError, isUploading }:
               {uploadedFiles.map((file) => (
                 <span
                   key={`${file.path}-${file.status}`}
-                  className={`rounded-md border px-2 py-0.5 ${file.status === 'error' ? 'border-destructive text-destructive' : 'border-transparent bg-card text-foreground'}`}
-                  title={file.error || file.path}
+                  className={`rounded-md border px-2 py-0.5 ${
+                    file.status === 'error'
+                      ? 'border-destructive text-destructive'
+                      : file.notice
+                        ? 'border-amber-500/60 text-amber-600 dark:text-amber-400'
+                        : 'border-transparent bg-card text-foreground'
+                  }`}
+                  title={file.error || file.notice || file.path}
                 >
-                  {file.path}
+                  {file.notice ? `⚠️ ${file.path}` : file.path}
                 </span>
               ))}
             </div>

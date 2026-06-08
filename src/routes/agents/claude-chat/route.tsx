@@ -1144,6 +1144,13 @@ function ClaudeChatSurface({
     };
   }, [currentSessionId, loadSessionAttachments]);
 
+  // Refresh the attachment map after the composer persists a new message's
+  // attachments — otherwise the file chip only appears after a session switch.
+  const reloadAttachments = useCallback(() => {
+    if (!currentSessionId) return;
+    loadSessionAttachments(currentSessionId).then(setAttachmentsByMessage);
+  }, [currentSessionId, loadSessionAttachments]);
+
   const openWorkspaceImagePreview = useCallback(async (paths: string[], title?: string) => {
     if (!currentSessionId) {
       setImagePreview({
@@ -1574,6 +1581,7 @@ function ClaudeChatSurface({
                   selectedSkill={selectedSkill}
                   onClearSelectedSkill={handleClearSelectedSkill}
                   onSkillSelect={handleSelectSkill}
+                  onAttachmentsPersisted={reloadAttachments}
                 />
               </>
             )}
