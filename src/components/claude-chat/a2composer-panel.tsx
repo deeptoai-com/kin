@@ -29,7 +29,7 @@ import {
 import {
   getComposerCatalogFn,
   getCuratedSkillSchemaFn,
-  ensureUserSkillEnabledFn,
+  installCuratedSkillFn,
 } from '~/server/function/skills.server';
 import type { ComposerSkill } from '~/lib/a2composer/types';
 import type { SkillInputField } from '~/claude/skills';
@@ -74,11 +74,10 @@ export function A2ComposerPanel({
 
   const getCatalog = useServerFn(getComposerCatalogFn);
   const getSkillSchema = useServerFn(getCuratedSkillSchemaFn);
-  const ensureSkillEnabled = useServerFn(ensureUserSkillEnabledFn);
-  const addTemporarySkill = useChatSessionStore((s) => s.addTemporarySkill);
+  const installSkill = useServerFn(installCuratedSkillFn);
   const setPendingComposerText = useChatSessionStore((s) => s.setPendingComposerText);
 
-  const { data: catalog = [], isLoading } = useQuery<ComposerSkill[]>({
+  const { data: catalog = [], isLoading, refetch } = useQuery<ComposerSkill[]>({
     queryKey: ['a2composer-catalog'],
     queryFn: () => getCatalog(),
   });
@@ -162,10 +161,12 @@ export function A2ComposerPanel({
     onSetComposerText(starterOf(skill));
     onSkillSelect?.({ slug: skill.slug, name: displayName(skill) });
     try {
-      const res = await ensureSkillEnabled({ data: { skillName: skill.slug } });
-      if (res?.enabledNow) addTemporarySkill(res.skillName ?? skill.slug);
+      // Catalog install: materialize SKILL.md to disk + record in skill_enablement.
+      // Effective next conversation (SDK can't hot-reload — STATUS Skills S2).
+      await installSkill({ data: { slug: skill.slug } });
+      void refetch();
     } catch (error) {
-      console.error('[A2Composer] Failed to enable skill:', error);
+      console.error('[A2Composer] Failed to install skill:', error);
     }
     setJustEnabled(skill);
   };
