@@ -148,7 +148,23 @@ function isAllowedInstallCommand(command) {
   ].includes(normalized);
 }
 
+// Type-check-tolerant build for Vite apps: run the bundler directly. `vite build`
+// uses esbuild, which transpiles WITHOUT type-checking, so unused-var / type errors
+// in LLM-generated code don't turn into hard build failures that block the preview
+// (preview = "see it run", not a type gate; our users are non-technical). `npx
+// --no-install` runs the locally-installed vite (node_modules/.bin) with no network.
+const VITE_PREVIEW_BUILD = 'npx --no-install vite build';
+
+// Fixed, safe build commands we allow in addition to package.json scripts. These are
+// hardcoded (never user-supplied free text), so they can't be used to run arbitrary code.
+const ALLOWED_DIRECT_BUILD = new Set([VITE_PREVIEW_BUILD, 'vite build']);
+
+function isAllowedDirectBuildCommand(command) {
+  return ALLOWED_DIRECT_BUILD.has(String(command || '').trim());
+}
+
 function assertAllowedBuildCommand(command, pkg, field) {
+  if (isAllowedDirectBuildCommand(command)) return;
   const scriptName = parseScriptCommand(command);
   const scripts = isPlainObject(pkg.scripts) ? pkg.scripts : {};
   if (!scriptName || typeof scripts[scriptName] !== 'string') {
@@ -174,7 +190,12 @@ export async function normalizeManifest(workspacePath, manifest) {
     throw new Error('installCommand must be a supported package-manager install command');
   }
 
-  const buildCommand = readString(manifest.buildCommand, defaults.buildCommand);
+  // For Vite, always bundle directly (type-check tolerant) rather than the app's
+  // `tsc && vite build` script — even if a previously-persisted manifest pinned
+  // `npm run build`. Other frameworks keep their build script.
+  const buildCommand = framework === 'vite'
+    ? VITE_PREVIEW_BUILD
+    : readString(manifest.buildCommand, defaults.buildCommand);
   assertAllowedBuildCommand(buildCommand, pkg, 'buildCommand');
 
   const defaultDevCommand = typeof scripts.dev === 'string' ? defaults.devCommand : '';
