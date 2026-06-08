@@ -3,6 +3,8 @@
 > 状态：**设计稿 + 实施计划** · 2026-06-07 · 与 [Advanced RAG 方案](./2026-06-advanced-rag-design.md) **分离**。
 > 关系：本文是 RAG 的**前置地基（R0.5）**——RAG 是"大文档捞针"的逃生通道，但今天连"单个文件被 Agent 读到"都没闭环。本文只做到"文件可靠地、以文本形式、被 Agent 用上"，**不做 chunk/embed/检索**（那是 RAG 文档）。
 > 北极星对照：自托管 / 单组织 / 多用户（半可信同事）/ ARK + SDK 0.2.112 / 可部署性优先。
+>
+> **🔄 更新（2026-06-08，Projects PRD）**：`document.userId` 退化为"上传者/署名"，**不再是访问基元**；访问一律走 **`scope(personal|project)` + 统一解析器**；F5"提升到 KB"改为"提升到 **project / personal KB**（改 scope + 关联，不复制、零重嵌）"。详见 [Projects PRD](../prd/2026-06-projects-collaboration-prd.md) + [Projects P1 ⊕ RAG R0 合并方案](./2026-06-projects-p1-rag-r0-data-model.md)。
 
 ## 0. 目标 / 非目标
 
@@ -41,13 +43,13 @@
 - **解析**：用**已装的 markitdown** 当 loader，pdf/docx/xlsx/pptx → markdown 文本；txt/md/csv/json/代码直接用。
 - **分档（对齐三档）**：
   - **聊天上传** = 解析 → **把解析文本物化进本会话 workspace**（Agent `Read`/`Grep` 直接读）+ 小文件可 inline 摘要；**不 embed**。
-  - **提升到文档库/KB** = 给**同一个 `document`** 建 `kb_document` 关联；**这时才**异步 chunk+embed（交给 RAG R1+）。
+  - **提升到文档库/KB** = 给**同一个 `document`** 改 `scope=project`（或 personal）+ 建 `kb_document` 关联（🔄 关联不复制、零重嵌）；**这时才**异步 chunk+embed（交给 RAG R1+）。
 - **oxygenie 专属适配**：references 是 chat-completion 只能 inline；**oxygenie 是带 Read/Grep 的文件系统 Agent**，所以"物化解析文本到 workspace"比 inline 更稳、还能 Grep——这是本地化的关键差异。
 
 ## 4. 安全 / 效率
 
 - **解析在不可信输入上运行**：markitdown 跑用户文件，**经沙箱/受控子进程**执行（复用 ExecutionRuntime/python 沙箱思路，第 05/10 篇），限时限内存；解析失败优雅降级（存错误元数据，不崩）。
-- **隔离**：文件路径含 `userId/sessionId`；`validateRelativePath` 已在用；提升到 KB 的关联查询带 `userId` 过滤（第 11 篇）。
+- **隔离**：workspace 文件路径含 `userId/sessionId`（per-session 文件系统层，不变）；**DB 层访问 🔄 走 `scope(personal|project)` 统一解析器**（`accessibleKbIds`/`canSeeSession`，取代 `userId` 过滤；Projects PRD §4）；`validateRelativePath` 已在用。
 - **去重（可选，后置）**：LobeChat 式 hash 去重（`globalFiles`）省存储，但**前提是访问过滤铁实**；地基阶段可先不做，先把单文件闭环。
 - **大小/类型闸**：上传大小上限 + 类型白名单；超大文件走 RAG 分档（本文不处理，标记 `rag_tier`）。
 
@@ -62,7 +64,7 @@
 | **F2** | **解析落盘**：上传富文本时，markitdown → 把 `<name>.md` 物化进 workspace（原文件保留）；解析文本写 `document.content` | 上传 pdf，workspace 出现可读 `.md`，Agent `Read` 到文本 | 后端 upload 路由，contained |
 | **F3** | **把文件路径可靠递给 Agent**：composer 附件 + 文档页两条路径都注入"附件信息（用 Read 读）" | 文档页加的文件，Agent 也知道在哪 | prompt 注入，低 |
 | **F4** | **文件实体规范化**（可选）：原始字节进 MinIO 为规范家、workspace 为投影；hash 去重 | 重复上传不重复存 | 较大，可后置 |
-| **F5** | **会话文件→文档库"提升"**：一键给 `document` 建 `kb_document` 关联（**不复制**），为 RAG 接力 | 会话文件出现在 `agents/documents`，仍是同一实体 | 中，接 RAG 边界 |
+| **F5** | **会话文件→文档库"提升"**：一键给 `document` 改 `scope=project/personal` + 建 `kb_document` 关联（🔄 不复制、零重嵌），为 RAG 接力 | 会话文件出现在 project/个人文档库，仍是同一实体 | 中，接 RAG + Projects 边界 |
 
 **与 RAG 边界**：本文止于 F5 的"关联提升"；F5 之后的 chunk/embed/检索 = RAG 方案 R1+。
 
