@@ -10,6 +10,7 @@ import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
 import { validateRelativePath } from '~/server/security/validate-relative-path';
+import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 
 /**
  * System files to exclude from workspace listings
@@ -178,10 +179,33 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           const buffer = Buffer.from(await file.arrayBuffer());
           await writeFile(fullFilePath, buffer);
 
+          // F2: parse rich docs (pdf/docx/...) → markdown so the Agent's Read tool can
+          // use them. Plain text/code is left as-is (the Agent reads it directly).
+          // Parse failure is non-fatal: the original file is still uploaded.
+          let parsedPath: string | undefined;
+          let parsedEngine: string | undefined;
+          if (needsParse(filePath)) {
+            try {
+              const parsed = await parseToMarkdown(fullFilePath, filePath, buffer.byteLength);
+              if (parsed.ok) {
+                const mdRelPath = `${filePath}.md`;
+                await writeFile(path.join(workspacePath, mdRelPath), parsed.markdown, 'utf8');
+                parsedPath = mdRelPath;
+                parsedEngine = parsed.engine ?? undefined;
+              } else {
+                console.error(`[Workspace API] Parse skipped/failed for ${filePath}: ${parsed.error}`);
+              }
+            } catch (parseError) {
+              console.error('[Workspace API] Parse error:', parseError);
+            }
+          }
+
           return Response.json({
             sessionId: session.id,
             filePath,
             storedPath: fullFilePath,
+            parsedPath,
+            parsedEngine,
           });
         } catch (error) {
           console.error('[Workspace API] Error writing file:', error);

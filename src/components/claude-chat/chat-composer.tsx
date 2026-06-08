@@ -62,6 +62,8 @@ import { trackClaudeAgentQuerySent } from '~/lib/observability/posthog-events';
 type UploadedWorkspaceFile = {
   name: string;
   path: string;
+  /** Workspace-relative path the Agent should Read (parsed .md for rich docs, else == path). */
+  agentPath?: string;
   mimeType?: string;
   fileSize?: number;
   status: 'uploaded' | 'error';
@@ -145,6 +147,8 @@ async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: str
   return response.json() as Promise<{
     filePath: string;
     storedPath: string;
+    parsedPath?: string;
+    parsedEngine?: string;
   }>;
 }
 
@@ -299,6 +303,8 @@ export function ChatComposer({
           {
             name: file.name,
             path: result.filePath,
+            // Rich docs are parsed to `<name>.md` server-side — point the Agent there.
+            agentPath: result.parsedPath ?? result.filePath,
             mimeType: file.type,
             fileSize: file.size,
             status: 'uploaded',
@@ -333,7 +339,9 @@ export function ChatComposer({
   }, [api, currentSessionId]);
 
   const composerHasText = composerText.trim().length > 0;
-  const canSend = composerIsEditing && composerHasText && !isRunning;
+  // F1: gate send on upload completion — otherwise pressing Enter mid-upload sends
+  // before `uploadedFiles` is populated and silently drops the attachment.
+  const canSend = composerIsEditing && composerHasText && !isRunning && !isUploading;
 
   const handleSend = useCallback((event?: FormEvent) => {
     if (event) {
@@ -348,7 +356,8 @@ export function ChatComposer({
       .filter((file) => file.status === 'uploaded')
       .map((file) => ({
         originalName: file.name,
-        filePath: file.path,
+        // Agent reads the parsed .md for rich docs; falls back to the original path.
+        filePath: file.agentPath ?? file.path,
         mimeType: file.mimeType,
         fileSize: file.fileSize,
       }));

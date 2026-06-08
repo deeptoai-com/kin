@@ -12,6 +12,7 @@ import { db } from '~/db/db-config';
 import { agentSession, sessionDocument, files, knowledgeBases, kbDocuments } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
 import { S3StaticFileImpl } from '~/server/s3/s3';
+import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 
 const fileService = new S3StaticFileImpl();
 
@@ -180,6 +181,21 @@ export const Route = createFileRoute('/api/workspace/$sessionId/knowledge-bases'
             // Write to workspace with KB prefix
             await writeFile(workspaceFilePath, Buffer.from(fileContent));
             console.log(`[POST] File written successfully`);
+
+            // F3: parse rich docs (pdf/docx/...) → markdown so the Agent can read them.
+            // Non-fatal: a parse failure still leaves the original file in the workspace.
+            if (needsParse(prefixedFilename)) {
+              try {
+                const parsed = await parseToMarkdown(workspaceFilePath, prefixedFilename, fileContent.length);
+                if (parsed.ok) {
+                  await writeFile(`${workspaceFilePath}.md`, parsed.markdown, 'utf8');
+                } else {
+                  console.error(`[POST] Parse skipped/failed for ${prefixedFilename}: ${parsed.error}`);
+                }
+              } catch (parseError) {
+                console.error('[POST] Parse error:', parseError);
+              }
+            }
 
             // Create session_document record
             const [sessionDoc] = await db

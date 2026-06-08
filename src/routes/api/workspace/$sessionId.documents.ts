@@ -16,6 +16,7 @@ import { db } from '~/db/db-config';
 import { agentSession, sessionDocument, files } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
 import { S3StaticFileImpl } from '~/server/s3/s3';
+import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 
 const fileService = new S3StaticFileImpl();
 
@@ -215,6 +216,21 @@ export const Route = createFileRoute('/api/workspace/$sessionId/documents')({
             // Write to workspace
             await writeFile(workspaceFilePath, Buffer.from(fileContent));
             console.log(`[POST] File written successfully`);
+
+            // F3: parse rich docs (pdf/docx/...) → markdown so the Agent can read them.
+            // Non-fatal: a parse failure still leaves the original file in the workspace.
+            if (needsParse(safeFilename)) {
+              try {
+                const parsed = await parseToMarkdown(workspaceFilePath, safeFilename, fileContent.length);
+                if (parsed.ok) {
+                  await writeFile(`${workspaceFilePath}.md`, parsed.markdown, 'utf8');
+                } else {
+                  console.error(`[POST] Parse skipped/failed for ${safeFilename}: ${parsed.error}`);
+                }
+              } catch (parseError) {
+                console.error('[POST] Parse error:', parseError);
+              }
+            }
 
             // Create session_document record (use DB ID, not SDK session ID)
             const [sessionDoc] = await db
