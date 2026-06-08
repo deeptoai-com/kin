@@ -5,7 +5,7 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
@@ -192,6 +192,12 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
                 await writeFile(path.join(workspacePath, mdRelPath), parsed.markdown, 'utf8');
                 parsedPath = mdRelPath;
                 parsedEngine = parsed.engine ?? undefined;
+                // F4: move the original binary OUT of the Agent-visible workspace into a
+                // hidden .uploads/ dir (excluded from Glob + the file panel; also guarded
+                // by the worker). The Agent only ever sees the parsed .md.
+                const hiddenAbs = path.join(workspacePath, '.uploads', filePath);
+                await mkdir(path.dirname(hiddenAbs), { recursive: true });
+                await rename(fullFilePath, hiddenAbs);
               } else {
                 console.error(`[Workspace API] Parse skipped/failed for ${filePath}: ${parsed.error}`);
               }
