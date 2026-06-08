@@ -68,6 +68,8 @@ type UploadedWorkspaceFile = {
   fileSize?: number;
   status: 'uploaded' | 'error';
   error?: string;
+  /** Non-fatal notice shown on the chip (e.g. a scanned PDF with no text layer). */
+  notice?: string;
 };
 
 /**
@@ -152,6 +154,7 @@ async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: str
     storedPath: string;
     parsedPath?: string;
     parsedEngine?: string;
+    parseStatus?: 'parsed' | 'scanned';
   }>;
 }
 
@@ -313,6 +316,9 @@ export function ChatComposer({
             mimeType: file.type,
             fileSize: file.size,
             status: 'uploaded',
+            notice: result.parseStatus === 'scanned'
+              ? '扫描件 PDF，无文字层，AI 暂时无法按文本读取'
+              : undefined,
           },
         ]));
         try {
@@ -649,10 +655,16 @@ function ComposerAttachmentsSection({ uploadedFiles, uploadError, isUploading }:
               {uploadedFiles.map((file) => (
                 <span
                   key={`${file.path}-${file.status}`}
-                  className={`rounded-md border px-2 py-0.5 ${file.status === 'error' ? 'border-destructive text-destructive' : 'border-transparent bg-card text-foreground'}`}
-                  title={file.error || file.path}
+                  className={`rounded-md border px-2 py-0.5 ${
+                    file.status === 'error'
+                      ? 'border-destructive text-destructive'
+                      : file.notice
+                        ? 'border-amber-500/60 text-amber-600 dark:text-amber-400'
+                        : 'border-transparent bg-card text-foreground'
+                  }`}
+                  title={file.error || file.notice || file.path}
                 >
-                  {file.path}
+                  {file.notice ? `⚠️ ${file.path}` : file.path}
                 </span>
               ))}
             </div>

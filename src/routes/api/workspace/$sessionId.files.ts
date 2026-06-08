@@ -13,6 +13,27 @@ import { validateRelativePath } from '~/server/security/validate-relative-path';
 import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 
 /**
+ * Guiding stub written in place of a real `.md` when a PDF has no extractable
+ * text layer (scanned / image-only). Gives the Agent a deterministic file to
+ * land on (the binary-doc Read redirect points here) and a clear instruction to
+ * tell the user — instead of a silent no-op. OCR is a roadmap follow-up.
+ */
+function buildScannedDocStub(originalName: string): string {
+  return [
+    `# ${originalName} — 无法按文本读取`,
+    '',
+    '> ⚠️ 该文档（PDF）似乎是**扫描件 / 图片型**，没有可提取的文字层，',
+    '> 系统的文本解析器（markitdown）没有提取到任何文字。OCR 尚未启用。',
+    '',
+    '**给 AI 助手：** 这份文档无法作为文本读取。请如实告知用户——',
+    '它是扫描/图片版 PDF，暂时无法按文本解析；建议用户提供带文字层的版本，',
+    '或直接把需要处理的关键内容以文本形式贴出来。',
+    '请勿反复尝试 Read 原始 PDF（模型网关会拒绝二进制文档内容并返回 400）。',
+    '',
+  ].join('\n');
+}
+
+/**
  * System files to exclude from workspace listings
  * These are internal SDK/session files that users shouldn't see
  */
@@ -184,20 +205,40 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           // Parse failure is non-fatal: the original file is still uploaded.
           let parsedPath: string | undefined;
           let parsedEngine: string | undefined;
+          // 'parsed' = real text extracted; 'scanned' = no text layer (stub written);
+          // undefined = not a rich doc, or parse genuinely failed.
+          let parseStatus: 'parsed' | 'scanned' | undefined;
           if (needsParse(filePath)) {
+            // Both the success and scanned-stub paths move the original binary OUT of the
+            // Agent-visible workspace into a hidden .uploads/ dir (excluded from Glob + the
+            // file panel; also guarded by the worker). The Agent only ever sees the .md.
+            const stashOriginal = async () => {
+              const hiddenAbs = path.join(workspacePath, '.uploads', filePath);
+              await mkdir(path.dirname(hiddenAbs), { recursive: true });
+              await rename(fullFilePath, hiddenAbs);
+            };
             try {
               const parsed = await parseToMarkdown(fullFilePath, filePath, buffer.byteLength);
+              const mdRelPath = `${filePath}.md`;
               if (parsed.ok) {
-                const mdRelPath = `${filePath}.md`;
                 await writeFile(path.join(workspacePath, mdRelPath), parsed.markdown, 'utf8');
                 parsedPath = mdRelPath;
                 parsedEngine = parsed.engine ?? undefined;
-                // F4: move the original binary OUT of the Agent-visible workspace into a
-                // hidden .uploads/ dir (excluded from Glob + the file panel; also guarded
-                // by the worker). The Agent only ever sees the parsed .md.
-                const hiddenAbs = path.join(workspacePath, '.uploads', filePath);
-                await mkdir(path.dirname(hiddenAbs), { recursive: true });
-                await rename(fullFilePath, hiddenAbs);
+                parseStatus = 'parsed';
+                await stashOriginal();
+              } else if (parsed.reason === 'empty') {
+                // Scanned / image-only doc: write a guiding stub so the Agent has a
+                // deterministic .md to read and tells the user, instead of failing silently.
+                await writeFile(
+                  path.join(workspacePath, mdRelPath),
+                  buildScannedDocStub(path.basename(filePath)),
+                  'utf8',
+                );
+                parsedPath = mdRelPath;
+                parsedEngine = 'none-scanned';
+                parseStatus = 'scanned';
+                await stashOriginal();
+                console.warn(`[Workspace API] No text layer for ${filePath} (likely scanned); wrote guiding stub.`);
               } else {
                 console.error(`[Workspace API] Parse skipped/failed for ${filePath}: ${parsed.error}`);
               }
@@ -212,6 +253,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
             storedPath: fullFilePath,
             parsedPath,
             parsedEngine,
+            parseStatus,
           });
         } catch (error) {
           console.error('[Workspace API] Error writing file:', error);

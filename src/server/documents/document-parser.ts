@@ -40,6 +40,11 @@ export interface ParseResult {
   engine: string | null;
   markdown: string;
   error?: string;
+  /**
+   * When `ok` is false, why the parse produced no text — lets callers special-case
+   * scanned/image-only PDFs (`empty`) versus genuine failures (`error`).
+   */
+  reason?: 'empty' | 'too-large' | 'unsupported' | 'error';
 }
 
 interface DocParser {
@@ -112,14 +117,15 @@ export async function parseToMarkdown(
   const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
 
   if (!needsParse(filename)) {
-    return { ok: false, engine: null, markdown: '', error: 'not-a-rich-type' };
+    return { ok: false, engine: null, markdown: '', error: 'not-a-rich-type', reason: 'unsupported' };
   }
   if (sizeBytes > maxBytes) {
     // Large docs are out of scope for inline parse — they belong to the RAG ingest tier.
-    return { ok: false, engine: null, markdown: '', error: 'too-large-for-inline-parse' };
+    return { ok: false, engine: null, markdown: '', error: 'too-large-for-inline-parse', reason: 'too-large' };
   }
 
   let lastError: string | undefined;
+  let sawEmpty = false;
   for (const parser of PARSERS) {
     if (!parser.canHandle(ext)) continue;
     try {
@@ -127,6 +133,7 @@ export async function parseToMarkdown(
       if (md.length > 0) {
         return { ok: true, engine: parser.name, markdown: md };
       }
+      sawEmpty = true;
       lastError = `${parser.name}: empty output`;
       // empty → fall through to the next parser (e.g. OCR) in the chain
     } catch (error) {
@@ -134,5 +141,13 @@ export async function parseToMarkdown(
       // try the next parser in the chain
     }
   }
-  return { ok: false, engine: null, markdown: '', error: lastError ?? 'no-parser-matched' };
+  // `empty` = every matching parser ran but extracted no text (e.g. a scanned/
+  // image-only PDF with no text layer). `error` = a parser actually failed.
+  return {
+    ok: false,
+    engine: null,
+    markdown: '',
+    error: lastError ?? 'no-parser-matched',
+    reason: sawEmpty ? 'empty' : 'error',
+  };
 }
