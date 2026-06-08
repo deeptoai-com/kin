@@ -64,6 +64,7 @@ export function A2ComposerPanel({
   onSkillSelect,
   onOpenNewConversation,
 }: A2ComposerPanelProps) {
+  void composerText; // prop kept for API compatibility; no longer read internally
   const [isMinimized, setIsMinimized] = useState(true);
   const [activeBucketId, setActiveBucketId] = useState<BucketId>(A2_BUCKETS[0].id);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export function A2ComposerPanel({
   const getCatalog = useServerFn(getComposerCatalogFn);
   const getSkillSchema = useServerFn(getCuratedSkillSchemaFn);
   const installSkill = useServerFn(installCuratedSkillFn);
-  const setPendingComposerText = useChatSessionStore((s) => s.setPendingComposerText);
+  const setPendingArmedSkill = useChatSessionStore((s) => s.setPendingArmedSkill);
 
   const { data: catalog = [], isLoading, refetch } = useQuery<ComposerSkill[]>({
     queryKey: ['a2composer-catalog'],
@@ -150,15 +151,16 @@ export function A2ComposerPanel({
   };
 
   const openEnabledSkill = (skill: ComposerSkill) => {
+    // Arm the skill (composer chip + skill marker on send). Composer text is set
+    // by the tier effect once the schema resolves: Tier 2 (has inputs) → form-fill
+    // prompt; Tier 1 (no inputs) → empty composer, firstTaskZh shown only as a hint.
     setSelectedSlug(skill.slug);
     setVariableValues({});
-    onSetComposerText(starterOf(skill));
     onSkillSelect?.({ slug: skill.slug, name: displayName(skill) });
   };
 
   const enableSkill = async (skill: ComposerSkill) => {
     setRiskSkill(null);
-    onSetComposerText(starterOf(skill));
     onSkillSelect?.({ slug: skill.slug, name: displayName(skill) });
     try {
       // Catalog install: materialize SKILL.md to disk + record in skill_enablement.
@@ -184,7 +186,8 @@ export function A2ComposerPanel({
   };
 
   const handleOpenNewChat = (skill: ComposerSkill) => {
-    setPendingComposerText(starterOf(skill));
+    // Arm the skill in the fresh session (it's enabled now, effective next convo).
+    setPendingArmedSkill({ slug: skill.slug, name: displayName(skill) });
     onOpenNewConversation?.();
     handleMinimize();
   };
@@ -197,13 +200,16 @@ export function A2ComposerPanel({
     });
   };
 
-  // Auto-collapse when the composer was cleared externally (e.g. after send).
+  // Two-tier: once an enabled skill is selected and its schema resolves, either
+  // seed the form-fill prompt (Tier 2 — has inputs) or keep the composer empty so
+  // firstTaskZh acts purely as a hint (Tier 1). Post-send reset is handled by the
+  // parent remount (a2ComposerKey), so no auto-collapse effect is needed here.
   useEffect(() => {
-    if (onReset && composerText === '' && (selectedSlug || justEnabled)) {
-      handleMinimize();
-    }
+    if (!selectedSkill?.enabled) return;
+    if (schemaData === undefined) return; // schema still loading
+    onSetComposerText(schemaInputs.length > 0 ? buildPrompt(selectedSkill, {}) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [composerText, onReset]);
+  }, [selectedSlug, schemaData]);
 
   // ── variable form controls (schema-driven) ─────────────────────────────
   const getOptionValue = (option: SkillOption, index: number) =>
@@ -381,8 +387,6 @@ export function A2ComposerPanel({
     );
   }
 
-  const variables = schemaInputs.map((f) => f.name);
-
   // ===== EXPANDED =====
   return (
     <div className="mx-auto w-full max-w-3xl rounded-lg border border-border bg-card shadow-sm">
@@ -474,7 +478,7 @@ export function A2ComposerPanel({
         </div>
       )}
 
-      {/* Variable form for a selected, enabled skill */}
+      {/* Selected enabled skill — Tier 2 (curated form) or Tier 1 (placeholder hint) */}
       {!riskSkill && !justEnabled && selectedSkill?.enabled && (
         <div className="space-y-4 p-4">
           <div className="flex items-center gap-3 border-b border-border pb-3">
@@ -487,7 +491,11 @@ export function A2ComposerPanel({
               <p className="text-muted-foreground text-xs">{selectedSkill.summaryZh}</p>
             </div>
           </div>
-          {variables.length > 0 ? (
+
+          {schemaData === undefined ? (
+            <p className="text-center text-muted-foreground text-sm">正在准备…</p>
+          ) : schemaInputs.length > 0 ? (
+            // Tier 2 — curated form: the fields compose the prompt.
             <div className="space-y-4">
               {schemaInputs.map((field) => (
                 <div key={field.name} className="space-y-1.5">
@@ -503,9 +511,16 @@ export function A2ComposerPanel({
               ))}
             </div>
           ) : (
-            <p className="text-center text-muted-foreground text-sm">
-              起手 prompt 已填入，可直接编辑并发送。
-            </p>
+            // Tier 1 — placeholder hint: skill is armed, composer stays empty.
+            <div className="rounded-md border border-primary/20 bg-accent/60 p-3">
+              <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+                提示 · how to use
+              </p>
+              <p className="mt-1.5 text-foreground text-sm">{starterOf(selectedSkill)}</p>
+              <p className="mt-2 text-muted-foreground text-xs">
+                「{displayName(selectedSkill)}」已就绪 —— 按提示在下方输入框输入 / 粘贴内容并发送即可。
+              </p>
+            </div>
           )}
         </div>
       )}

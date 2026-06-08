@@ -187,10 +187,10 @@ interface ChatSessionState {
   // localStorage (PR8) and restored on session switch/resume.
   selectedModelId?: string;
 
-  // Composer text to apply once the NEXT (newly-created) session is ready.
-  // Used by the A2Composer "open new chat & load" flow (skill enabled now,
-  // effective next conversation per SDK constraint).
-  pendingComposerText?: string;
+  // Skill to arm once the NEXT (newly-created) session is ready. Used by the
+  // A2Composer "open new chat & load" flow: the skill was just enabled (effective
+  // next conversation per SDK constraint), so we arm it in the fresh session.
+  pendingArmedSkill?: { slug: string; name?: string };
 
   // Actions
   setSessionId: (sessionId: string | null) => void;
@@ -220,7 +220,7 @@ interface ChatSessionState {
   clearTemporarySkills: () => void;
   setSelectedTier: (mode: InteractionMode | undefined) => void;
   setSelectedModelId: (id: string | undefined) => void;
-  setPendingComposerText: (text: string | undefined) => void;
+  setPendingArmedSkill: (skill: { slug: string; name?: string } | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -464,14 +464,14 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   temporarySkills: [],
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
   selectedModelId: undefined,
-  pendingComposerText: undefined,
+  pendingArmedSkill: undefined,
 
   setSelectedTier: (selectedTier) => {
     set({ selectedTier });
   },
 
-  setPendingComposerText: (pendingComposerText) => {
-    set({ pendingComposerText });
+  setPendingArmedSkill: (pendingArmedSkill) => {
+    set({ pendingArmedSkill });
   },
 
   setSelectedModelId: (selectedModelId) => {

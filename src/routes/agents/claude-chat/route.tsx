@@ -1102,8 +1102,8 @@ function ClaudeChatSurface({
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showSessionFiles, setShowSessionFiles] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
-  const pendingComposerText = useChatSessionStore((state) => state.pendingComposerText);
-  const setPendingComposerText = useChatSessionStore((state) => state.setPendingComposerText);
+  const pendingArmedSkill = useChatSessionStore((state) => state.pendingArmedSkill);
+  const setPendingArmedSkill = useChatSessionStore((state) => state.setPendingArmedSkill);
   const { loadSessionAttachments } = useMessageAttachments();
   const [attachmentsByMessage, setAttachmentsByMessage] = useState<Map<string, MessageAttachment[]>>(
     new Map()
@@ -1399,14 +1399,14 @@ function ClaudeChatSurface({
     composerRef.current?.focus();
   }, []);
 
-  // Apply the starter prompt stashed by A2Composer's "open new chat & load" once
-  // the freshly-created session is ready (the just-enabled skill is now loaded).
+  // Arm the skill stashed by A2Composer's "open new chat & load" once the freshly-
+  // created session is ready (the just-enabled skill is now loaded + active).
   useEffect(() => {
-    if (currentSessionId && !isInitializingSession && pendingComposerText) {
-      handleSetComposerText(pendingComposerText);
-      setPendingComposerText(undefined);
+    if (currentSessionId && !isInitializingSession && pendingArmedSkill) {
+      setSelectedSkill(pendingArmedSkill);
+      setPendingArmedSkill(undefined);
     }
-  }, [currentSessionId, isInitializingSession, pendingComposerText, handleSetComposerText, setPendingComposerText]);
+  }, [currentSessionId, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
 
   const handleSelectSkill = useCallback((skill: { slug: string; name?: string }) => {
     setSelectedSkill(skill);
