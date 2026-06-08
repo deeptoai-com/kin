@@ -194,7 +194,7 @@ export class PreviewRuntime {
     return stopped;
   }
 
-  async startStaticPreview({ userId, sessionId, workspacePath, sendState }) {
+  async startStaticPreview({ userId, sessionId, workspacePath, force = false, sendState }) {
     if (!userId || !sessionId || !workspacePath) {
       throw new Error('Missing preview start context');
     }
@@ -202,13 +202,13 @@ export class PreviewRuntime {
       return this.inFlight.get(sessionId);
     }
 
-    const task = this.#startStaticPreview({ userId, sessionId, workspacePath, sendState })
+    const task = this.#startStaticPreview({ userId, sessionId, workspacePath, force, sendState })
       .finally(() => this.inFlight.delete(sessionId));
     this.inFlight.set(sessionId, task);
     return task;
   }
 
-  async #startStaticPreview({ userId, sessionId, workspacePath, sendState }) {
+  async #startStaticPreview({ userId, sessionId, workspacePath, force = false, sendState }) {
     const status = (state) => {
       sendState?.(state);
       return state;
@@ -243,7 +243,17 @@ export class PreviewRuntime {
         });
       }
 
-      if (this.active.has(previewId)) {
+      // Force rebuild: the preview is build mode (static serve of `dist`, no HMR), so
+      // code edits only become visible after a fresh build. Tear the running preview
+      // down first — this releases its semaphore slot and removes the container but
+      // KEEPS the persisted per-preview node_modules volume (controller stop uses
+      // v=false) — then fall through to the normal install→build→serve below (install
+      // is fast against the warm cache + existing node_modules).
+      if (force && this.active.has(previewId)) {
+        await this.stopPreview(previewId).catch(() => {});
+      }
+
+      if (!force && this.active.has(previewId)) {
         const existing = this.active.get(previewId);
         existing.lastAccessAt = Date.now();
         if (existing.status !== 'ready') {

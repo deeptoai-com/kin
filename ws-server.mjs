@@ -951,6 +951,7 @@ async function handleStartPreview(ws, message) {
       userId: ws.userId,
       sessionId,
       workspacePath,
+      force: message.force === true,
       sendState: (state) => sendPreviewState(ws, state),
     });
   } catch (error) {

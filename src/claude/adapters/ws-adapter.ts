@@ -112,7 +112,7 @@ type InboundMessage =
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string; model?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
-  | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live' }
+  | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live'; force?: boolean }
   | { type: 'stop_preview'; sessionId?: string }
   | { type: 'share_preview'; previewId: string; sessionId?: string }
   | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny' }
@@ -612,8 +612,17 @@ async function send(message: InboundMessage): Promise<void> {
 export async function startPreview(
   sessionId?: string,
   mode: 'static' | 'live' = 'static',
+  opts?: { force?: boolean },
 ): Promise<void> {
-  await send({ type: 'start_preview', sessionId: sessionId ?? currentSessionId, mode });
+  // `force: true` rebuilds an already-running preview in place (re-install + re-build
+  // + restart serve) instead of reusing the cached "ready" instance — preview is build
+  // mode (static serve, no HMR), so code edits only show after a rebuild.
+  await send({
+    type: 'start_preview',
+    sessionId: sessionId ?? currentSessionId,
+    mode,
+    ...(opts?.force ? { force: true } : {}),
+  });
 }
 
 export async function stopPreview(sessionId?: string): Promise<void> {
