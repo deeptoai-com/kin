@@ -34,7 +34,7 @@ function RouteComponent() {
               </p>
               <div className="comment">// self-hosted · single-org · multi-user · fully-sandboxed</div>
               <div className="hero-cta">
-                <Link className="btn-go" to="/agents/claude-chat">
+                <Link className="btn-go" to="/agents/c">
                   {c.hero.ctaPrimary} <span className="ar">→</span>
                 </Link>
                 <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
@@ -165,7 +165,7 @@ function RouteComponent() {
             <div className="app-top">
               <div className="l">
                 <span className="cl">~/</span>oxygenie<span style={{ color: 'var(--line-2)' }}>/</span>
-                <b>claude-chat</b>
+                <b>agents/c</b>
               </div>
               <div className="st">
                 <i /> model: glm-5.1 · sandbox · live

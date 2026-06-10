@@ -8,6 +8,7 @@
 export const FEATURE_CONFIG = {
   // Section 1: Claude Agent SDK
   claudeChat: true,       // Claude Chat page - enabled
+  projects: true,         // Projects (项目 + 最近) IA - enabled
   skills: true,           // Skills Store page - enabled
   mcpStore: true,         // MCP Store page - enabled
 

@@ -10,6 +10,7 @@ import { desc, eq, sql, and } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { agentSession } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
+import { accessibleProjectIds, visibleSessionsWhere, canAccessSession } from '~/server/projects/access';
 
 export const Route = createFileRoute('/api/agent-sessions/')({
   validateSearch: (s) => ({
@@ -28,11 +29,20 @@ export const Route = createFileRoute('/api/agent-sessions/')({
         const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? 20)));
         const offset = (page - 1) * limit;
 
+        // Access via the single resolver, never a raw WHERE user_id: a user sees their
+        // own loose (project-less) sessions plus every session in Projects they belong to.
+        // `?scope=loose` restricts to loose chats only — the "最近" rail must not show
+        // project sessions (those live inside their Project). visibleSessionsWhere(user, [])
+        // is exactly the loose-own predicate.
+        const scope = url.searchParams.get('scope');
+        const accessibleIds = scope === 'loose' ? [] : await accessibleProjectIds(user.id);
+        const visible = visibleSessionsWhere(user.id, accessibleIds);
+
         // Fetch sessions ordered by favorite first, then by updated_at
         const sessions = await db
           .select()
           .from(agentSession)
-          .where(eq(agentSession.userId, user.id))
+          .where(visible)
           .orderBy(
             desc(agentSession.favorite),
             desc(agentSession.updatedAt)
@@ -44,7 +54,7 @@ export const Route = createFileRoute('/api/agent-sessions/')({
         const [countResult] = await db
           .select({ count: sql<number>`count(*)` })
           .from(agentSession)
-          .where(eq(agentSession.userId, user.id));
+          .where(visible);
 
         const total = Number(countResult?.count ?? 0);
 
@@ -64,11 +74,13 @@ export const Route = createFileRoute('/api/agent-sessions/')({
         const user = await requireUser(request);
 
         const body = await request.json();
-        const { sdkSessionId, claudeHomePath, title, realSdkSessionId } = body as {
+        const { sdkSessionId, claudeHomePath, title, realSdkSessionId, projectId, branchedFromSessionId } = body as {
           sdkSessionId: string;
           claudeHomePath?: string;
           title?: string;
           realSdkSessionId?: string;
+          projectId?: string;        // set on a branch create (lineage); membership-validated below
+          branchedFromSessionId?: string;
         };
 
         if (!sdkSessionId) {
@@ -76,6 +88,29 @@ export const Route = createFileRoute('/api/agent-sessions/')({
             { error: 'sdkSessionId is required' },
             { status: 400 }
           );
+        }
+
+        // Validate any lineage the client asks to stamp on a NEW session (branch create).
+        // Never trust a client-supplied projectId/source — a non-member must not be able to
+        // file a session into a project they can't access, or branch from a hidden session.
+        let validProjectId: string | null = null;
+        if (projectId) {
+          const ids = await accessibleProjectIds(user.id);
+          if (!ids.includes(projectId)) {
+            return Response.json({ error: 'forbidden: not a member of that project' }, { status: 403 });
+          }
+          validProjectId = projectId;
+        }
+        let validBranchedFrom: string | null = null;
+        if (branchedFromSessionId) {
+          const [src] = await db
+            .select({ userId: agentSession.userId, projectId: agentSession.projectId })
+            .from(agentSession)
+            .where(eq(agentSession.id, branchedFromSessionId));
+          if (!src || !(await canAccessSession(user.id, src))) {
+            return Response.json({ error: 'forbidden: cannot branch from that session' }, { status: 403 });
+          }
+          validBranchedFrom = branchedFromSessionId;
         }
 
         // Check if session already exists
@@ -129,6 +164,8 @@ export const Route = createFileRoute('/api/agent-sessions/')({
             realSdkSessionId: realSdkSessionId || null,
             claudeHomePath: claudeHomePath || null,
             title: title || null,
+            projectId: validProjectId,
+            branchedFromSessionId: validBranchedFrom,
           })
           .returning({ id: agentSession.id });
 

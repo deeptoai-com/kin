@@ -1,0 +1,2 @@
+ALTER TABLE "agent_session" ADD COLUMN "branched_from_session_id" uuid;--> statement-breakpoint
+ALTER TABLE "agent_session" ADD CONSTRAINT "agent_session_branched_from_session_id_agent_session_id_fk" FOREIGN KEY ("branched_from_session_id") REFERENCES "public"."agent_session"("id") ON DELETE set null ON UPDATE no action;

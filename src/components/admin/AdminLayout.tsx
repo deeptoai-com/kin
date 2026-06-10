@@ -91,7 +91,7 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={() => navigate({ to: '/agents/claude-chat' })}
+            onClick={() => navigate({ to: '/agents/c' })}
           >
             <RiArrowLeftLine className="h-4 w-4 mr-2" />
             Back to App

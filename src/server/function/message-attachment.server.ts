@@ -17,6 +17,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { messageAttachment } from '~/db/schema/message-attachment.schema';
 import { agentSession } from '~/db/schema/agent-session.schema';
+import { canAccessSession } from '~/server/projects/access';
 import { auth } from '~/server/auth.server';
 
 /**
@@ -43,6 +44,19 @@ const sessionBelongsToUser = async (sessionId: string, userId: string): Promise<
     .from(agentSession)
     .where(and(eq(agentSession.id, sessionId), eq(agentSession.userId, userId)));
   return Boolean(row);
+};
+
+/**
+ * READ visibility (Projects P1): owner OR a member of the session's Project. Used by the
+ * attachment READ handlers so a member viewing a shared session sees its attachments.
+ * Writes stay owner-only (sessionBelongsToUser).
+ */
+const sessionVisibleToUser = async (sessionId: string, userId: string): Promise<boolean> => {
+  const [row] = await db
+    .select({ userId: agentSession.userId, projectId: agentSession.projectId })
+    .from(agentSession)
+    .where(eq(agentSession.id, sessionId));
+  return row ? canAccessSession(userId, row) : false;
 };
 
 /** Resolve the owning sessionId of an attachment (or null if it doesn't exist). */
@@ -204,7 +218,7 @@ export const getSessionAttachments = createServerFn({ method: 'GET' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
-    if (!(await sessionBelongsToUser(data.sessionId, user.id))) return [];
+    if (!(await sessionVisibleToUser(data.sessionId, user.id))) return [];
 
     try {
       const attachments = await db
@@ -241,7 +255,7 @@ export const getMessageAttachments = createServerFn({ method: 'GET' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
-    if (!(await sessionBelongsToUser(data.sessionId, user.id))) return [];
+    if (!(await sessionVisibleToUser(data.sessionId, user.id))) return [];
 
     try {
       const attachments = await db

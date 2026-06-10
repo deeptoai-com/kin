@@ -181,7 +181,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <IntlayerProvider locale={activeLocale} setLocale={handleLocaleChange}>
               <AuthUIProviderTanstack
               authClient={authClient}
-              redirectTo="/agents/claude-chat"
+              redirectTo="/agents/c"
               navigate={(href) => router.navigate({ href })}
               replace={(href) => router.navigate({ href, replace: true })}
               Link={({ href, ...props }) => <Link to={href} {...props} />}

@@ -18,6 +18,7 @@ import ImageIcon from 'virtual:icons/ri/image-line';
 import FileTextIcon from 'virtual:icons/ri/file-text-line';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
+import FolderIcon from 'virtual:icons/ri/folder-3-line';
 import AppsIcon from 'virtual:icons/ri/apps-2-line';
 import ShieldIcon from 'virtual:icons/ri/shield-line';
 import { FEATURE_CONFIG } from '~/config/features';
@@ -32,6 +33,7 @@ type SidebarUser = {
 
 export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: SidebarUser }) {
   const content = useIntlayer('app');
+  const projectsContent = useIntlayer('projects');
 
   // Query admin status using Server Function directly
   const { data: adminCheck } = useQuery({
@@ -49,9 +51,15 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
       items: [
         {
           title: content.nav.claudeChat,
-          url: '/agents/claude-chat',
+          url: '/agents/c',
           icon: SparklingIcon,
           enabled: FEATURE_CONFIG.claudeChat,
+        },
+        {
+          title: projectsContent.nav.projects,
+          url: '/agents/projects',
+          icon: FolderIcon,
+          enabled: FEATURE_CONFIG.projects,
         },
         {
           title: content.nav.capabilityCenter,

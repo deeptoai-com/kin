@@ -107,7 +107,7 @@ type StreamEvent = {
 
 // WebSocket message types (matching ws-server.ts)
 type InboundMessage =
-  | { type: 'create_session' }
+  | { type: 'create_session'; projectId?: string }
   | { type: 'init_session'; sessionId: string }
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string; model?: string }
   | { type: 'resume'; sessionId: string }
@@ -667,8 +667,8 @@ export async function resumeSession(sessionId: string): Promise<void> {
  * Sends create_session message to server, which creates session without user message
  * Returns a promise that resolves when session_init is received
  */
-export async function createSession(): Promise<string> {
-  console.log('[WS Adapter] Creating new session explicitly');
+export async function createSession(projectId?: string): Promise<string> {
+  console.log('[WS Adapter] Creating new session explicitly', projectId ? `(project ${projectId})` : '');
   return new Promise((resolve, reject) => {
     // Set up one-time listener for session_init
     const onInit = (msg: OutboundMessage) => {
@@ -694,8 +694,9 @@ export async function createSession(): Promise<string> {
       messageHandler = originalHandler;
     };
 
-    // Send create_session message
-    send({ type: 'create_session' })
+    // Send create_session message. Projects: an optional projectId binds the fresh
+    // session to a Project at creation time (race-free), used by "new chat in <project>".
+    send({ type: 'create_session', ...(projectId ? { projectId } : {}) })
       .catch((err) => {
         cleanup();
         reject(err);

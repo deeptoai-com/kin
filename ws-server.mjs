@@ -312,8 +312,11 @@ const sessionMapping = new Map();
  * @param {string} realSdkSessionId - The actual SDK's session ID
  * @param {string} claudeHomePath - Path to CLAUDE_HOME
  * @param {string} [title] - Optional session title (extracted from first user message)
+ * @param {{ projectId?: string, branchedFromSessionId?: string }} [lineage] - Branch
+ *   lineage stamped on CREATE only (server validates membership/visibility). Omit for
+ *   normal sessions; set when pre-creating a branch session D2.
  */
-async function persistSession(cookie, workspaceSessionId, realSdkSessionId, claudeHomePath, title) {
+async function persistSession(cookie, workspaceSessionId, realSdkSessionId, claudeHomePath, title, lineage = null) {
   try {
     const response = await fetch(`${APP_URL}/api/agent-sessions`, {
       method: 'POST',
@@ -327,18 +330,22 @@ async function persistSession(cookie, workspaceSessionId, realSdkSessionId, clau
         realSdkSessionId,
         // Use first user message as title (truncated to 50 chars)
         ...(title && { title }),
+        ...(lineage?.projectId && { projectId: lineage.projectId }),
+        ...(lineage?.branchedFromSessionId && { branchedFromSessionId: lineage.branchedFromSessionId }),
       }),
     });
 
     if (!response.ok) {
       console.error('[WS Server] Failed to persist session:', response.status, await response.text());
-      return;
+      return null;
     }
 
     const result = await response.json();
     console.log(`[WS Server] Session persisted: ${result.id} (created: ${result.created})`);
+    return result; // { id, created } — callers may check this (branch pre-create requires it)
   } catch (error) {
     console.error('[WS Server] Error persisting session:', error);
+    return null;
   }
 }
 
@@ -445,6 +452,22 @@ async function loadSessionFromDb(cookie, workspaceSessionId) {
     return data;
   } catch (error) {
     console.error('[WS Server] Error loading session from DB:', error);
+    return null;
+  }
+}
+
+/**
+ * Load a session by its INTERNAL id (uuid). Used to resolve a branch's SOURCE session
+ * (branchedFromSessionId) so a branch shares the source's workspace. The `$id` route gates
+ * visibility (canAccessSession), so a non-member gets null. Returns the full row or null.
+ */
+async function loadSessionById(cookie, sessionId) {
+  try {
+    const response = await fetch(`${APP_URL}/api/agent-sessions/${sessionId}`, { headers: { cookie } });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error('[WS Server] Error loading session by id:', error);
     return null;
   }
 }
@@ -859,8 +882,8 @@ const WS_BACKPRESSURE_LOW = Number(process.env.WS_BACKPRESSURE_LOW_BYTES) || 1 *
  * Create a new empty session without requiring a user message
  * This is called when user explicitly clicks "New Session" button
  */
-async function handleCreateSession(ws) {
-  console.log('[WS Server] Creating new empty session');
+async function handleCreateSession(ws, projectId) {
+  console.log('[WS Server] Creating new empty session', projectId ? `(project ${projectId})` : '');
 
   try {
     // Generate new workspace session ID
@@ -894,9 +917,19 @@ async function handleCreateSession(ws) {
     // Store session ID for future chat messages
     ws.workspaceSessionId = workspaceSessionId;
 
-    // Persist empty session to DB immediately so it appears in history list
-    // Title will be updated when first message is sent
-    await persistSession(ws.cookie, workspaceSessionId, null, claudeHome, '未命名');
+    // Persist empty session to DB immediately so it appears in history list.
+    // Title will be updated when first message is sent. When arming "new chat in
+    // <project>", bind it to the Project at creation (race-free). If that bind fails
+    // (e.g. caller isn't a member → POST 403 → null), fall back to a loose session so
+    // session creation never breaks on a stale/invalid project arm.
+    const persisted = await persistSession(
+      ws.cookie, workspaceSessionId, null, claudeHome, '未命名',
+      projectId ? { projectId } : null,
+    );
+    if (!persisted && projectId) {
+      console.warn('[WS Server] Project-bound session persist failed; retrying as loose session');
+      await persistSession(ws.cookie, workspaceSessionId, null, claudeHome, '未命名');
+    }
 
     // Send session_init immediately (session is ready but empty)
     sendMessage(ws, {
@@ -1093,6 +1126,42 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       existingSession = await loadSessionFromDb(ws.cookie, resumeSessionId);
     }
 
+    // === Branch (续聊即分支, Projects P3) ===
+    // A member replying to a session they DON'T own must not append to the owner's
+    // transcript. Instead we FORK it (SDK forkSession) into a new session D2 owned by the
+    // replier, in the same Project; the source D1 is untouched. Viewing a shared session
+    // goes through the `resume` case (never handleChat), so this only fires on a real chat
+    // turn. silentInit (init_session) is exempt — it loads, it doesn't add a user turn.
+    const isBranch =
+      !silentInit && existingSession && existingSession.userId && existingSession.userId !== ws.userId;
+    // The OUTPUT session: a fresh id (D2) for a branch, else the resumed/new session itself.
+    const outputSessionId = isBranch ? generateSessionId() : workspaceSessionId;
+    // What the SDK resumes: for a branch, the SOURCE's real SDK session id (its transcript),
+    // which the worker then forks (forkSession:true) → a NEW forked id comes back on the init
+    // event and is persisted to D2. For a normal turn, the usual resume id.
+    const effectiveResumeSdkId = isBranch
+      ? existingSession.realSdkSessionId || sessionMapping.get(resumeSessionId) || sdkResumeId
+      : sdkResumeId;
+    if (isBranch) {
+      console.log(
+        `[WS Server] Branch: user ${ws.userId} forks session ${resumeSessionId} (owner ${existingSession.userId}) → new ${outputSessionId}`
+      );
+    }
+
+    // P2 (Codex): a branch MUST have a resumable source SDK id, else the worker would skip
+    // forkSession and silently create a fresh EMPTY session — losing D1's context entirely.
+    // Fail clearly instead. (A source only has a real SDK id after its first message.)
+    if (isBranch && !effectiveResumeSdkId) {
+      console.error(`[WS Server] Branch aborted: source session ${resumeSessionId} has no resumable SDK id`);
+      sendMessage(ws, {
+        type: 'error',
+        code: 'branch_source_not_ready',
+        message: '源会话尚无可分支的内容，无法创建分支。',
+        retriable: false,
+      });
+      return;
+    }
+
     // Determine title: only set for first message of sessions without a meaningful title
     // - New sessions (no resumeSessionId): use prompt
     // - Resumed sessions with default/placeholder title: use prompt
@@ -1103,9 +1172,13 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       defaultTitles.includes(existingSession.title)
     );
     const cleanedPromptForTitle = stripSkillMarker(prompt);
+    // A branch's title is "分支·<source title>" (one prefix, even branch-of-branch).
+    const branchTitle = isBranch ? `分支·${(existingSession.title || '对话').replace(/^分支·/, '')}` : null;
     const sessionTitle = silentInit
       ? null
-      : ((!resumeSessionId || hasPlaceholderTitle) ? cleanedPromptForTitle.slice(0, 50).trim() : null);
+      : isBranch
+        ? branchTitle
+        : ((!resumeSessionId || hasPlaceholderTitle) ? cleanedPromptForTitle.slice(0, 50).trim() : null);
 
     if (hasPlaceholderTitle) {
       console.log(`[WS Server] Updating placeholder title to: "${sessionTitle}"`);
@@ -1124,8 +1197,25 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       console.warn('[WS Server] Skills sync failed (continuing):', syncError.message);
     }
 
-    // Get session-specific workspace (for Agent file operations)
-    const workspacePath = getSessionWorkspace(ws.userId, workspaceSessionId);
+    // Resolve the workspace this run operates in. Branches SHARE their source's workspace so
+    // the forked transcript's (absolute) file paths still resolve (a copy would break them;
+    // same-uid storage makes the cross-user read/write safe). Three cases:
+    //   - creating a branch (isBranch): source = existingSession (D1)
+    //   - continuing a branch (existingSession.branchedFromSessionId): load the source D1
+    //   - normal: the requester's own session workspace
+    let wsOwnerId = ws.userId;
+    let wsSessionId = workspaceSessionId;
+    if (isBranch) {
+      wsOwnerId = existingSession.userId;
+      wsSessionId = existingSession.sdkSessionId;
+    } else if (existingSession?.branchedFromSessionId && ws.cookie) {
+      const branchSource = await loadSessionById(ws.cookie, existingSession.branchedFromSessionId);
+      if (branchSource) {
+        wsOwnerId = branchSource.userId;
+        wsSessionId = branchSource.sdkSessionId;
+      }
+    }
+    const workspacePath = getSessionWorkspace(wsOwnerId, wsSessionId);
     await ensureDirExists(workspacePath);
 
     // Create .claude symlink in workspace pointing to user's .claude directory
@@ -1134,6 +1224,28 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
 
     // Verify skills are accessible through the symlink
     await verifySkillsAccess(workspacePath, claudeHome);
+
+    // Branch: pre-create D2 with lineage (Project + branched-from + 分支· title) BEFORE the
+    // worker runs, so the row exists with the replier's ownership; the init-event capture
+    // below fills in its realSdkSessionId (the forked id the SDK returns).
+    // P1 (Codex): the create must SUCCEED before forking — else the init capture would create
+    // a lineage-less orphan D2 (loose / missing from the project). Abort the run on failure.
+    if (isBranch) {
+      const created = await persistSession(ws.cookie, outputSessionId, null, claudeHome, branchTitle, {
+        projectId: existingSession.projectId,
+        branchedFromSessionId: existingSession.id,
+      });
+      if (!created) {
+        console.error(`[WS Server] Branch aborted: failed to pre-create D2 ${outputSessionId} with lineage`);
+        sendMessage(ws, {
+          type: 'error',
+          code: 'branch_create_failed',
+          message: '分支创建失败，请重试。',
+          retriable: true,
+        });
+        return;
+      }
+    }
 
     console.log(`[WS Server] User ${ws.userId} Session ${workspaceSessionId}`);
     console.log(`[WS Server]   CLAUDE_HOME: ${claudeHome}`);
@@ -1270,7 +1382,11 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     const request = JSON.stringify({
       prompt,
       skillSlug,
-      sdkResumeId,
+      // For a branch: the SOURCE sdk id (the worker forks it first), the branch flag, and the
+      // title to stamp on the fork. For a normal turn: just the resume id.
+      sdkResumeId: effectiveResumeSdkId,
+      forkSession: isBranch,
+      branchTitle: isBranch ? branchTitle : null,
       permissionMode,
       disallowedTools,
       allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
@@ -1281,8 +1397,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // (process.exit) when the run ends, closing the pipe.
     worker.stdin.write(request + '\n');
 
-    // Track our workspace session ID for mapping/persistence
-    ws.workspaceSessionId = workspaceSessionId;
+    // Track our OUTPUT session id for mapping/persistence/session_init. For a branch this is
+    // D2 (the fork target), not the resumed source — so the init-event capture below maps +
+    // persists the forked SDK id onto D2 and tells the client to switch to D2.
+    ws.workspaceSessionId = outputSessionId;
 
     // Read responses line by line
     const rl = createInterface({ input: worker.stdout });
@@ -1324,6 +1442,23 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
         if (msg.type === 'event') {
           const event = msg.event;
           if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
+            // Branch safety (R1) — now a VESTIGIAL fallback. The real guarantee is in the
+            // worker: it forks the source (forkSession) and resumes the FORK, so it never
+            // resumes the source and `event.session_id` here is always the forked id (≠ source).
+            // This check therefore can't normally fire; kept as a defensive backstop (kill +
+            // error) in case the worker path ever regresses. (Earlier streaming approach wrote
+            // the user turn before init, so kill-at-init was too late — that's why we moved the
+            // fork into the worker; see ws-query-worker.mjs branch block.)
+            if (isBranch && event.session_id === effectiveResumeSdkId) {
+              console.error(
+                `[WS Server] Branch fork returned the SOURCE id (${event.session_id}) — killing worker to avoid appending to D1`
+              );
+              worker.__intentionalAbort = true;
+              worker.__terminalSent = true;
+              try { worker.kill(); } catch { /* ignore */ }
+              sendMessage(ws, { type: 'error', code: 'branch_fork_failed', message: '分支创建失败，请重试。', retriable: true });
+              return;
+            }
             // Store SDK's session_id for future resume
             ws.sdkSessionId = event.session_id;
             // Store mapping: workspaceSessionId -> sdkSessionId
@@ -1518,8 +1653,10 @@ async function handleMessage(ws, msg) {
 
   switch (message.type) {
     case 'create_session':
-      // Explicitly create a new empty session (without user message)
-      await handleCreateSession(ws);
+      // Explicitly create a new empty session (without user message). Projects: an
+      // optional projectId binds it to a Project at creation (race-free), used by
+      // "new chat in <project>".
+      await handleCreateSession(ws, message.projectId);
       break;
 
     case 'init_session':

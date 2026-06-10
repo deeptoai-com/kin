@@ -101,7 +101,7 @@ pnpm install
 
 4. **Open the app:**
    - **App:** http://localhost:5050  
-   - **Claude Agent Chat:** http://localhost:5050/agents/claude-chat  
+   - **Claude Agent Chat:** http://localhost:5050/agents/c  
 
    **Verify:** `curl -s http://localhost:5050/health` → `{"status":"ok"}`  
    **Logs:** `docker compose --profile selfhost logs -f app`
@@ -143,7 +143,7 @@ pnpm install
    ```
 
 5. **Open the app:**  
-   http://localhost:3000/agents/claude-chat
+   http://localhost:3000/agents/c
 
 ### Option C: One-command hybrid dev (recommended for local) ⭐
 
@@ -270,7 +270,7 @@ Multi-file web apps (HTML that references relative JS/CSS siblings) run in a **p
 
 This project features **two independent chat systems**:
 
-### 1. Claude Chat (Main Feature) `/agents/claude-chat`
+### 1. Claude Chat (Main Feature) `/agents/c`
 
 **Backend**:
 - WebSocket Server (`ws-server.mjs`) - Real-time bidirectional communication
@@ -443,7 +443,7 @@ See [.github/workflows/ci.yml](.github/workflows/ci.yml) for the complete CI con
 
 | Route | Description | Type |
 |-------|-------------|------|
-| `/agents/claude-chat` | **Main** - Claude Agent Chat with full features | WebSocket |
+| `/agents/c` | **Main** - Claude Agent Chat with full features | WebSocket |
 | `/agents/ai-chat` | Secondary - Mastra-powered simple chat | SSE |
 | `/agents/skills` | Skills Store management page | - |
 | `/api/chat` | Mastra chat API endpoint | POST, SSE |

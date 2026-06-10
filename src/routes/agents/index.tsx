@@ -5,8 +5,10 @@ import { toLocalizedString } from '~/lib/utils';
 
 export const Route = createFileRoute('/agents/')({
   beforeLoad: () => {
+    // Phase 2 (single chat entry): land on the chat workspace home (rail + 最近 + 项目).
+    // New solo chat = the "新建" button → /agents/c.
     throw redirect({
-      to: '/agents/claude-chat',
+      to: '/agents/projects',
     });
   },
   component: RouteComponent,

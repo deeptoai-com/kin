@@ -27,7 +27,7 @@ docker compose --env-file .env.docker --env-file .env --profile selfhost up -d -
 ```
 
 - **App:** http://localhost:5050  
-- **Claude Chat:** http://localhost:5050/agents/claude-chat  
+- **Claude Chat:** http://localhost:5050/agents/c  
 
 Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `.env.docker`. To **keep existing DB data** (ex0/constructa), set **only** `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in `.env` to match your existing DB. Docker builds `DATABASE_URL` from these with host `db`; do not set `DATABASE_URL` in `.env` when using Docker.
 

@@ -85,7 +85,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
    ```
 
 5. **打开应用:**
-   访问 `http://localhost:3000/agents/claude-chat` 进入主 Claude Agent Chat 界面。
+   访问 `http://localhost:3000/agents/c` 进入主 Claude Agent Chat 界面。
 
 ## 为什么选择 OxyGenie？
 
@@ -173,7 +173,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 
 本项目包含**两个独立的聊天系统**：
 
-### 1. Claude Chat（主要功能）`/agents/claude-chat`
+### 1. Claude Chat（主要功能）`/agents/c`
 
 **后端**:
 - WebSocket 服务器 (`ws-server.mjs`) - 实时双向通信
@@ -329,7 +329,7 @@ pnpm test            # 运行测试
 
 | 路由 | 描述 | 类型 |
 |------|------|------|
-| `/agents/claude-chat` | **主要** - 功能完整的 Claude Agent Chat | WebSocket |
+| `/agents/c` | **主要** - 功能完整的 Claude Agent Chat | WebSocket |
 | `/agents/ai-chat` | 次要 - Mastra 驱动的简单聊天 | SSE |
 | `/agents/skills` | Skills Store 管理页面 | - |
 | `/api/chat` | Mastra 聊天 API 端点 | POST, SSE |

@@ -43,7 +43,7 @@ export const Route = createFileRoute('/auth/$pathname')({
       const session = await getSession();
       if (session?.user) {
         throw redirect({
-          to: '/agents/claude-chat',
+          to: '/agents/c',
         });
       }
     }
@@ -54,7 +54,7 @@ function RouteComponent() {
   const router = useRouter();
   const { pathname } = Route.useParams();
   const { redirect: redirectParam, message, token, method } = Route.useSearch();
-  const redirectTo = redirectParam || '/agents/claude-chat';
+  const redirectTo = redirectParam || '/agents/c';
 
   // Get i18n content and locale (locale needed for SSR so toLocalizedString resolves correctly)
   const content = useIntlayer('auth');

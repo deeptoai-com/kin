@@ -169,6 +169,20 @@
       "when": 1780900000000,
       "tag": "0023_repair_message_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780940607135,
+      "tag": "0024_new_lady_ursula",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780948518742,
+      "tag": "0025_round_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

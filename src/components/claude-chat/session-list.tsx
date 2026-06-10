@@ -43,9 +43,11 @@ export function SessionList({
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery<SessionListResponse>({
-    queryKey: ['agent-sessions', 'list'],
+    // Loose chats only — project chats live inside their Project (ProjectsRail / project chat
+    // route), so the loose rail no longer mixes them in (Projects×Chat unification, Phase 1).
+    queryKey: ['agent-sessions', 'loose-list'],
     queryFn: async () => {
-      const res = await fetch('/api/agent-sessions?limit=50');
+      const res = await fetch('/api/agent-sessions?scope=loose&limit=50');
       if (!res.ok) {
         throw new Error('Failed to fetch sessions');
       }

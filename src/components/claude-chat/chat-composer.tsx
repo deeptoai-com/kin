@@ -20,7 +20,7 @@
  * composerRef.current?.send();
  * ```
  *
- * @see src/routes/agents/claude-chat/route.tsx for original implementation
+ * @see src/components/claude-chat/claude-chat-controller.tsx for controller integration
  */
 
 import {

@@ -17,8 +17,7 @@ export function SiteHeader() {
   const getTitleKey = (path: string): keyof typeof content.titles => {
     const titleMap: Record<string, keyof typeof content.titles> = {
       "/agents/documents": "documents",
-      "/agents/claude-chat": "claudeChat",
-      "/agents/chat": "chat",
+      "/agents/c": "claudeChat",
       "/agents/image-chat": "imageChat",
       "/agents/workflow": "workflow",
       "/agents/charts": "dashboard",
@@ -26,6 +25,7 @@ export function SiteHeader() {
       "/agents/billing": "billing",
       "/agents/settings/billing": "billingSettings",
     }
+    if (path.startsWith("/agents/c/")) return "claudeChat"
     return titleMap[path] || "agent"
   }
 

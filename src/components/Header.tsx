@@ -75,7 +75,7 @@ export function Header() {
               </Link>
             </SignedOut>
             <SignedIn>
-              <Link to="/agents/claude-chat">
+              <Link to="/agents/c">
                 <Button className="rounded-[4px] bg-foreground px-5 font-mono font-semibold text-background text-sm transition-colors hover:bg-[var(--green)] hover:text-[#0f1411]">
                   {content.buttons.agentChat} <span className="ml-1">→</span>
                 </Button>

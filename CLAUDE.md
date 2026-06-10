@@ -78,15 +78,59 @@ OxyGenie/
 ## 开发命令
 
 ```bash
-# 启动开发服务器
-pnpm dev
+# ── 本地运行（生产构建，连共享 Docker 后端）── 详见「## 本地运行环境」
+scripts/local-prod.sh --build      # 首次/改完代码：建桥 + 构建 + 启动 → http://127.0.0.1:3100
+scripts/local-prod.sh              # 之后免构建重启
+scripts/local-backend.sh down      # 收工：删桥 + 删 .env.local
 
-# 启动 WebSocket 服务器（开发/生产统一使用）
+# ⚠️ pnpm dev（vite 热更）当前不可用 —— nitro-nightly dev 运行时 bug
+#    （Missing `fetch` export，每页 500）。修复前本地一律走上面的 local-prod。
+
+# WebSocket 服务器（如需，开发/生产统一）
 node ws-server.mjs
 
 # Docker 部署
-docker-compose up -d
+docker compose up -d
 ```
+
+## 本地运行环境（共享 Docker 后端）
+
+> 目标：在**宿主机**上跑本地构建的应用，**复用正在运行的 Docker 后端栈**（同一个
+> Postgres / Redis / 数据），改完能本地验证 —— 且**不碰你的栈、不改 `.env`、不动共享库
+> schema**。流程已固化为 `scripts/`，全员统一用法。
+
+### 为什么要桥接
+后端容器（`oxygenie-db` / `oxygenie-redis` / …）跑在内部 Docker 网络上、**不向宿主机映射
+端口**，宿主机进程直接连不上（`localhost:5432` 无人监听、`redis` 主机名解析不了）。`scripts/`
+用 `socat` 旁路容器接到同一网络、把内网服务发布到宿主机端口（`db→15432`、`redis→16379`），
+再用 **`.env.local`（gitignored）** 覆盖把应用指过去。**全程不动现有容器、不动 `.env`。**
+
+### 一条命令跑起来
+```bash
+scripts/local-prod.sh --build      # 首次 / 改完代码：建桥 + 生成 .env.local + 8G 堆构建 + 启动
+scripts/local-prod.sh              # 之后免构建重启
+# → 打开 http://127.0.0.1:3100 ，注册一个用户即可（邮箱验证默认关，注册即登录）
+scripts/local-backend.sh down      # 收工清理：删桥 + 删 .env.local
+```
+- `scripts/local-backend.sh up|down`：socat 桥 + 生成/删除 `.env.local`。连接串从运行中的
+  `oxygenie-app` 容器读取（**凭据永远匹配**），自动发现 Docker 网络。
+- `scripts/local-prod.sh [--build]`：（必要时自动建桥）+ 构建 + 起生产 Nitro 服务。
+
+### 铁律（脚本已内建，手动操作也要遵守）
+- **只写 `.env.local`，永不改 `.env`**：Vite `loadEnv` 会让 `.env.local` 覆盖 `.env`
+  （`vite.config.ts:14` 的 `Object.assign(process.env, loadEnv(...))`）。`.env.local` 已 gitignored。
+- **`AUTO_MIGRATE=false`**：本地跑**不对共享库做迁移**，schema 安全。
+- **构建要 ≥8 GB 堆**：SSR 打包峰值 ~4 GB，默认 heap 会 OOM。脚本已带
+  `NODE_OPTIONS=--max-old-space-size=8192`；手动 `pnpm build` 也务必加。
+- **`BETTER_AUTH_URL=http://127.0.0.1:3100`**：让 better-auth 信任本地源、并用非 secure
+  cookie（否则 http 下注册/登录会 403 `INVALID_ORIGIN` 或会话不保持）。脚本已设。
+
+### ⚠️ 热更（`pnpm dev`）当前不可用 —— 已知问题
+`vite dev` 的 SSR 运行时被 `nitro`（package.json 里 = `nitro-nightly@latest`，锁定版
+`3.0.0-20250925`）的 bug 卡死：**`Missing 'fetch' export in nitro-dev.mjs`**，每个页面 500。
+这就是下面「禁止 `pnpm dev`」的根因。**修复前，本地一律用 `scripts/local-prod.sh`（无热更，
+改完重新 `--build`）。** 恢复热更 = 换一个 dev 能跑的 nitro 版本（动 lockfile / 构建依赖，
+按「Docker 修改规则」需单独评估，别顺手改）。
 
 ## Git 工作流
 
@@ -381,8 +425,8 @@ const getApiKey = createServerOnlyFn(() => {
 - ✅ 使用 pnpm
 - ✅ 所有路由文件必须是 TypeScript React (`.tsx`)
 - ✅ 使用 alias imports：`~` 解析为 `./src` 根目录
-- ❌ **禁止**更新 `.env`（应更新 `.env.example`）
-- ❌ **禁止**使用 `pnpm run dev` 或 `npm run dev` 启动
+- ❌ **禁止**更新 `.env`（应更新 `.env.example`；本地覆盖只写 gitignored 的 `.env.local`，见「本地运行环境」）
+- ❌ **禁止**使用 `pnpm run dev` / `npm run dev` 启动（`vite dev` 被 nitro-nightly bug 卡死，每页 500；本地运行改用 `scripts/local-prod.sh`，见「本地运行环境」）
 - ❌ **禁止**创建本地 pnpm store
 
 ### 路由验证工具

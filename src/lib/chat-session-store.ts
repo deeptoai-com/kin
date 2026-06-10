@@ -70,6 +70,11 @@ export interface ThreadMessage {
   // (from the worker, forwarded by the server). Used for deterministic ordering
   // robustness; the store otherwise trusts append/arrival order. See cowork spec §3.
   seq?: number;
+  // Projects/branch: this message was inherited from a branch's SOURCE session (the
+  // JSONL entry carries `forkedFrom`). It therefore belongs to the source owner, not
+  // the current session owner — lets the thread show per-message author avatars
+  // (distinguishing A's turns from B's in a 续聊即分支 thread). Undefined = own turn.
+  isInherited?: boolean;
 }
 
 // SDK message type (from server)
@@ -84,6 +89,9 @@ export type SDKMessage = {
   subtype?: string;
   uuid?: string;
   session_id?: string;
+  // Present on JSONL entries copied from a branch's source session (SDK forkSession).
+  // Its presence marks the message as belonging to the source owner. See ThreadMessage.isInherited.
+  forkedFrom?: unknown;
   message?: {
     role?: string;
     content: SDKContentBlock[] | string;
@@ -192,6 +200,11 @@ interface ChatSessionState {
   // next conversation per SDK constraint), so we arm it in the fresh session.
   pendingArmedSkill?: { slug: string; name?: string; hint?: string };
 
+  // Project to bind the NEXT (newly-created) session to. Set by "new chat in
+  // <project>" from the Projects surface; consumed by the chat route after the new
+  // session is created (assignSessionToProject), then cleared.
+  pendingProjectId?: string;
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -221,6 +234,7 @@ interface ChatSessionState {
   setSelectedTier: (mode: InteractionMode | undefined) => void;
   setSelectedModelId: (id: string | undefined) => void;
   setPendingArmedSkill: (skill: { slug: string; name?: string; hint?: string } | undefined) => void;
+  setPendingProjectId: (projectId: string | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -253,7 +267,10 @@ function normalizeToolResultContent(content: unknown): string {
  * Convert SDK message to ThreadMessage format
  */
 function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
-  const { type, message, uuid } = sdkMessage;
+  const { type, message, uuid, forkedFrom } = sdkMessage;
+  // forkedFrom present → this entry was copied from the branch's source session, so it
+  // belongs to the source owner (used to pick the per-message author avatar).
+  const isInherited = forkedFrom != null ? true : undefined;
 
   if (!message) return null;
 
@@ -279,6 +296,7 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
         role: 'user' as const,
         content: [{ type: 'text' as const, text: textContent }],
         createdAt: new Date(),
+        isInherited,
       };
     }
 
@@ -289,6 +307,7 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
         role: 'user' as const,
         content: [{ type: 'text' as const, text: content }],
         createdAt: new Date(),
+        isInherited,
       };
     }
   }
@@ -465,6 +484,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
   selectedModelId: undefined,
   pendingArmedSkill: undefined,
+  pendingProjectId: undefined,
 
   setSelectedTier: (selectedTier) => {
     set({ selectedTier });
@@ -472,6 +492,10 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setPendingArmedSkill: (pendingArmedSkill) => {
     set({ pendingArmedSkill });
+  },
+
+  setPendingProjectId: (pendingProjectId) => {
+    set({ pendingProjectId });
   },
 
   setSelectedModelId: (selectedModelId) => {

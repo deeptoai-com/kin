@@ -6,7 +6,7 @@
  * Communication happens via stdin/stdout using JSON messages.
  */
 
-import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool, forkSession as forkSdkSession } from '@anthropic-ai/claude-agent-sdk';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
@@ -243,6 +243,10 @@ async function startRun(request) {
       prompt,
       skillSlug,
       sdkResumeId,
+      // Branch (续聊即分支): when true, fork `sdkResumeId` into a NEW session FIRST (local
+      // file op, no LLM), then resume the FORK — so the source is never resumed/written.
+      forkSession: forkSessionFlag = false,
+      branchTitle = null, // title stamped on the forked session (分支·<source>)
       permissionMode: requestedPermissionMode,
       disallowedTools: requestedDisallowedTools,
       allowBash: requestedAllowBash = false,
@@ -716,6 +720,28 @@ WHAT TO DO INSTEAD:
       ? `\n\n[The user explicitly selected the "${skillContext.slug}" skill for this message. Prefer using it; load its full instructions via the Skill tool as needed.]\n`
       : '';
 
+    // === Branch (续聊即分支) — fork-in-worker (Codex-validated, R1 structurally zero) ===
+    // For a branch, fork the SOURCE transcript into a NEW session here FIRST. forkSession is
+    // a PURE LOCAL file op (reads source JSONL, rewrites every entry's sessionId to a new id
+    // + stamps forkedFrom, writes a new JSONL) — it never touches the CLI's session state and
+    // never appends to the source. We then resume the FORK below, so this worker NEVER resumes
+    // the source → the source session can't be written to. `dir: config.cwd` pins fork search +
+    // output to the current workspace's project dir (so the subsequent resume aligns); if the
+    // source isn't there, fork THROWS and we never enter query (caught by startRun's try/catch).
+    let resumeSdkId = sdkResumeId;
+    if (forkSessionFlag && sdkResumeId) {
+      const forked = await forkSdkSession(sdkResumeId, { dir: config.cwd, title: branchTitle || undefined });
+      const forkedId = forked?.sessionId;
+      const isUuid =
+        typeof forkedId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(forkedId);
+      if (!isUuid || forkedId === sdkResumeId) {
+        throw new Error(`Branch fork failed: invalid or unchanged forked id (${forkedId})`);
+      }
+      console.error(`[Worker] Branch: forked ${sdkResumeId} → ${forkedId}`);
+      resumeSdkId = forkedId; // resume the FORK, not the source
+    }
+
     const stream = query({
       prompt,
       options: {
@@ -781,7 +807,10 @@ WHAT TO DO INSTEAD:
             schema: artifactJsonSchema,
           },
         }),
-        ...(sdkResumeId && { resume: sdkResumeId }),
+        // Resume the FORK for a branch (resumeSdkId = forkedId above), else the normal resume
+        // id. We deliberately do NOT use query({forkSession:true}) — that path writes the user
+        // turn to the JSONL BEFORE emitting init, so a fork no-op would corrupt the source.
+        ...(resumeSdkId && { resume: resumeSdkId }),
       },
     });
 

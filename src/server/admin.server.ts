@@ -63,7 +63,7 @@ export const requireSystemAdmin = createServerFn({ method: 'GET' })
     // Check if user is system admin
     if (userData.systemRole !== 'admin') {
       throw redirect({
-        to: '/agents/claude-chat',
+        to: '/agents/c',
       });
     }
 
