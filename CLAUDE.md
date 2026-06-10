@@ -25,8 +25,10 @@ AI SDK（`ai` / `@ai-sdk/*`），如需新增 LLM 网关能力走「多模型」
 
 ### MCP (Model Context Protocol) 状态
 
-- Claude Agent SDK 原生支持 MCP（`src/claude/mcp/**`），会在 session metadata 暴露 `mcp_servers`。
-- 团队精选的 MCP 目录/选择器尚在路线图「Next」（见 ROADMAP）。
+- **运行时注入已真实可用**：`resolveMcpServerConfigs`（`src/claude/mcp/manager.js`）在 worker 内把
+  `mcpServers` 传给 SDK `query()`（sdk/stdio/http/sse 四类，见 `ws-query-worker.mjs`），session
+  metadata 暴露 `mcp_servers`。不要把下一条误读成"MCP 没做"。
+- 待完善的是**策展目录/选择器 UI**（团队精选集管理），见 ROADMAP「Next」。
 
 ---
 
