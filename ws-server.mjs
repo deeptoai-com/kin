@@ -1392,6 +1392,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       disallowedTools,
       allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
       userId: ws.userId,
+      // RAG R2 (final spec D6): the kb_search MCP tool calls back into the app
+      // (/api/rag/search) with the user's own auth — via STDIN on purpose, never the
+      // worker env, so agent-spawned Bash children can't read the cookie.
+      cookie: ws.cookie,
     });
     // Newline-delimited + keep stdin OPEN so Ask-mode HITL can stream
     // approval_response lines to the worker mid-run. The worker exits on its own

@@ -251,6 +251,8 @@ async function startRun(request) {
       disallowedTools: requestedDisallowedTools,
       allowBash: requestedAllowBash = false,
       userId,
+      // RAG R2: user auth for the kb_search app callback (stdin-only — never env).
+      cookie: userCookie = null,
     } = request;
     const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
     const disallowedTools = resolveDisallowedTools(
@@ -513,6 +515,58 @@ async function startRun(request) {
       tools: [glmImageGenerateTool],
     });
 
+    // RAG R2 (final spec D6/D7): kb_search — semantic retrieval over the user's
+    // ingested ('rag'-tier) documents. The worker stays unprivileged: the tool calls
+    // back into the app (/api/rag/search) with the user's cookie from the STDIN
+    // request; the app does embed → hybrid recall → RRF → rerank, with isolation
+    // resolved in SQL. Registered only when we actually hold the auth to call back.
+    const appUrl = process.env.APP_URL || 'http://localhost:5000';
+    const kbSearchTool = tool(
+      'kb_search',
+      'Search the user\'s ingested knowledge documents semantically (large docs only — small files are in the workspace, use Read/Grep for those). Returns top passages with section paths for citation. Use for needle-in-haystack questions over big/ingested documents; NOT for summarizing a whole document.',
+      {
+        query: z.string().min(1).describe('What to look for (natural language; keep it specific)'),
+        k: z.number().int().min(1).max(20).optional().describe('How many passages to return (default 8)'),
+        documentId: z.string().optional().describe('Restrict to one document id'),
+        kbId: z.string().optional().describe('Restrict to one knowledge base id'),
+      },
+      async (args) => {
+        try {
+          const response = await fetch(`${appUrl}/api/rag/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', cookie: userCookie || '' },
+            body: JSON.stringify(args),
+          });
+          if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`kb_search HTTP ${response.status}: ${text.slice(0, 200)}`);
+          }
+          const { hits } = await response.json();
+          if (!hits?.length) {
+            return { content: [{ type: 'text', text: 'No matching passages found in the ingested documents.' }] };
+          }
+          const formatted = hits
+            .map((h, i) => `[${i + 1}] ${h.documentTitle}${h.sectionPath ? ` — ${h.sectionPath}` : ''}${h.pageStart ? ` (p.${h.pageStart}${h.pageEnd && h.pageEnd !== h.pageStart ? `-${h.pageEnd}` : ''})` : ''}\n${h.text}`)
+            .join('\n\n---\n\n');
+          return { content: [{ type: 'text', text: formatted }] };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+              isError: true,
+            }],
+          };
+        }
+      }
+    );
+    const kbSearchMcpServer = createSdkMcpServer({
+      name: 'kb-search',
+      tools: [kbSearchTool],
+    });
+    const kbSdkServers = userCookie ? { 'kb-search': kbSearchMcpServer } : {};
+    if (!userCookie) console.error('[Worker] kb_search tool: NOT registered (no user cookie in request)');
+
     // PR-C: Sandboxed Bash tool — only registered when a sandbox backend is confirmed.
     // Two valid sandboxes:
     //   1. srt (bubblewrap) — Linux + seccomp=unconfined; sandboxStatus().state === 'active'
@@ -600,6 +654,7 @@ async function startRun(request) {
       sdkServers: {
         python: pythonMcpServer,
         'glm-image': glmImageMcpServer,
+        ...kbSdkServers,
         ...bashSdkServers,
       },
     });

@@ -12,6 +12,7 @@ import {
   routeTier,
 } from '../../src/server/rag/tier';
 import { CHILD_MAX_TOKENS, chunkMarkdown } from '../../src/server/rag/chunker';
+import { rrfFuse } from '../../src/server/rag/fuse';
 
 describe('estimateTokens', () => {
   it('counts CJK ~1:1 and latin ~4 chars/token', () => {
@@ -88,5 +89,22 @@ describe('chunkMarkdown', () => {
     const r = chunkMarkdown('空', '\n\n  \n');
     expect(r.parents).toHaveLength(0);
     expect(r.children).toHaveLength(0);
+  });
+});
+
+describe('rrfFuse — reciprocal-rank fusion (final spec D7)', () => {
+
+  it('an id ranked top in both legs beats single-leg ids', () => {
+    const scores = rrfFuse([
+      ['a', 'b', 'c'],
+      ['a', 'c', 'd'],
+    ]);
+    const sorted = [...scores.entries()].sort((x, y) => y[1] - x[1]).map(([id]) => id);
+    expect(sorted[0]).toBe('a');
+    expect(scores.get('d')).toBeLessThan(scores.get('c')!);
+  });
+
+  it('handles empty legs', () => {
+    expect(rrfFuse([[], []]).size).toBe(0);
   });
 });
