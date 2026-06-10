@@ -44,6 +44,7 @@ import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
+import { usePreviewAutoRebuild } from '~/lib/hooks/use-preview-auto-rebuild';
 import { useBeforeUnloadProtection, useReconnectionRecovery, useSessionSummaryOnLeave, fireSessionSummaryIfNeeded } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore, type Artifact, type ArtifactImageFile } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
@@ -1322,6 +1323,10 @@ function ClaudeChatSurface({
   const [attachmentsByMessage, setAttachmentsByMessage] = useState<Map<string, MessageAttachment[]>>(
     new Map()
   );
+
+  // When a turn finishes that edited app source, auto force-rebuild the running
+  // preview (build mode has no HMR). No-op unless a preview is currently ready.
+  usePreviewAutoRebuild();
 
   // Global file preview state
   const [filePreview, setFilePreview] = useState<{

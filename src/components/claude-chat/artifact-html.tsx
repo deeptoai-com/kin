@@ -86,9 +86,12 @@ export const HTMLArtifact: FC<HTMLArtifactProps> = ({ content, title, iframeRef 
   const failed = status === 'error'
   const liveUrl = status === 'ready' ? preview?.url : undefined
 
-  const runPreview = () => {
+  // `force` rebuilds an already-running preview (re-install + re-build + restart serve).
+  // Preview is build mode (static serve, no HMR), so edits only show after a rebuild —
+  // a plain start would reuse the cached "ready" instance and show stale output.
+  const runPreview = (force = false) => {
     setStarting(true)
-    void startPreview().catch(() => setStarting(false))
+    void startPreview(undefined, 'static', { force }).catch(() => setStarting(false))
   }
 
   // Bare, token-free origin of the running preview — the link safe to share.
@@ -139,12 +142,12 @@ export const HTMLArtifact: FC<HTMLArtifactProps> = ({ content, title, iframeRef 
             </span>
             <button
               type="button"
-              onClick={runPreview}
+              onClick={() => runPreview(Boolean(liveUrl))}
               disabled={busy}
               className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 font-medium text-amber-900 transition hover:bg-amber-200 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              {busy ? '运行中…' : liveUrl ? '重新运行' : '运行预览'}
+              {busy ? '运行中…' : liveUrl ? '重新构建' : '运行预览'}
             </button>
             {liveUrl && (
               <button
