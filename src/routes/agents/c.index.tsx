@@ -6,9 +6,10 @@ import { getPermissionInfo } from '~/server/permissions.server';
 import { ensureDefaultSkillsFn } from '~/server/function/skills.server';
 
 /**
- * New solo chat landing — /agents/c. No sessionId yet: the controller (newChat) creates a
- * session on mount, then onSessionInit mirrors the URL to /agents/c/$newId. The single chat
- * entry's "new chat" button lands here. (Phase 2 — single chat entry + URL truth.)
+ * New solo chat landing — /agents/c. No sessionId yet: the controller (newChat) shows a
+ * blank composer WITHOUT creating anything (lazy-create, Phase 2 P1.5). The session is
+ * created on the first send, then onSessionInit mirrors the URL to /agents/c/$newId.
+ * The single chat entry's "new chat" button lands here. (Phase 2 — single entry + URL truth.)
  */
 export const Route = createFileRoute('/agents/c/')({
   component: NewSoloChatPage,

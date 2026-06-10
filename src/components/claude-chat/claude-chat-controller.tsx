@@ -196,8 +196,10 @@ export interface ClaudeChatControllerProps {
   projectId?: string | null;
   /** Render the controller's own SessionList rail. False when an outer rail is present (e.g. ProjectsRail). */
   showInternalSessionList?: boolean;
-  /** New-chat landing (no urlSessionId yet): create a session on mount, then onSessionInit
-   *  mirrors the URL to /agents/c/$id (solo) or the project chat URL. (Phase 2, single entry.) */
+  /** New-chat landing (no urlSessionId yet): show a blank composer WITHOUT creating a
+   *  session. The session is created lazily on the first send (the first real message
+   *  doubles as the init turn), then onSessionInit mirrors the URL to /agents/c/$id
+   *  (solo) or the project chat URL. (Phase 2 P1.5, lazy-create.) */
   newChat?: boolean;
 }
 
@@ -495,6 +497,12 @@ export function ClaudeChatController({
   }, [currentSessionId, performSessionSwitch]);
 
   const handleNewSession = useCallback(() => {
+    // Lazy newChat landing with no session yet: this IS already a blank new chat — an
+    // explicit "new chat" click must not eagerly create the very session lazy-create avoids.
+    if (newChat && !currentSessionIdRef.current && !getSessionId()) {
+      console.log('[Route] Already on a blank new chat, skipping create');
+      return;
+    }
     // Check if a query is currently running
     if (checkIsQueryRunning()) {
       console.log('[Route] Query running, showing confirmation dialog for new session');
@@ -503,7 +511,7 @@ export function ClaudeChatController({
     }
 
     performSessionSwitch(null, true);
-  }, [performSessionSwitch]);
+  }, [performSessionSwitch, newChat]);
 
   // Hybrid URL bootstrap (Phase 1, Codex Q2/Q-C): when a session is addressed via the URL,
   // load it ONCE. Reuses handleSelectSession (honors a running query → confirmation, and skips
@@ -518,19 +526,80 @@ export function ClaudeChatController({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSessionId]);
 
-  // Projects P1: arriving from "new chat in <project>" — create a fresh session, which
-  // performSessionSwitch then binds to the armed Project. Fires once per mount.
-  const armedProjectRef = useRef(false);
-  const pendingProjectId = useChatSessionStore((s) => s.pendingProjectId);
+  // Phase 2 P1.5 (lazy-create): a new-chat landing shows a blank composer WITHOUT creating
+  // a session — no DB row, no init model call on login/Header/marketing-CTA landings. The
+  // session is created on the first send (ensureSessionForSend below). On mount we only
+  // reset leftover chat state: the previous session survives SPA navigation in the
+  // module-level adapter + store, and without this reset the first send would land in it.
+  const newChatResetRef = useRef(false);
   useEffect(() => {
-    // Fire once on mount for a new-chat landing: either armed "new chat in <project>"
-    // (pendingProjectId) or the solo/project new-chat route (newChat prop). createSession
-    // binds to urlProjectId ?? pendingProjectId; onSessionInit mirrors the URL.
-    if ((pendingProjectId || newChat) && !armedProjectRef.current) {
-      armedProjectRef.current = true;
-      handleNewSession();
+    if (!newChat || newChatResetRef.current) return;
+    newChatResetRef.current = true;
+    // A previous turn is still streaming (navigated here mid-run): reuse the existing
+    // interrupt/cancel dialog instead of silently clearing it — the same protection the
+    // eager arm path had via handleNewSession's running-query guard.
+    if (checkIsQueryRunning()) {
+      setPendingSessionSwitch({ targetSessionId: null, isNewSession: true });
+      return;
     }
-  }, [pendingProjectId, newChat, handleNewSession]);
+    fireSessionSummaryIfNeeded();
+    const { temporarySkills: leftoverTempSkills } = useChatSessionStore.getState();
+    if (leftoverTempSkills.length > 0) {
+      disableUserSkills({ data: { skillNames: leftoverTempSkills } }).catch((error) => {
+        console.warn('[Route] Failed to disable temporary skills:', error);
+      });
+      clearTemporarySkills();
+    }
+    newSession();
+    setCurrentSessionId(null);
+    setSessionId(null);
+    clearMessages();
+    // pendingProjectId stays armed: the first send's create consumes it, and the unmount
+    // cleanup below clears it if the user leaves without sending.
+    // Run once per mount; store actions are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newChat]);
+
+  // Lazy-create (Phase 2 P1.5): create the session at FIRST SEND on a new-chat landing.
+  // The first real message doubles as the init turn — ws-server's `chat` and `init_session`
+  // share handleChat, and a real run emits system.init → sessionMetadata — so no separate
+  // 1-char init call. create_session{projectId} binds the Project at creation (race-free);
+  // onSessionInit (above) then mirrors the URL. The route remount that navigate triggers is
+  // safe mid-stream: the run loop, session id and message store all live at module level.
+  const pendingLazyCreateRef = useRef<Promise<string> | null>(null);
+  const ensureSessionForSend = useCallback(async () => {
+    if (!newChat) return;
+    if (currentSessionIdRef.current || getSessionId()) return;
+    if (!pendingLazyCreateRef.current) {
+      const creating = (async () => {
+        // Capture the armed Project BEFORE the async create so a remount/unmount-clear
+        // can't lose it mid-flight. The URL's project wins; loose arm is the fallback.
+        const armedProjectId = urlProjectId ?? useChatSessionStore.getState().pendingProjectId;
+        const newSessionId = await createSession(armedProjectId ?? undefined);
+        trackClaudeAgentSessionCreated({ sessionId: newSessionId });
+        // Fallback bind (idempotent), same as the eager path: ensures the link even if the
+        // create-time bind was skipped; a failure degrades gracefully to a loose chat.
+        if (armedProjectId) {
+          try {
+            await assignToProject({ data: { sdkSessionId: newSessionId, projectId: armedProjectId } });
+            projectQueryClient.invalidateQueries({ queryKey: ['project-sessions', armedProjectId] });
+          } catch (bindError) {
+            console.warn('[Route] Failed to bind new session to project:', bindError);
+          } finally {
+            useChatSessionStore.getState().setPendingProjectId(undefined);
+          }
+        }
+        return newSessionId;
+      })();
+      pendingLazyCreateRef.current = creating;
+      // Clear once settled: success short-circuits via getSessionId() on the next send,
+      // failure stays retriable. Swallow here only — callers still see the rejection.
+      creating.catch(() => {}).finally(() => {
+        if (pendingLazyCreateRef.current === creating) pendingLazyCreateRef.current = null;
+      });
+    }
+    await pendingLazyCreateRef.current;
+  }, [newChat, urlProjectId, assignToProject, projectQueryClient]);
 
   // Clear an un-consumed arm on unmount so a stale pendingProjectId can't hijack the
   // next chat open (e.g. armed "new chat in X" then navigated away mid-create).
@@ -564,8 +633,9 @@ export function ClaudeChatController({
 
   const isDev = process.env.NODE_ENV !== 'production';
 
-  // Empty state: no sessions at all, show big "Start New Session" button
-  if (isSessionsEmpty && !currentSessionId) {
+  // Empty state: no sessions at all, show big "Start New Session" button.
+  // A lazy new-chat landing skips it — the blank composer IS the start-a-chat surface.
+  if (isSessionsEmpty && !currentSessionId && !newChat) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-6 text-center">
@@ -635,11 +705,13 @@ export function ClaudeChatController({
         <ClaudeChatSurface
           key={chatKey}
           permissionInfo={permissionInfo}
-          hasSession={!!currentSessionId}
+          hasSession={!!currentSessionId || newChat}
           isInitializingSession={isInitializingSession}
           onStartSession={handleNewSession}
           isCreatingSession={isCreatingSession}
           hideScrollbars={Boolean(activeArtifactId)}
+          newChat={newChat}
+          ensureSession={ensureSessionForSend}
         />
       </>
     );
@@ -746,8 +818,9 @@ export function ClaudeChatController({
       <RedirectToSignIn />
 
       <SignedIn>
-        {/* Empty state: no sessions at all, show big "Start New Session" button */}
-        {isSessionsEmpty && !currentSessionId ? (
+        {/* Empty state: no sessions at all, show big "Start New Session" button.
+            A lazy new-chat landing skips it — the blank composer IS the start surface. */}
+        {isSessionsEmpty && !currentSessionId && !newChat ? (
           <EmptyStateContent
             isCreatingSession={isCreatingSession}
             onNewSession={handleNewSession}
@@ -775,6 +848,8 @@ export function ClaudeChatController({
               handleCancelSwitch={handleCancelSwitch}
               handleInterruptSwitch={handleInterruptSwitch}
               showInternalSessionList={showInternalSessionList}
+              newChat={newChat}
+              ensureSession={ensureSessionForSend}
             />
           </>
         )}
@@ -857,6 +932,8 @@ const MainContent: FC<{
   handleCancelSwitch: () => void;
   handleInterruptSwitch: () => void;
   showInternalSessionList: boolean;
+  newChat: boolean;
+  ensureSession: () => Promise<void>;
 }> = ({
   activeArtifactId,
   artifactSplitRef,
@@ -878,6 +955,8 @@ const MainContent: FC<{
   handleCancelSwitch,
   handleInterruptSwitch,
   showInternalSessionList,
+  newChat,
+  ensureSession,
 }) => {
   const content = useIntlayer('claude-chat');
   const chatPanel = (
@@ -915,6 +994,8 @@ const MainContent: FC<{
         onStartSession={handleNewSession}
         isCreatingSession={isCreatingSession}
         hideScrollbars={Boolean(activeArtifactId)}
+        newChat={newChat}
+        ensureSession={ensureSession}
       />
     </>
   );
@@ -1159,6 +1240,8 @@ function ClaudeChatSurface({
   onStartSession,
   isCreatingSession,
   hideScrollbars = false,
+  newChat = false,
+  ensureSession,
 }: {
   permissionInfo: PermissionInfo;
   hasSession: boolean;
@@ -1166,6 +1249,10 @@ function ClaudeChatSurface({
   onStartSession?: () => void;
   isCreatingSession?: boolean;
   hideScrollbars?: boolean;
+  /** Lazy new-chat landing: composer is live before any session exists. */
+  newChat?: boolean;
+  /** Lazy-create hook: called before running a send so the first message creates the session. */
+  ensureSession?: () => Promise<void>;
 }) {
   const content = useIntlayer('claude-chat');
 
@@ -1193,6 +1280,24 @@ function ClaudeChatSurface({
         createdAt: new Date(),
         status: { type: 'complete' },
       });
+      // Lazy-create (Phase 2 P1.5): on a new-chat landing no session exists yet — create
+      // it now so this first message rides the normal run path (and doubles as init).
+      // The store message above survives the create + URL-mirror remount (global store).
+      if (ensureSession) {
+        try {
+          await ensureSession();
+        } catch (error) {
+          console.error('[Route] Failed to create session for first send:', error);
+          useChatSessionStore.getState().addMessage({
+            id: genMessageId(),
+            role: 'assistant',
+            content: [],
+            createdAt: new Date(),
+            status: { type: 'incomplete', reason: 'error' },
+          });
+          return;
+        }
+      }
       await runChat(text, { runConfig: message.runConfig });
     },
     onCancel: async () => {
@@ -1516,13 +1621,15 @@ function ClaudeChatSurface({
   }, []);
 
   // Arm the skill stashed by A2Composer's "open new chat & load" once the freshly-
-  // created session is ready (the just-enabled skill is now loaded + active).
+  // created session is ready (the just-enabled skill is now loaded + active). On a lazy
+  // new-chat landing there's no session yet — arm immediately: the skill marker travels
+  // with the first send, and that send's create syncs the just-enabled skill server-side.
   useEffect(() => {
-    if (currentSessionId && !isInitializingSession && pendingArmedSkill) {
+    if ((currentSessionId || newChat) && !isInitializingSession && pendingArmedSkill) {
       setSelectedSkill(pendingArmedSkill);
       setPendingArmedSkill(undefined);
     }
-  }, [currentSessionId, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
+  }, [currentSessionId, newChat, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
 
   const handleSelectSkill = useCallback((skill: { slug: string; name?: string; hint?: string }) => {
     setSelectedSkill(skill);
