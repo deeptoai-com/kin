@@ -33,3 +33,25 @@ export function isSessionVisible(
 export function isSessionMutable(userId: string, s: SessionAccessRow): boolean {
   return s.userId === userId;
 }
+
+/** The minimal shape shared by every project-scoped resource (documents, KBs, sessions). */
+export interface ResourceAccessRow {
+  userId: string;
+  projectId: string | null;
+}
+
+/**
+ * RAG R0 (final spec D2): documents and knowledge bases follow the EXACT same visibility
+ * rule as sessions — `projectId` nullable is the single access primitive:
+ * - personal (projectId == null): visible only to its own user;
+ * - project-scoped: visible to any member of that project.
+ * Kept as its own named function (not an alias) so doc/KB call sites and tests read
+ * explicitly, and so the rules may diverge later without a hidden coupling.
+ */
+export function isResourceVisible(
+  userId: string,
+  r: ResourceAccessRow,
+  accessibleProjectIds: ReadonlySet<string>
+): boolean {
+  return r.projectId == null ? r.userId === userId : accessibleProjectIds.has(r.projectId);
+}
