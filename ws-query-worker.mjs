@@ -564,8 +564,6 @@ async function startRun(request) {
       name: 'kb-search',
       tools: [kbSearchTool],
     });
-    const kbSdkServers = userCookie ? { 'kb-search': kbSearchMcpServer } : {};
-    if (!userCookie) console.error('[Worker] kb_search tool: NOT registered (no user cookie in request)');
 
     // PR-C: Sandboxed Bash tool — only registered when a sandbox backend is confirmed.
     // Two valid sandboxes:
@@ -654,10 +652,19 @@ async function startRun(request) {
       sdkServers: {
         python: pythonMcpServer,
         'glm-image': glmImageMcpServer,
-        ...kbSdkServers,
         ...bashSdkServers,
       },
     });
+
+    // kb_search is a BUILT-IN capability (like Read/Grep), not a curated-catalog MCP —
+    // resolveMcpServerConfigs only passes through catalog-enabled sdk servers, so it is
+    // merged here AFTER resolution. Registered only when the run carries user auth.
+    if (userCookie) {
+      mcpServers['kb-search'] = kbSearchMcpServer;
+      allowedTools.push('mcp__kb-search__*');
+    } else {
+      console.error('[Worker] kb_search tool: NOT registered (no user cookie in request)');
+    }
 
     console.error(`[Worker] MCP Servers: ${Object.keys(mcpServers).join(', ') || '(none)'}`);
     console.error(`[Worker] Allowed Tools: ${allowedTools.length} entries`);
