@@ -26,6 +26,7 @@ import { resolveEffectivePermission } from './src/lib/permission-tier.js';
 import { PreviewAuth } from './src/preview/auth.js';
 import { PreviewRuntime } from './src/preview/runtime.js';
 import { buildWorkerEnv } from './src/server/models/build-worker-env.js';
+import { isSyntheticTranscriptEntry } from './src/server/history/transcript-filter.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -506,6 +507,11 @@ function parseJsonlContent(content) {
 
       // Skip summary type messages
       if (parsedType === 'summary') continue;
+
+      // Skip SDK-synthetic / legacy eager-init turns that would render as
+      // bogus user/assistant messages ("Continue from where you left off." +
+      // "No response requested.", blank init prompts). Display-only filter.
+      if (isSyntheticTranscriptEntry(parsed)) continue;
 
       // Normalize sessionId to session_id
       const normalized = { ...parsed };
