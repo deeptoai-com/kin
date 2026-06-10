@@ -201,6 +201,9 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      # RAG ingest (R0): Zhipu embedding/rerank — the ingest pipeline embeds in this worker
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     command: ['npx', 'tsx', 'src/worker/index.ts']
@@ -254,7 +257,7 @@ services:
       # Internal URL for server-side API calls (inside container)
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
-      # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
+      # Zhipu key — GLM image tool + Zhipu MCP servers + RAG embedding/rerank (R0)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}

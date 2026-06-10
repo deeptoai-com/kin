@@ -15,7 +15,15 @@ import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { project, projectMember, type ProjectRole } from '~/db/schema/project.schema';
 import { agentSession } from '~/db/schema/agent-session.schema';
-import { isSessionVisible, isSessionMutable, type SessionAccessRow } from './access-logic';
+import { documents } from '~/db/schema/document.schema';
+import { knowledgeBases } from '~/db/schema/knowledge-base.schema';
+import {
+  isSessionVisible,
+  isSessionMutable,
+  isResourceVisible,
+  type SessionAccessRow,
+  type ResourceAccessRow,
+} from './access-logic';
 
 /** Project ids the user is a member of (owned Projects always include an owner membership row). */
 export async function accessibleProjectIds(userId: string): Promise<string[]> {
@@ -65,7 +73,7 @@ export function visibleSessionsWhere(userId: string, accessibleIds: string[]): S
 }
 
 // Pure decisions live in ./access-logic (DB-free, unit-tested); re-exported + DB-wrapped here.
-export type { SessionAccessRow };
+export type { SessionAccessRow, ResourceAccessRow };
 export const canMutateSession = isSessionMutable;
 
 /**
@@ -76,4 +84,48 @@ export const canMutateSession = isSessionMutable;
 export async function canAccessSession(userId: string, s: SessionAccessRow): Promise<boolean> {
   if (s.projectId == null) return s.userId === userId;
   return isSessionVisible(userId, s, new Set(await accessibleProjectIds(userId)));
+}
+
+// ─── RAG R0: documents / knowledge bases (final spec D2) ─────────────────────────────
+// Same primitive as sessions: `projectId` nullable; visibility = personal-owner OR
+// project-member. Both kb_search retrieval legs and every doc/KB list MUST go through
+// these predicates — isolation lives in the SQL, never in a post-filter.
+
+/**
+ * SQL predicate for "documents this user may see": own personal docs, OR any document in
+ * a Project they belong to.
+ */
+export function visibleDocumentsWhere(userId: string, accessibleIds: string[]): SQL | undefined {
+  const personal = and(isNull(documents.projectId), eq(documents.userId, userId));
+  if (accessibleIds.length === 0) return personal;
+  return or(personal, inArray(documents.projectId, accessibleIds));
+}
+
+/** SQL predicate for "knowledge bases this user may see" (shape mirrors documents). */
+export function visibleKbWhere(userId: string, accessibleIds: string[]): SQL | undefined {
+  const personal = and(isNull(knowledgeBases.projectId), eq(knowledgeBases.userId, userId));
+  if (accessibleIds.length === 0) return personal;
+  return or(personal, inArray(knowledgeBases.projectId, accessibleIds));
+}
+
+/**
+ * KB ids the user may search/list: personal KBs ∪ KBs of Projects they belong to.
+ * (The resolver slot reserved by this module's header comment since Projects P1.)
+ */
+export async function accessibleKbIds(userId: string): Promise<string[]> {
+  const projectIds = await accessibleProjectIds(userId);
+  const rows = await db
+    .select({ id: knowledgeBases.id })
+    .from(knowledgeBases)
+    .where(visibleKbWhere(userId, projectIds));
+  return rows.map((r) => r.id);
+}
+
+/** READ visibility for a single document row (load first, then authorize). */
+export async function canAccessDocument(
+  userId: string,
+  d: ResourceAccessRow,
+): Promise<boolean> {
+  if (d.projectId == null) return d.userId === userId;
+  return isResourceVisible(userId, d, new Set(await accessibleProjectIds(userId)));
 }

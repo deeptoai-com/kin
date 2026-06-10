@@ -183,6 +183,13 @@
       "when": 1780948518742,
       "tag": "0025_round_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781128742496,
+      "tag": "0026_glorious_luckman",
+      "breakpoints": true
     }
   ]
 }
