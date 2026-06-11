@@ -72,3 +72,31 @@ export const GOLDEN_CASES: GoldenCase[] = [
   { doc: '北辰数据中心运维规范', query: '灾备演练多久一次', expectSection: '灾备演练', type: 'keyword' },
   { doc: '北辰数据中心运维规范', query: '故障恢复的时间目标', expectSection: '灾备演练', type: 'paraphrase' },
 ];
+
+// ── Golden set v2: REAL corpus (rag-test-docs/minimax.md, 716-page prospectus) ────────
+// Judged by expectText-in-chunk (no section labels in real docs). Queries are
+// paraphrases mined from real facts — none contain the expected literal.
+
+export interface RealGoldenCase {
+  query: string;
+  expectText: string;
+  type: 'keyword' | 'paraphrase' | 'entity';
+}
+
+/** Title used for the persistent golden document row (sourceType 'rag-golden'). */
+export const REAL_GOLDEN_DOC_TITLE = 'MiniMax招股书(golden-v2)';
+
+export const REAL_GOLDEN_CASES: RealGoldenCase[] = [
+  { query: '研发团队有多少人', expectText: '約300名成員', type: 'paraphrase' },
+  { query: '流动负债净额增长到了多少', expectText: '343.3', type: 'paraphrase' },
+  { query: '公司预计每个月要烧多少钱', expectText: '28.1', type: 'paraphrase' },
+  { query: '账上的现金结余还有多少', expectText: '1,046.2', type: 'paraphrase' },
+  { query: '毛利率是怎么改善的', expectText: '24.7%', type: 'paraphrase' },
+  { query: '2022年公司亏了多少钱', expectText: '73.7', type: 'paraphrase' },
+  { query: '产品覆盖了多少个国家的用户', expectText: '200個國家', type: 'paraphrase' },
+  { query: '月活跃用户增长情况如何', expectText: '19.1百萬', type: 'paraphrase' },
+  { query: '付费用户数量达到多少', expectText: '650,300', type: 'keyword' },
+  { query: '开放平台付费用户是怎么定义的', expectText: '50美元', type: 'paraphrase' },
+  { query: '视频生成用的是哪个模型', expectText: 'Hailuo-02', type: 'entity' },
+  { query: '语音合成模型叫什么', expectText: 'Speech-02', type: 'entity' },
+];
