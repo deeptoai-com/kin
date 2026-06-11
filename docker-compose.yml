@@ -201,7 +201,10 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
-      # RAG ingest (R0): Zhipu embedding/rerank — the ingest pipeline embeds in this worker
+      # RAG ingest: embedding providers — doubao (default; ARK key) / zhipu fallback.
+      # The ingest pipeline embeds in this worker (see src/server/rag/embedding.ts).
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     extra_hosts:
