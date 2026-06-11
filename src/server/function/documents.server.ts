@@ -13,6 +13,7 @@ import { S3StaticFileImpl } from '~/server/s3/s3';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { estimateTokens } from '~/server/rag/tier';
 import { scheduleRagIngest } from '~/server/rag/queue';
+import { isRagEnabled } from '~/server/rag/flag';
 import { canAccessDocument } from '~/server/projects/access';
 
 const fileService = new S3StaticFileImpl();
@@ -258,6 +259,7 @@ export const probeDocumentFile = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
+    if (!isRagEnabled()) return { ok: false as const, error: 'RAG 未启用（RAG_ENABLED）' };
     const [file] = await db
       .select()
       .from(files)
@@ -295,6 +297,7 @@ export const requestDocumentParse = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
+    if (!isRagEnabled()) throw new Error('RAG 未启用（RAG_ENABLED）');
     const [doc] = await db
       .select({ id: documents.id, userId: documents.userId, projectId: documents.projectId })
       .from(documents)
@@ -342,6 +345,9 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     const content = input.content ?? '';
     const hasContent = Boolean(content.trim().length);
     const tokenEstimate = content ? estimateTokens(content) : 0;
+    // RAG flag off → the documents row is still created (the knowledge base predates
+    // RAG), but nothing is embedded: ingest_status stays 'none', no ingest scheduled.
+    const ragEnabled = isRagEnabled();
 
     const { fileRecord, ragDocumentId } = await db.transaction(async (tx) => {
       const [createdFile] = await tx
@@ -382,10 +388,10 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
             parseStatus: hasContent ? 'ready' : 'pending',
             // embed every document with text (full-coverage); ragTier (single|structured)
             // is recorded by the ingest pipeline once it chunks.
-            ingestStatus: hasContent ? 'pending' : 'none',
+            ingestStatus: ragEnabled && hasContent ? 'pending' : 'none',
           })
           .returning({ id: documents.id });
-        if (hasContent) createdRagDocId = createdDoc?.id ?? null;
+        if (ragEnabled && hasContent) createdRagDocId = createdDoc?.id ?? null;
       }
 
       return { fileRecord: createdFile, ragDocumentId: createdRagDocId };
@@ -418,6 +424,7 @@ export const reingestDocument = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
+    if (!isRagEnabled()) throw new Error('RAG 未启用（RAG_ENABLED）');
     const [doc] = await db
       .select({ id: documents.id, userId: documents.userId, projectId: documents.projectId, content: documents.content })
       .from(documents)

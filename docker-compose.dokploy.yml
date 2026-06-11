@@ -272,6 +272,8 @@ services:
       # OAuth Providers (frontend - Client ID only)
       VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+      # RAG master switch — default OFF (main ships RAG dark); see src/server/rag/flag.ts
+      RAG_ENABLED: ${RAG_ENABLED:-}
       # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);

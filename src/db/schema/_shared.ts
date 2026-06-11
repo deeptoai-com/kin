@@ -1,10 +1,12 @@
 import { timestamp, pgEnum, text } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 export const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
 export const createdAt = () => timestamptz('created_at').notNull().defaultNow();
-export const updatedAt = () => timestamptz('updated_at').notNull().defaultNow().$onUpdate(() => sql`CURRENT_TIMESTAMP`);
+// $onUpdate must return a Date here: drizzle's date-mode driver mapping calls
+// .toISOString() on the returned value, so a sql`` fragment crashes every
+// db.update() that doesn't set updated_at explicitly.
+export const updatedAt = () => timestamptz('updated_at').notNull().defaultNow().$onUpdate(() => new Date());
 export const accessedAt = () => timestamptz('accessed_at').notNull().defaultNow();
 
 export const timestamps = {
