@@ -28,11 +28,15 @@ import {
   directDocumentUpload,
   initDocumentUpload,
   listDocuments,
+  probeDocumentFile,
+  requestDocumentParse,
   type CompleteDocumentUploadInput,
   type DirectDocumentUploadInput,
   type DeleteDocumentsInput,
   type InitDocumentUploadInput,
 } from '~/server/function/documents.server';
+import { DocumentStatusBadge, anyInFlight } from '~/components/documents/document-status';
+import { ParseEngineDialog, type ParseMethod, type ProbeRecommendation } from '~/components/documents/parse-engine-dialog';
 import {
   listKnowledgeBases,
   createKnowledgeBase,
@@ -58,9 +62,52 @@ function DocumentsPage() {
   const content = useIntlayer('documents');
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { files } = Route.useLoaderData() as {
+  const { files: initialFiles } = Route.useLoaderData() as {
     files: Awaited<ReturnType<typeof listDocuments>>;
   };
+  const listDocumentsFn = useServerFn(listDocuments);
+  // U2: poll the list while any document is mid parse/embed so status chips + progress
+  // update live; idle otherwise (loader data seeds it, no flash).
+  const { data: files = initialFiles } = useQuery({
+    queryKey: ['documents-list'],
+    queryFn: () => listDocumentsFn(),
+    initialData: initialFiles,
+    refetchInterval: (q) => (anyInFlight((q.state.data as typeof initialFiles | undefined) ?? []) ? 2000 : false),
+  });
+  const probeFileFn = useServerFn(probeDocumentFile);
+  const requestParseFn = useServerFn(requestDocumentParse);
+
+  // Parse-engine dialog (U2 spec §3): { fileId, documentId } target + probe state.
+  const [parseDialog, setParseDialog] = useState<
+    { documentId: string; fileId: string; probing: boolean; recommendation: ProbeRecommendation | null; busy: boolean } | null
+  >(null);
+
+  const openParseDialog = useCallback(async (documentId: string, fileId: string) => {
+    setParseDialog({ documentId, fileId, probing: true, recommendation: null, busy: false });
+    try {
+      const res = (await probeFileFn({ data: { fileId } })) as
+        | { ok: true; pages?: number; chars?: number; recommend: ProbeRecommendation }
+        | { ok: false; error: string };
+      setParseDialog((d) => (d && d.fileId === fileId
+        ? { ...d, probing: false, recommendation: res.ok ? { ...res.recommend, pages: res.pages, chars: res.chars } : null }
+        : d));
+    } catch {
+      setParseDialog((d) => (d && d.fileId === fileId ? { ...d, probing: false } : d));
+    }
+  }, [probeFileFn]);
+
+  const confirmParse = useCallback(async (method: ParseMethod) => {
+    if (!parseDialog) return;
+    setParseDialog((d) => (d ? { ...d, busy: true } : d));
+    try {
+      await requestParseFn({ data: { documentId: parseDialog.documentId, method } });
+      await queryClient.invalidateQueries({ queryKey: ['documents-list'] });
+      setParseDialog(null);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : '解析请求失败');
+      setParseDialog((d) => (d ? { ...d, busy: false } : d));
+    }
+  }, [parseDialog, requestParseFn, queryClient]);
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
@@ -361,8 +408,12 @@ function DocumentsPage() {
         await completeUpload.mutateAsync({ id, key });
       }
 
-      // refresh list
+      // refresh list (both the loader and the polling query)
       await router.invalidate();
+      const refreshed = await queryClient.fetchQuery({
+        queryKey: ['documents-list'],
+        queryFn: () => listDocumentsFn(),
+      });
 
       // reset UI
       setShowUpload(false);
@@ -370,6 +421,13 @@ function DocumentsPage() {
       setTitle('');
       setText('');
       setShowKB(false);
+
+      // U2: a PDF added to the knowledge base → probe + offer the parse engine
+      // (system-recommended, overridable). Non-KB or non-PDF uploads skip this.
+      if (showKB && file.name.toLowerCase().endsWith('.pdf')) {
+        const row = (refreshed as typeof initialFiles).find((f) => f.id === id && f.documentId);
+        if (row?.documentId) void openParseDialog(row.documentId, id);
+      }
     } catch (err) {
       console.error('Upload failed', err);
       setErrorMessage(err instanceof Error ? err.message : content.upload.upload);
@@ -378,6 +436,14 @@ function DocumentsPage() {
 
   return (
     <>
+      <ParseEngineDialog
+        open={!!parseDialog}
+        probing={parseDialog?.probing ?? false}
+        recommendation={parseDialog?.recommendation ?? null}
+        busy={parseDialog?.busy ?? false}
+        onConfirm={confirmParse}
+        onCancel={() => setParseDialog(null)}
+      />
       {/* main layout */}
       <div className="flex h-[calc(100vh-theme(spacing.16))]">
         {/* left nav */}
@@ -594,6 +660,7 @@ function DocumentsPage() {
                       />
                     </th>
                     <th className="py-2 text-left font-normal">{content.table.file}</th>
+                    <th className="py-2 text-left font-normal">状态</th>
                     <th className="py-2 text-left font-normal">{content.table.createdAt}</th>
                     <th className="py-2 text-left font-normal">{content.table.size}</th>
                   </tr>
@@ -619,6 +686,16 @@ function DocumentsPage() {
                             <span>{d.name}</span>
                           </div>
                         </td>
+                        <td className="py-3">
+                          <DocumentStatusBadge
+                            doc={d}
+                            onRetry={
+                              d.documentId
+                                ? () => openParseDialog(d.documentId!, d.id)
+                                : undefined
+                            }
+                          />
+                        </td>
                         <td className="py-3 text-muted-foreground">
                           {d.createdAt ? new Date(d.createdAt).toLocaleString() : '--'}
                         </td>
@@ -627,7 +704,7 @@ function DocumentsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="py-4 text-center">
+                      <td colSpan={5} className="py-4 text-center">
                         {content.table.noDocuments}
                       </td>
                     </tr>
