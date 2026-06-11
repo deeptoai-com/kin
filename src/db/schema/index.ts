@@ -14,3 +14,4 @@ export * from './kb-document.schema';
 export * from './profile.schema';
 export * from './skill-catalog.schema';
 export * from './model.schema';
+export * from './rag-trace.schema';

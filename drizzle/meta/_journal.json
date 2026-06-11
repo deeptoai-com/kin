@@ -190,6 +190,13 @@
       "when": 1781128742496,
       "tag": "0026_glorious_luckman",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781163377739,
+      "tag": "0027_huge_blink",
+      "breakpoints": true
     }
   ]
 }

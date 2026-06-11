@@ -1,0 +1,74 @@
+/**
+ * RAG golden set v1 (R4-①) — synthetic but adversarial: every question targets ONE
+ * section, with distractor sections nearby. Question types are tagged so the eval can
+ * show WHERE each pipeline stage earns its keep:
+ *  - keyword:   exact terms present in the target (BM25's home turf)
+ *  - paraphrase: no lexical overlap with the target (embedding's home turf)
+ *  - entity:    rare proper noun / code (hybrid tie-breaker)
+ *
+ * v2 swaps/augments these with real team documents + real queries mined from
+ * rag_search_trace. Keep questions ≥10 per doc when adding.
+ */
+
+export interface GoldenDoc {
+  title: string;
+  markdown: string;
+}
+
+export interface GoldenCase {
+  doc: string;
+  query: string;
+  /** Substring that must appear in the hit's sectionPath to count as correct. */
+  expectSection: string;
+  type: 'keyword' | 'paraphrase' | 'entity';
+}
+
+const pad = (topic: string, n: number) =>
+  Array.from(
+    { length: n },
+    (_, i) => `${topic}的常规说明第${i + 1}条：本段为流程性描述，用于模拟真实文档的篇幅与噪声。`,
+  ).join('\n\n');
+
+export const GOLDEN_DOCS: GoldenDoc[] = [
+  {
+    title: '雾海号货轮运营手册',
+    markdown: [
+      '# 第一章 船舶概况', pad('概况', 30),
+      '## 1.1 主机参数', '主机为 MX-9000 型低速柴油机，额定功率两万一千千瓦。', pad('主机', 20),
+      '# 第二章 燃油管理', '远洋航段使用低硫燃油，含硫量不得高于百分之零点五。', pad('燃油', 30),
+      '# 第三章 压载水', '压载水置换必须在距最近陆地两百海里以外的深水区进行。', pad('压载', 30),
+      '# 第四章 冷链货舱', '冷链货舱的温度容差为正负零点八摄氏度，超出即触发声光报警。', pad('冷链', 30),
+      '# 第五章 应急程序', '弃船警报为连续七短声加一长声，全员须于八分钟内到达集合站。', pad('应急', 30),
+    ].join('\n\n'),
+  },
+  {
+    title: '北辰数据中心运维规范',
+    markdown: [
+      '# 第一章 机房环境', pad('环境', 30),
+      '## 1.1 温湿度', '冷通道目标温度为二十二摄氏度，相对湿度保持在百分之四十至六十。', pad('温湿', 20),
+      '# 第二章 供电体系', 'UPS 电池组在满载情况下可支撑十七分钟，柴油发电机须在九十秒内并网。', pad('供电', 30),
+      '# 第三章 网络架构', '核心交换采用双活架构，骨干链路代号 POLARIS-7，带宽四百G。', pad('网络', 30),
+      '# 第四章 变更管理', '高危变更窗口固定为周四凌晨一点至五点，须双人复核后执行。', pad('变更', 30),
+      '# 第五章 灾备演练', '全量灾备切换演练每季度执行一次，目标恢复时间不超过四十五分钟。', pad('灾备', 30),
+    ].join('\n\n'),
+  },
+];
+
+export const GOLDEN_CASES: GoldenCase[] = [
+  // ── 雾海号 ──────────────────────────────────────────────────────────────
+  { doc: '雾海号货轮运营手册', query: '主机的额定功率是多少', expectSection: '主机参数', type: 'keyword' },
+  { doc: '雾海号货轮运营手册', query: 'MX-9000 是什么', expectSection: '主机参数', type: 'entity' },
+  { doc: '雾海号货轮运营手册', query: '船用油的硫含量上限', expectSection: '燃油管理', type: 'paraphrase' },
+  { doc: '雾海号货轮运营手册', query: '离岸多远才能换压载水', expectSection: '压载水', type: 'paraphrase' },
+  { doc: '雾海号货轮运营手册', query: '冷藏舱温度允许波动范围', expectSection: '冷链货舱', type: 'paraphrase' },
+  { doc: '雾海号货轮运营手册', query: '弃船警报的声音信号', expectSection: '应急程序', type: 'keyword' },
+  { doc: '雾海号货轮运营手册', query: '撤离时多久要到集合点', expectSection: '应急程序', type: 'paraphrase' },
+  // ── 北辰 ────────────────────────────────────────────────────────────────
+  { doc: '北辰数据中心运维规范', query: '冷通道应该设定几度', expectSection: '温湿度', type: 'paraphrase' },
+  { doc: '北辰数据中心运维规范', query: 'UPS 满载能撑多久', expectSection: '供电体系', type: 'keyword' },
+  { doc: '北辰数据中心运维规范', query: '断电后备用发电机多快接管', expectSection: '供电体系', type: 'paraphrase' },
+  { doc: '北辰数据中心运维规范', query: 'POLARIS-7 是什么', expectSection: '网络架构', type: 'entity' },
+  { doc: '北辰数据中心运维规范', query: '什么时间可以做高风险变更', expectSection: '变更管理', type: 'paraphrase' },
+  { doc: '北辰数据中心运维规范', query: '灾备演练多久一次', expectSection: '灾备演练', type: 'keyword' },
+  { doc: '北辰数据中心运维规范', query: '故障恢复的时间目标', expectSection: '灾备演练', type: 'paraphrase' },
+];
