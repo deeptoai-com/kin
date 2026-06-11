@@ -77,8 +77,8 @@ export const documents = pgTable(
  *
  * NO access columns here (final spec D2 / keystone "零重嵌" rule): visibility resolves at
  * the documents level; chunks are document-scoped so sharing a document never re-embeds.
- * `embedding` is Zhipu embedding-3 @ 1024 dims (final spec D1; the previous 1536 column
- * was never written by any code, so the dim change is free).
+ * `embedding` is 1024-dim, provider-agnostic (doubao-vision via MRL dimensions / zhipu
+ * native — see src/server/rag/embedding.ts; provenance per doc in embed_model/embed_dim).
  */
 export const documentChunks = pgTable(
   'document_chunks',

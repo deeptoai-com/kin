@@ -13,7 +13,7 @@ import { eq, cosineDistance, isNotNull, and } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
 import { documents, documentChunks } from '~/db/schema/document.schema';
-import { embedTexts } from '~/server/rag/zhipu';
+import { embedTexts } from '~/server/rag/embedding';
 import { ingestDocument } from '~/server/rag/ingest';
 import { estimateTokens, routeTier } from '~/server/rag/tier';
 

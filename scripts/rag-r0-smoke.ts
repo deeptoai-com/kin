@@ -13,7 +13,7 @@ import { eq, cosineDistance } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
 import { documents, documentChunks } from '~/db/schema/document.schema';
-import { embedTexts, EMBED_DIM, EMBED_MODEL } from '~/server/rag/zhipu';
+import { embedTexts, EMBED_DIM, embedModel } from '~/server/rag/embedding';
 
 const SAMPLES = [
   { section: '§3 退款政策', text: '本合同约定退款费率为 4.5%，七日内可无理由退款。' },
@@ -24,7 +24,7 @@ const QUERY = '保修期有多久？';
 const EXPECTED_SECTION = '§5 保修条款';
 
 async function main() {
-  console.log(`[smoke] embedding ${SAMPLES.length} chunks via ${EMBED_MODEL}@${EMBED_DIM} …`);
+  console.log(`[smoke] embedding ${SAMPLES.length} chunks via ${embedModel()}@${EMBED_DIM} …`);
   const vectors = await embedTexts(SAMPLES.map((s) => `RAG冒烟文档 > ${s.section}\n${s.text}`));
 
   const [file] = await db
@@ -49,7 +49,7 @@ async function main() {
       fileId: file.id,
       ragTier: 'rag',
       ingestStatus: 'ready',
-      embedModel: EMBED_MODEL,
+      embedModel: embedModel(),
       embedDim: EMBED_DIM,
     })
     .returning();

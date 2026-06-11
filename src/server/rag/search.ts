@@ -13,7 +13,8 @@ import { kbDocuments } from '~/db/schema/kb-document.schema';
 import { ragSearchTrace } from '~/db/schema/rag-trace.schema';
 import { accessibleProjectIds, visibleDocumentsWhere } from '~/server/projects/access';
 import { searchChunks } from '~/search/meilisearch';
-import { embedTexts, rerankDocuments } from './zhipu';
+import { embedTexts } from './embedding';
+import { rerankDocuments } from './zhipu';
 import { rrfFuse } from './fuse';
 
 export interface KbSearchParams {

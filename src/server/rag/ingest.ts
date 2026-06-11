@@ -12,7 +12,8 @@ import { db } from '~/db/db-config';
 import { documents, documentChunks } from '~/db/schema/document.schema';
 import { chunkMarkdown } from './chunker';
 import { chunkStrategy, estimateTokens, type ChunkStrategy } from './tier';
-import { EMBED_DIM, EMBED_MODEL, embedTexts, splitBatches } from './zhipu';
+import { EMBED_DIM, embedModel, embedTexts } from './embedding';
+import { splitBatches } from './zhipu';
 import { indexChunks, removeChunksOfDocument } from '~/search/meilisearch';
 
 /** Flat chunk shape fed to the embed+insert loop (parentIndex -1 = a top-level/single chunk). */
@@ -86,7 +87,7 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
       .select({ contentHash: documentChunks.contentHash })
       .from(documentChunks)
       .where(eq(documentChunks.documentId, documentId));
-    const sameModel = doc.embedModel === EMBED_MODEL && doc.embedDim === EMBED_DIM;
+    const sameModel = doc.embedModel === embedModel() && doc.embedDim === EMBED_DIM;
     if (
       sameModel &&
       existing.length === all.length &&
@@ -157,7 +158,7 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
       ingestProgress: 100,
       toc,
       ragTier: strategy,
-      embedModel: EMBED_MODEL,
+      embedModel: embedModel(),
       embedDim: EMBED_DIM,
     });
     return { status: 'ready', chunks: all.length };
