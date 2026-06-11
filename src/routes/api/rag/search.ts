@@ -13,11 +13,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { requireUser } from '~/server/require-user';
 import { searchKb } from '~/server/rag/search';
+import { isRagEnabled } from '~/server/rag/flag';
 
 export const Route = createFileRoute('/api/rag/search')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        // Flag off → the worker never registers kb_search, but the endpoint stays
+        // reachable with a session cookie; refuse here too so RAG is fully dark.
+        if (!isRagEnabled()) {
+          return Response.json({ error: 'RAG disabled (RAG_ENABLED)' }, { status: 404 });
+        }
         const user = await requireUser(request);
 
         let body: unknown;
