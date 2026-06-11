@@ -20,11 +20,7 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const embedInput = (sectionPath: string, text: string) => `${sectionPath}\n${text}`;
 
 async function setProgress(documentId: string, patch: Partial<typeof documents.$inferInsert>) {
-  // updatedAt explicit: the shared `timestamps` helper's $onUpdate returns a sql fragment,
-  // which drizzle's date-mode driver mapping crashes on ("value.toISOString is not a
-  // function") whenever an update does NOT set the column explicitly. Latent repo-wide
-  // bug — flagged separately; do not remove this without fixing _shared.ts first.
-  await db.update(documents).set({ ...patch, updatedAt: new Date() }).where(eq(documents.id, documentId));
+  await db.update(documents).set(patch).where(eq(documents.id, documentId));
 }
 
 export interface IngestResult {
