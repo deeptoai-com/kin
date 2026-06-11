@@ -134,3 +134,4 @@ infra/tunnel/config.yml
 infra/prod/dynamic/origin.crt
 infra/prod/dynamic/origin.key
 infra/prod/dynamic/origin-ca.yml
+parser-sidecar/node_modules

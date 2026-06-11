@@ -165,6 +165,15 @@ services:
     profiles: ['tunnel']
     restart: unless-stopped
 
+  # PDF parser sidecar — owns the Java dependency (ingest-UX spec §7, U1).
+  # The future OCR engine plugs in here as another route; app/worker images stay slim.
+  parser:
+    build:
+      context: ./parser-sidecar
+    container_name: ex0-parser
+    restart: unless-stopped
+    profiles: ['dev', 'selfhost', 'prod']
+
   # Background workers for BullMQ (cron + indexing, etc.)
   # pull_policy: never — use locally built image; do not pull from registry
   worker:
@@ -205,6 +214,7 @@ services:
       # The ingest pipeline embeds in this worker (see src/server/rag/embedding.ts).
       ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
       EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     extra_hosts:
@@ -262,6 +272,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
       # Zhipu key — GLM image tool + Zhipu MCP servers + RAG embedding/rerank (R0)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
       # Claude Agent SDK configuration
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}

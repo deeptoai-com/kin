@@ -1,0 +1,9 @@
+{
+  "name": "oxygenie-parser-sidecar",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "PDF→Markdown parser sidecar (opendataloader-pdf; owns the Java dependency)",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": { "@opendataloader/pdf": "^2.4.7" }
+}
