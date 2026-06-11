@@ -219,6 +219,12 @@ export const listDocuments = createServerFn({ method: 'GET' }).handler(async () 
     .select({
       file: files,
       sourceType: documents.sourceType,
+      // U2: parse/embed state for the documents UI (status chips, engine re-pick, progress)
+      documentId: documents.id,
+      parseMethod: documents.parseMethod,
+      parseStatus: documents.parseStatus,
+      ingestStatus: documents.ingestStatus,
+      ingestProgress: documents.ingestProgress,
     })
     .from(files)
     .leftJoin(documents, eq(files.id, documents.fileId))
@@ -229,10 +235,91 @@ export const listDocuments = createServerFn({ method: 'GET' }).handler(async () 
     fileRows.map(async (row) => ({
       ...row.file,
       sourceType: row.sourceType,
+      documentId: row.documentId,
+      parseMethod: row.parseMethod,
+      parseStatus: row.parseStatus,
+      ingestStatus: row.ingestStatus,
+      ingestProgress: row.ingestProgress,
       downloadUrl: await fileService.getFullFileUrl(row.file.key),
     })),
   );
 });
+
+/**
+ * U2 (ingest-UX spec §3): probe an uploaded PDF's text layer via the parser sidecar and
+ * return the recommended engine ("系统推荐+可改") — { method: simple|structured|ocr, reason }.
+ */
+export const probeDocumentFile = createServerFn({ method: 'POST' })
+  .inputValidator((input: unknown) => {
+    const data = (input && typeof input === 'object' && 'data' in (input as Record<string, unknown>))
+      ? (input as { data: unknown }).data
+      : input;
+    return z.object({ fileId: z.string().min(1) }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const [file] = await db
+      .select()
+      .from(files)
+      .where(and(eq(files.id, data.fileId), eq(files.clientId, user.id)))
+      .limit(1);
+    if (!file) throw new Error('File not found');
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      return { ok: true as const, recommend: { method: 'simple' as const, reason: '非 PDF 文档走既有解析链' } };
+    }
+    const { probePdfViaSidecar } = await import('~/server/rag/parser-client');
+    const url = await fileService.getFullFileUrl(file.key);
+    const blob = await fetch(url);
+    if (!blob.ok) throw new Error(`file fetch HTTP ${blob.status}`);
+    const probe = await probePdfViaSidecar(Buffer.from(await blob.arrayBuffer()));
+    if (!probe.ok || !probe.recommend) {
+      return { ok: false as const, error: probe.error ?? 'probe failed' };
+    }
+    return { ok: true as const, pages: probe.pages, chars: probe.chars, recommend: probe.recommend };
+  });
+
+/**
+ * U2: (re)parse a document with a user-chosen engine, then re-embed. Parse and embed are
+ * separate state machines — this resets both and reruns the pipeline (parse pre-stage
+ * honors parse_method; spec DR-2/DR-7).
+ */
+export const requestDocumentParse = createServerFn({ method: 'POST' })
+  .inputValidator((input: unknown) => {
+    const data = (input && typeof input === 'object' && 'data' in (input as Record<string, unknown>))
+      ? (input as { data: unknown }).data
+      : input;
+    return z.object({
+      documentId: z.string().min(1),
+      method: z.enum(['simple', 'structured', 'ocr']),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const [doc] = await db
+      .select({ id: documents.id, userId: documents.userId, projectId: documents.projectId })
+      .from(documents)
+      .where(eq(documents.id, data.documentId))
+      .limit(1);
+    if (!doc) throw new Error('Document not found');
+    if (!(await canAccessDocument(user.id, doc))) throw new Error('FORBIDDEN');
+    if (data.method === 'ocr') {
+      // U3: OCR engine not wired yet (model deliberately not locked — possibly a VLM).
+      throw new Error('OCR 解析引擎尚未接入（U3）');
+    }
+    await db
+      .update(documents)
+      .set({
+        parseMethod: data.method,
+        parseStatus: 'pending',
+        content: '', // force the parse pre-stage to run with the new engine
+        ingestStatus: 'pending',
+        ingestProgress: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(documents.id, doc.id));
+    const mode = await scheduleRagIngest(doc.id);
+    return { scheduled: true as const, mode };
+  });
 
 export const initDocumentUpload = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalizeInput(input, initUploadSchema))
