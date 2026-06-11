@@ -10,10 +10,12 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { documents, documentChunks } from '~/db/schema/document.schema';
+import { files } from '~/db/schema/file.schema';
 import { chunkMarkdown } from './chunker';
 import { chunkStrategy, estimateTokens, type ChunkStrategy } from './tier';
 import { EMBED_DIM, embedModel, embedTexts } from './embedding';
 import { splitBatches } from './zhipu';
+import { parsePdfViaSidecar, stripPageMarkers } from './parser-client';
 import { indexChunks, removeChunksOfDocument } from '~/search/meilisearch';
 
 /** Flat chunk shape fed to the embed+insert loop (parentIndex -1 = a top-level/single chunk). */
@@ -64,12 +66,62 @@ export interface IngestResult {
   reason?: string;
 }
 
+/**
+ * Parse pre-stage (U1, ingest-UX spec §4): a KB document created from a binary upload has
+ * no content yet — fetch the file and run it through the parser sidecar, honoring the
+ * user-chosen/recommended engine (documents.parse_method; default structured). Parse and
+ * embed are SEPARATE state machines: a parse failure marks parse_status='failed'
+ * (visible + retryable with another engine, spec DR-7) without touching chunk state.
+ */
+async function parseStage(doc: typeof documents.$inferSelect): Promise<string | null> {
+  if (!doc.fileId) return null;
+  const [file] = await db.select().from(files).where(eq(files.id, doc.fileId)).limit(1);
+  const name = (file?.name || doc.filename || '').toLowerCase();
+  if (!file || !name.endsWith('.pdf')) return null; // non-PDF rich types stay on markitdown (U1 scope)
+
+  await setProgress(doc.id, { parseStatus: 'processing' });
+  try {
+    // Lazy import: ~/server/s3 pulls in ~/conf/file whose env validation requires S3_*
+    // vars — only environments that actually parse uploads (worker/app in compose) have
+    // them; importing eagerly would crash host-local tools that never touch S3.
+    const { S3StaticFileImpl } = await import('~/server/s3/s3');
+    const url = await new S3StaticFileImpl().getFullFileUrl(file.key);
+    const blob = await fetch(url);
+    if (!blob.ok) throw new Error(`file fetch HTTP ${blob.status}`);
+    const bytes = Buffer.from(await blob.arrayBuffer());
+
+    const mode = doc.parseMethod === 'simple' ? 'simple' : 'structured';
+    const parsed = await parsePdfViaSidecar(bytes, mode);
+    if (!parsed.ok || !parsed.markdown?.trim()) {
+      throw new Error(parsed.error || 'parser produced no text (scanned PDF? try OCR when available)');
+    }
+    const markdown = stripPageMarkers(parsed.markdown);
+    await setProgress(doc.id, {
+      content: markdown,
+      parseStatus: 'ready',
+      parseMethod: mode,
+      tokenEstimate: estimateTokens(markdown),
+      totalCharCount: markdown.length,
+      totalLineCount: markdown.split(/\r?\n/).length,
+    });
+    return markdown;
+  } catch (err) {
+    console.error('[rag-ingest] parse stage failed:', doc.id, err);
+    await setProgress(doc.id, { parseStatus: 'failed' }).catch(() => {});
+    return null;
+  }
+}
+
 export async function ingestDocument(documentId: string): Promise<IngestResult> {
   const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
   if (!doc) return { status: 'failed', reason: `document ${documentId} not found` };
   if (!doc.content?.trim()) {
-    await setProgress(documentId, { ingestStatus: 'failed' });
-    return { status: 'failed', reason: 'empty content' };
+    const parsed = await parseStage(doc);
+    if (!parsed) {
+      await setProgress(documentId, { ingestStatus: 'failed' });
+      return { status: 'failed', reason: 'empty content (parse pre-stage unavailable or failed)' };
+    }
+    doc.content = parsed;
   }
 
   try {
