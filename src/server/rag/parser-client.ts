@@ -27,9 +27,58 @@ export function sidecarConfigured(): boolean {
   return Boolean(process.env.PARSER_SIDECAR_URL);
 }
 
-/** Strip the sidecar's page markers for clean chunking (page-range mapping = follow-up). */
+/** Strip the sidecar's page markers (when the page map is not needed). */
 export function stripPageMarkers(markdown: string): string {
   return markdown.replace(/<!-- odl-page \d+ -->\n?/g, '');
+}
+
+/** Page breakpoint: stripped-markdown line `line` (0-based) is where `page` starts. */
+export interface PageBreak {
+  page: number;
+  line: number;
+}
+
+/**
+ * Strip the sidecar's `<!-- odl-page N -->` markers AND record where each page begins
+ * in the stripped text. Marker semantics (verified against opendataloader output):
+ * the marker is a standalone line at the START of page N — content after it belongs
+ * to page N. The map is persisted on the document (documents.page_map) so re-ingests
+ * can recompute chunk page ranges without re-parsing.
+ */
+export function extractPageMap(marked: string): { markdown: string; pageMap: PageBreak[] } {
+  const out: string[] = [];
+  const pageMap: PageBreak[] = [];
+  for (const line of marked.split(/\r?\n/)) {
+    const m = line.match(/^<!-- odl-page (\d+) -->\s*$/);
+    if (m) {
+      pageMap.push({ page: Number(m[1]), line: out.length });
+      continue;
+    }
+    // Inline markers (not produced by the CLI today, but cheap to guard): drop without
+    // touching line structure so breakpoint offsets stay valid.
+    out.push(line.includes('<!-- odl-page') ? line.replace(/<!-- odl-page \d+ -->/g, '') : line);
+  }
+  return { markdown: out.join('\n'), pageMap };
+}
+
+/** Binary-search lookup: stripped-markdown line index → page number (null before page 1 / no map). */
+export function pageLookup(pageMap: PageBreak[] | null | undefined): (line: number) => number | null {
+  if (!pageMap?.length) return () => null;
+  return (line) => {
+    let lo = 0;
+    let hi = pageMap.length - 1;
+    let page: number | null = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (pageMap[mid].line <= line) {
+        page = pageMap[mid].page;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return page;
+  };
 }
 
 export async function parsePdfViaSidecar(

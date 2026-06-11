@@ -7,7 +7,7 @@
  * chunks transactionally → Meili chunks index (best-effort) → toc/status/progress.
  */
 import { createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { documents, documentChunks } from '~/db/schema/document.schema';
 import { files } from '~/db/schema/file.schema';
@@ -15,7 +15,7 @@ import { chunkMarkdown } from './chunker';
 import { chunkStrategy, estimateTokens, type ChunkStrategy } from './tier';
 import { EMBED_DIM, embedModel, embedTexts } from './embedding';
 import { splitBatches } from './zhipu';
-import { parsePdfViaSidecar, stripPageMarkers } from './parser-client';
+import { extractPageMap, pageLookup, parsePdfViaSidecar, type PageBreak } from './parser-client';
 import { indexChunks, removeChunksOfDocument } from '~/search/meilisearch';
 
 /** Flat chunk shape fed to the embed+insert loop (parentIndex -1 = a top-level/single chunk). */
@@ -23,6 +23,8 @@ interface FlatChunk {
   sectionPath: string;
   text: string;
   parentIndex: number;
+  pageStart: number | null;
+  pageEnd: number | null;
 }
 
 /**
@@ -30,19 +32,34 @@ interface FlatChunk {
  *  - 'single'     → whole document as ONE chunk (no parent/child; kb_search returns it whole)
  *  - 'structured' → heading-scoped parents + paragraph-packed children
  * Returns the strategy too, so the caller can record it on the document row.
+ * `pageMap` (from the parse stage / documents.page_map) feeds chunk page ranges.
  */
 function buildChunks(
   title: string,
   content: string,
+  pageMap: PageBreak[] | null,
 ): { all: FlatChunk[]; toc: ReturnType<typeof chunkMarkdown>['toc']; strategy: ChunkStrategy } {
   const strategy = chunkStrategy(estimateTokens(content));
   if (strategy === 'single') {
-    return { all: [{ sectionPath: title, text: content.trim(), parentIndex: -1 }], toc: [], strategy };
+    const single: FlatChunk = {
+      sectionPath: title,
+      text: content.trim(),
+      parentIndex: -1,
+      pageStart: pageMap?.[0]?.page ?? null,
+      pageEnd: pageMap?.length ? pageMap[pageMap.length - 1].page : null,
+    };
+    return { all: [single], toc: [], strategy };
   }
-  const { parents, children, toc } = chunkMarkdown(title, content);
+  const { parents, children, toc } = chunkMarkdown(title, content, pageLookup(pageMap));
   const all: FlatChunk[] = [
     ...parents.map((p) => ({ ...p, parentIndex: -1 })),
-    ...children.map((c) => ({ sectionPath: c.sectionPath, text: c.text, parentIndex: c.parentIndex })),
+    ...children.map((c) => ({
+      sectionPath: c.sectionPath,
+      text: c.text,
+      parentIndex: c.parentIndex,
+      pageStart: c.pageStart,
+      pageEnd: c.pageEnd,
+    })),
   ];
   return { all, toc, strategy };
 }
@@ -69,7 +86,9 @@ export interface IngestResult {
  * embed are SEPARATE state machines: a parse failure marks parse_status='failed'
  * (visible + retryable with another engine, spec DR-7) without touching chunk state.
  */
-async function parseStage(doc: typeof documents.$inferSelect): Promise<string | null> {
+async function parseStage(
+  doc: typeof documents.$inferSelect,
+): Promise<{ markdown: string; pageMap: PageBreak[] } | null> {
   if (!doc.fileId) return null;
   const [file] = await db.select().from(files).where(eq(files.id, doc.fileId)).limit(1);
   const name = (file?.name || doc.filename || '').toLowerCase();
@@ -91,16 +110,17 @@ async function parseStage(doc: typeof documents.$inferSelect): Promise<string | 
     if (!parsed.ok || !parsed.markdown?.trim()) {
       throw new Error(parsed.error || 'parser produced no text (scanned PDF? try OCR when available)');
     }
-    const markdown = stripPageMarkers(parsed.markdown);
+    const { markdown, pageMap } = extractPageMap(parsed.markdown);
     await setProgress(doc.id, {
       content: markdown,
+      pageMap: pageMap.length ? pageMap : null,
       parseStatus: 'ready',
       parseMethod: mode,
       tokenEstimate: estimateTokens(markdown),
       totalCharCount: markdown.length,
       totalLineCount: markdown.split(/\r?\n/).length,
     });
-    return markdown;
+    return { markdown, pageMap };
   } catch (err) {
     console.error('[rag-ingest] parse stage failed:', doc.id, err);
     await setProgress(doc.id, { parseStatus: 'failed' }).catch(() => {});
@@ -111,19 +131,21 @@ async function parseStage(doc: typeof documents.$inferSelect): Promise<string | 
 export async function ingestDocument(documentId: string): Promise<IngestResult> {
   const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
   if (!doc) return { status: 'failed', reason: `document ${documentId} not found` };
+  let pageMap = (doc.pageMap as PageBreak[] | null) ?? null;
   if (!doc.content?.trim()) {
     const parsed = await parseStage(doc);
     if (!parsed) {
       await setProgress(documentId, { ingestStatus: 'failed' });
       return { status: 'failed', reason: 'empty content (parse pre-stage unavailable or failed)' };
     }
-    doc.content = parsed;
+    doc.content = parsed.markdown;
+    pageMap = parsed.pageMap.length ? parsed.pageMap : null;
   }
 
   try {
     await setProgress(documentId, { ingestStatus: 'processing', ingestProgress: 5 });
 
-    const { all, toc, strategy } = buildChunks(doc.title || doc.filename || '文档', doc.content);
+    const { all, toc, strategy } = buildChunks(doc.title || doc.filename || '文档', doc.content, pageMap);
     if (all.length === 0) {
       await setProgress(documentId, { ingestStatus: 'failed' });
       return { status: 'failed', reason: 'no chunks produced' };
@@ -144,6 +166,23 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
       hashes.every((h, _, set) => set.includes(h) || true) && // order-insensitive compare below
       [...new Set(hashes)].every((h) => existing.some((e) => e.contentHash === h))
     ) {
+      // Page ranges are NOT part of the content hash, so a re-parse with the same engine
+      // lands here with identical chunks — backfill pages onto the existing rows (and the
+      // page-aware toc) without paying for re-embedding.
+      if (pageMap?.length) {
+        for (let i = 0; i < all.length; i++) {
+          await db
+            .update(documentChunks)
+            .set({ pageStart: all[i].pageStart, pageEnd: all[i].pageEnd })
+            .where(
+              and(
+                eq(documentChunks.documentId, documentId),
+                eq(documentChunks.contentHash, hashes[i]),
+              ),
+            );
+        }
+        await setProgress(documentId, { toc });
+      }
       await setProgress(documentId, { ingestStatus: 'ready', ingestProgress: 100 });
       return { status: 'skipped', chunks: existing.length };
     }
@@ -176,6 +215,8 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
             text: chunk.text,
             embedding: vectors[i],
             sectionPath: chunk.sectionPath,
+            pageStart: chunk.pageStart,
+            pageEnd: chunk.pageEnd,
             parentChunkId: chunk.parentIndex >= 0 ? ids[chunk.parentIndex] : null,
             contentHash: hashes[i],
             contextPrefix: chunk.sectionPath,
