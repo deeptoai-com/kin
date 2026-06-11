@@ -83,10 +83,7 @@
 
 - 实测：npm `@opendataloader/pdf`（Node 原生，23MB fat jar）；纯本地、Apache 2.0；中文文字版 PDF 标题层级提取完整；内容安全过滤默认开（与 R4 注入护栏同向）。
 - **接入**：`document-parser.ts` 的 `PARSERS` 链——PDF 首选 opendataloader（简单档 `--reading-order off`，结构化档完整模式），markitdown 退为 PDF 降级 + 其余格式主力。
-- **⚠️ 待 Owner 拍板（部署依赖）**：opendataloader 需系统 **Java 11+**（不捆 JRE）。镜像刚瘦身砍掉 playwright/libreoffice，加 JRE（headless ~180MB）有张力。三选一：
-  - **(a)** worker 镜像装 JRE（解析在 ingest 跑，app 不变）——需 app/worker 拆镜像或都装
-  - **(b)** 独立 parser sidecar 容器（最干净，多一个服务）
-  - **(c)** 现有镜像都装（最简单，+180MB）
+- **Java 运行时（已定 2026-06-11，Owner 拍板）**：**独立 parser sidecar 容器**（自带 JRE + opendataloader），app/worker 主镜像不动。最干净、职责分明、易扩展——**后续 OCR 引擎也归这个 sidecar**。代价：多一个 compose 服务 + 一层 HTTP 调用（ingest worker → parser sidecar）。U1 落地。
 
 ## 8. 数据模型变更（实施时落迁移）
 
@@ -122,6 +119,11 @@ U0 不依赖任何外部决策，可立即开工。U1 卡 Java 决策，U3 卡 O
 
 ## 11. 待 Owner 拍板
 
-1. **Java 运行时落位**（§7 的 a/b/c）——阻塞 U1。
+1. ~~Java 运行时落位~~ → **已定：独立 parser sidecar（2026-06-11）**，见 §7。
 2. **OCR 项目接入方式**（路径/仓库）——阻塞 U3。
 3. 真实招股书语料（文字版）——黄金集 v2 + 验证整条解析→检索链路。
+
+## 12. 进度
+
+- **U0**（schema 解析/嵌入两状态机 + 知识库全量嵌入 + 小文档单 chunk）：实施中（2026-06-11）。
+- U1（opendataloader sidecar）、U2（前端）、U3（OCR）：待 U0 后 / 待依赖。

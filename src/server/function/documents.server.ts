@@ -11,7 +11,7 @@ import { documents } from '~/db/schema/document.schema';
 import { auth } from '~/server/auth.server';
 import { S3StaticFileImpl } from '~/server/s3/s3';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { estimateTokens, routeTier } from '~/server/rag/tier';
+import { estimateTokens } from '~/server/rag/tier';
 import { scheduleRagIngest } from '~/server/rag/queue';
 import { canAccessDocument } from '~/server/projects/access';
 
@@ -247,11 +247,14 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     const shouldCreateDocument =
       !!input.addToKnowledgeBase || Boolean(input.content?.trim().length);
 
-    // RAG R1 (final spec D5): tier the document at creation — only 'rag'-tier content
-    // enters the embed pipeline; small docs stay on the free Read/Grep path.
+    // RAG ingest-UX spec (D5/D6): a KB/document-library document goes FULLY into the
+    // vector store — size never decides whether to embed (only how to chunk, decided
+    // later in ingest). Parse vs embed are two state machines: content present now →
+    // parse_status 'ready' + embed scheduled; content absent (large PDF awaiting the
+    // U1 parse sidecar) → parse_status 'pending', embed deferred until parse fills content.
     const content = input.content ?? '';
+    const hasContent = Boolean(content.trim().length);
     const tokenEstimate = content ? estimateTokens(content) : 0;
-    const ragTier = content ? routeTier(tokenEstimate) : null;
 
     const { fileRecord, ragDocumentId } = await db.transaction(async (tx) => {
       const [createdFile] = await tx
@@ -288,11 +291,14 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
             userId: user.id,
             clientId: user.id,
             tokenEstimate: tokenEstimate || null,
-            ragTier,
-            ingestStatus: ragTier === 'rag' ? 'pending' : 'none',
+            // parse_status: text already present → 'ready'; else awaits the parse stage (U1)
+            parseStatus: hasContent ? 'ready' : 'pending',
+            // embed every document with text (full-coverage); ragTier (single|structured)
+            // is recorded by the ingest pipeline once it chunks.
+            ingestStatus: hasContent ? 'pending' : 'none',
           })
           .returning({ id: documents.id });
-        if (ragTier === 'rag') createdRagDocId = createdDoc?.id ?? null;
+        if (hasContent) createdRagDocId = createdDoc?.id ?? null;
       }
 
       return { fileRecord: createdFile, ragDocumentId: createdRagDocId };
@@ -312,7 +318,9 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
 
 /**
  * Manually (re)ingest a document into the RAG pipeline — used by the documents UI and
- * for backfilling docs created before R1. Forces tier re-routing from current content.
+ * for backfilling docs created before this shipped. Full-coverage (spec D5): any document
+ * with text is embedded; the ingest pipeline picks single vs structured chunking by size.
+ * No content (large PDF awaiting parse) → nothing to embed yet.
  */
 export const reingestDocument = createServerFn({ method: 'POST' })
   .inputValidator((input: unknown) => {
@@ -332,17 +340,17 @@ export const reingestDocument = createServerFn({ method: 'POST' })
     if (!(await canAccessDocument(user.id, doc))) throw new Error('FORBIDDEN');
 
     const tokenEstimate = estimateTokens(doc.content ?? '');
-    const ragTier = routeTier(tokenEstimate);
+    const hasContent = Boolean(doc.content?.trim().length);
     await db
       .update(documents)
-      .set({ tokenEstimate, ragTier, ingestStatus: ragTier === 'rag' ? 'pending' : 'none' })
+      .set({ tokenEstimate, ingestStatus: hasContent ? 'pending' : 'none' })
       .where(eq(documents.id, doc.id));
 
-    if (ragTier !== 'rag') {
-      return { scheduled: false as const, ragTier, tokenEstimate };
+    if (!hasContent) {
+      return { scheduled: false as const, reason: 'no-content', tokenEstimate };
     }
     const mode = await scheduleRagIngest(doc.id);
-    return { scheduled: true as const, ragTier, tokenEstimate, mode };
+    return { scheduled: true as const, tokenEstimate, mode };
   });
 
 export const completeDocumentUpload = createServerFn({ method: 'POST' })

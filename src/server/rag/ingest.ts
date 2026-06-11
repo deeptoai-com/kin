@@ -11,8 +11,38 @@ import { eq } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { documents, documentChunks } from '~/db/schema/document.schema';
 import { chunkMarkdown } from './chunker';
+import { chunkStrategy, estimateTokens, type ChunkStrategy } from './tier';
 import { EMBED_DIM, EMBED_MODEL, embedTexts, splitBatches } from './zhipu';
 import { indexChunks, removeChunksOfDocument } from '~/search/meilisearch';
+
+/** Flat chunk shape fed to the embed+insert loop (parentIndex -1 = a top-level/single chunk). */
+interface FlatChunk {
+  sectionPath: string;
+  text: string;
+  parentIndex: number;
+}
+
+/**
+ * Build the chunk list per the doc's size (ingest-UX spec D6):
+ *  - 'single'     → whole document as ONE chunk (no parent/child; kb_search returns it whole)
+ *  - 'structured' → heading-scoped parents + paragraph-packed children
+ * Returns the strategy too, so the caller can record it on the document row.
+ */
+function buildChunks(
+  title: string,
+  content: string,
+): { all: FlatChunk[]; toc: ReturnType<typeof chunkMarkdown>['toc']; strategy: ChunkStrategy } {
+  const strategy = chunkStrategy(estimateTokens(content));
+  if (strategy === 'single') {
+    return { all: [{ sectionPath: title, text: content.trim(), parentIndex: -1 }], toc: [], strategy };
+  }
+  const { parents, children, toc } = chunkMarkdown(title, content);
+  const all: FlatChunk[] = [
+    ...parents.map((p) => ({ ...p, parentIndex: -1 })),
+    ...children.map((c) => ({ sectionPath: c.sectionPath, text: c.text, parentIndex: c.parentIndex })),
+  ];
+  return { all, toc, strategy };
+}
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -44,17 +74,11 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
   try {
     await setProgress(documentId, { ingestStatus: 'processing', ingestProgress: 5 });
 
-    const { parents, children, toc } = chunkMarkdown(doc.title || doc.filename || '文档', doc.content);
-    if (parents.length === 0) {
+    const { all, toc, strategy } = buildChunks(doc.title || doc.filename || '文档', doc.content);
+    if (all.length === 0) {
       await setProgress(documentId, { ingestStatus: 'failed' });
       return { status: 'failed', reason: 'no chunks produced' };
     }
-
-    // One flat list: parents first (children reference them), order stable.
-    const all = [
-      ...parents.map((p) => ({ ...p, parentIndex: -1 })),
-      ...children.map((c) => ({ sectionPath: c.sectionPath, text: c.text, parentIndex: c.parentIndex })),
-    ];
     const hashes = all.map((c) => sha256(embedInput(c.sectionPath, c.text)));
 
     // Incremental skip (final spec D10): same model+dim and identical hash set → no re-embed.
@@ -132,6 +156,7 @@ export async function ingestDocument(documentId: string): Promise<IngestResult> 
       ingestStatus: 'ready',
       ingestProgress: 100,
       toc,
+      ragTier: strategy,
       embedModel: EMBED_MODEL,
       embedDim: EMBED_DIM,
     });

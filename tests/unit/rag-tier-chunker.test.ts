@@ -11,6 +11,7 @@ import {
   estimateTokens,
   routeTier,
 } from '../../src/server/rag/tier';
+import { SINGLE_CHUNK_MAX_TOKENS, chunkStrategy } from '../../src/server/rag/tier';
 import { CHILD_MAX_TOKENS, chunkMarkdown } from '../../src/server/rag/chunker';
 import { rrfFuse } from '../../src/server/rag/fuse';
 
@@ -22,7 +23,18 @@ describe('estimateTokens', () => {
   });
 });
 
-describe('routeTier — the cost valve', () => {
+describe('chunkStrategy — KB docs embed regardless of size; size only picks how to chunk (spec D6)', () => {
+  it('small doc → single chunk (whole doc, preserves global structure)', () => {
+    expect(chunkStrategy(0)).toBe('single');
+    expect(chunkStrategy(SINGLE_CHUNK_MAX_TOKENS)).toBe('single');
+  });
+  it('large doc → structured parent/child', () => {
+    expect(chunkStrategy(SINGLE_CHUNK_MAX_TOKENS + 1)).toBe('structured');
+    expect(chunkStrategy(100_000)).toBe('structured');
+  });
+});
+
+describe('routeTier — legacy chat-attachment tiering', () => {
   it('small docs are inline (never embedded)', () => {
     expect(routeTier(500, DEFAULT_RAG_MIN_TOKENS)).toBe('inline');
     expect(routeTier(INLINE_MAX_TOKENS, DEFAULT_RAG_MIN_TOKENS)).toBe('inline');

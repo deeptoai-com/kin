@@ -37,13 +37,24 @@ export const documents = pgTable(
     // ── RAG R0 ──────────────────────────────────────────────────────────────
     /** Access primitive: null = personal (owner = userId), else visible to project members. */
     projectId: uuid('project_id').references(() => project.id, { onDelete: 'set null' }),
-    /** none = not routed yet / not eligible; pipeline: pending → processing → ready | failed. */
+
+    // ── Parse stage (U0, ingest-UX spec §8): PDF/doc → Markdown, decoupled from embedding.
+    /** simple | structured | ocr — engine the user chose / system recommended (U1 fills). */
+    parseMethod: text('parse_method'),
+    /** pending → processing → ready | failed. Independent of ingestStatus so parsing can be
+     *  retried / re-engined without re-embedding. (U0: content-on-create docs start 'ready'.) */
+    parseStatus: text('parse_status').notNull().default('ready'),
+
+    // ── Embed stage ──────────────────────────────────────────────────────────
+    /** none = not eligible (e.g. chat attachment); pipeline: pending → processing → ready | failed. */
     ingestStatus: text('ingest_status').notNull().default('none'),
     /** 0–100, written by the ingest pipeline for UI progress. */
     ingestProgress: integer('ingest_progress').notNull().default(0),
-    /** Heuristic token count of `content`, basis for tier routing. */
+    /** Heuristic token count of `content`. */
     tokenEstimate: integer('token_estimate'),
-    /** inline | grep | rag — only 'rag' documents are chunked + embedded. */
+    /** Chunk strategy (U0, spec D6): 'single' (small doc → whole as 1 chunk) | 'structured'
+     *  (large doc → parent/child). KB docs embed REGARDLESS of size; this only picks HOW to
+     *  chunk. (Legacy values inline/grep/rag from R1 are superseded.) */
     ragTier: text('rag_tier'),
     /** Document-level digest for holistic routing (R3). */
     summary: text('summary'),
