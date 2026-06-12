@@ -629,6 +629,10 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 
 ## Dokploy 部署规则
 
+> ⚠️ **定位（2026-06-12 Owner 确认）**：Dokploy 是**未启用的备选方案**——oxygenie.cc
+> **并未**使用 Dokploy 部署（实际方式见下文「生产部署（oxygenie.cc）」节）。本节与
+> `docs/deployment/dokploy.md` 仅作历史资料/未来备选参考，**不要**按本节流程"更新生产"。
+
 ### Docker 镜像构建与推送
 
 项目使用 **GHCR (GitHub Container Registry)** 存储 Docker 镜像，Dokploy 从 GHCR 拉取镜像部署。
@@ -703,12 +707,27 @@ services:
 4. ✅ 在 Dokploy 触发重新部署
 5. ✅ 检查部署日志确认拉取了新镜像（看 digest 是否变化）
 
-### 生产部署（oxygenie.cc）—— ✅ 已上线（2026-06-05）
+### 生产部署（oxygenie.cc）—— 本地部署 + Cloudflare 隧道（2026-06-12 Owner 确认）
 
-**操作指南(7 步 + 卡点根因表,实战验证):`docs/deployment/dokploy.md`** ← 改部署前必读。
-决策/差异记录:`docs/project/research/2026-06-oxygenie-cc-dokploy-deployment.md`。
+**oxygenie.cc 没有使用 Dokploy。** 它跑在 owner 本地机器的 docker stack 上
+（`docker-compose.tunnel.yml`，镜像 `oxygenie:local` **本地构建**、`pull_policy: never`），
+经 Cloudflare 隧道（cloudflared）穿透对外，成为事实上的生产环境。
 
-**关键不变量(踩错任一 → 部署失败):**
+**更新 oxygenie.cc（= 更新本地 stack；不走 amd64/GHCR/Dokploy）：**
+
+```bash
+git pull
+DOCKER_BUILDKIT=1 docker build -t oxygenie:local .     # 本机 arm64 即可，无需 buildx/push
+set -a; . ~/oxygenie-deploy/secrets.env; set +a        # secrets 在仓库外（chmod 600）
+APP_IMAGE=oxygenie APP_TAG=local docker compose -p oxygenie -f docker-compose.tunnel.yml \
+  up -d --no-deps --force-recreate app worker
+```
+
+历史资料：2026-06-05 曾按 Dokploy/GHCR 流程完成过部署验证——操作指南
+`docs/deployment/dokploy.md`、决策记录 `docs/project/research/2026-06-oxygenie-cc-dokploy-deployment.md`
+仅作未来备选参考。
+
+**关键不变量(原为 Dokploy 部署总结；其中 4/5/6/9/10/11 同样适用于当前隧道栈,踩错 → 部署失败):**
 
 1. **镜像 off-server 构建 → 推 GHCR → Dokploy 只拉取**。SSR 打包峰值大,在 Dokploy 主机和
    标准 7G CI runner 上易 OOM。`docker-compose.dokploy.yml` 用 `image:`+`pull_policy: always`(**非 `build:`**)。
