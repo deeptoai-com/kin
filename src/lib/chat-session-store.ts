@@ -195,6 +195,10 @@ interface ChatSessionState {
   // localStorage (PR8) and restored on session switch/resume.
   selectedModelId?: string;
 
+  // Session KB scope (KB 面板勾选, prd 阶段3): kb_search restricts retrieval to these
+  // knowledge bases for this conversation. Empty = all visible documents (default).
+  selectedKbIds: string[];
+
   // Skill to arm once the NEXT (newly-created) session is ready. Used by the
   // A2Composer "open new chat & load" flow: the skill was just enabled (effective
   // next conversation per SDK constraint), so we arm it in the fresh session.
@@ -233,6 +237,7 @@ interface ChatSessionState {
   clearTemporarySkills: () => void;
   setSelectedTier: (mode: InteractionMode | undefined) => void;
   setSelectedModelId: (id: string | undefined) => void;
+  setSelectedKbIds: (ids: string[]) => void;
   setPendingArmedSkill: (skill: { slug: string; name?: string; hint?: string } | undefined) => void;
   setPendingProjectId: (projectId: string | undefined) => void;
 
@@ -483,11 +488,16 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   temporarySkills: [],
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
   selectedModelId: undefined,
+  selectedKbIds: [],
   pendingArmedSkill: undefined,
   pendingProjectId: undefined,
 
   setSelectedTier: (selectedTier) => {
     set({ selectedTier });
+  },
+
+  setSelectedKbIds: (selectedKbIds: string[]) => {
+    set({ selectedKbIds });
   },
 
   setPendingArmedSkill: (pendingArmedSkill) => {

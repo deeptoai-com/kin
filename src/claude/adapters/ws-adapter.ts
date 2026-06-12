@@ -109,7 +109,7 @@ type StreamEvent = {
 type InboundMessage =
   | { type: 'create_session'; projectId?: string }
   | { type: 'init_session'; sessionId: string }
-  | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string; model?: string }
+  | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string; model?: string; kbIds?: string[] }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live'; force?: boolean }
@@ -862,6 +862,8 @@ const ClaudeAgentWSAdapter: ChatModelAdapter = {
           // Multi-model: per-conversation selected model id (server validates +
           // rejects on unknown/disabled/unhealthy; undefined → server default).
           model: useChatSessionStore.getState().selectedModelId,
+          // Session KB scope (面板勾选, prd 阶段3): kb_search restricts to these KBs.
+          kbIds: useChatSessionStore.getState().selectedKbIds,
         });
         console.log('[WS Adapter] ✅ Message sent successfully');
       } catch (connectError) {

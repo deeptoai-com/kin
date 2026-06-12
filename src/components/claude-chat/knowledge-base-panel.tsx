@@ -11,10 +11,11 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, FileText, Loader2, RefreshCw, Trash2, AlertCircle, Book } from 'lucide-react';
+import { Plus, FileText, Loader2, RefreshCw, Trash2, AlertCircle, Book, Search, CheckCircle2, Circle, CheckSquare, Square, Info } from 'lucide-react';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
 import { cn } from '~/lib/utils';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 import { DocumentSelectorModal } from './document-selector-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '~/components/ui/dialog';
 import { Button } from '~/components/ui/button';
@@ -48,6 +49,9 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [addingKbId, setAddingKbId] = useState<string | null>(null);
+  // Session KB scope (prd 阶段3): kb_search restricts retrieval to the checked KBs.
+  const selectedKbIds = useChatSessionStore((s) => s.selectedKbIds);
+  const setSelectedKbIds = useChatSessionStore((s) => s.setSelectedKbIds);
 
   // Fetch session documents
   const { data, isLoading, error } = useQuery({
@@ -211,6 +215,66 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* ---- AI 检索范围 (KB redesign prd 阶段3) ---- */}
+      <div className="rounded-lg border border-border p-2.5">
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Search className="h-3.5 w-3.5" />
+          AI 检索范围
+        </div>
+        <button
+          type="button"
+          onClick={() => setSelectedKbIds([])}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+            selectedKbIds.length === 0 ? 'bg-primary/10 text-foreground' : 'text-foreground/80 hover:bg-accent'
+          )}
+        >
+          {selectedKbIds.length === 0 ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+          ) : (
+            <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className="flex-1 text-left">全部我的文档</span>
+          {selectedKbIds.length === 0 && <span className="text-[10px] text-primary">默认</span>}
+        </button>
+        {knowledgeBases.map((kb) => {
+          const checked = selectedKbIds.includes(kb.id);
+          return (
+            <button
+              key={kb.id}
+              type="button"
+              onClick={() =>
+                setSelectedKbIds(
+                  checked ? selectedKbIds.filter((id) => id !== kb.id) : [...selectedKbIds, kb.id],
+                )
+              }
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                checked ? 'bg-primary/10 text-foreground' : 'text-foreground/80 hover:bg-accent'
+              )}
+            >
+              {checked ? (
+                <CheckSquare className="h-4 w-4 shrink-0 text-primary" />
+              ) : (
+                <Square className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              <span className="flex-1 truncate text-left">{kb.name}</span>
+              <span className="text-[10px] text-muted-foreground">{kb.documentCount} 文档</span>
+            </button>
+          );
+        })}
+        {selectedKbIds.length > 0 ? (
+          <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-[11px] text-primary">
+            <Info className="h-3 w-3 shrink-0" />
+            本对话中 AI 只检索所选知识库
+          </div>
+        ) : (
+          <p className="mt-1.5 px-2 text-[11px] leading-relaxed text-muted-foreground">
+            勾选知识库后，AI 回答问题时只在所选范围内检索引用。
+          </p>
+        )}
+      </div>
+
       {/* Description */}
       <p className="text-xs text-muted-foreground">
         {content.knowledgeBase.description}

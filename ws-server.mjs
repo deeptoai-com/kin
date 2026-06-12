@@ -1099,7 +1099,14 @@ async function resolveModelForChat(cookie, modelId) {
 }
 
 async function handleChat(ws, prompt, resumeSessionId, options = {}) {
-  const { silentInit = false, skillSlug = null, permissionTier = null, model: selectedModel = null } = options;
+  const {
+    silentInit = false,
+    skillSlug = null,
+    permissionTier = null,
+    model: selectedModel = null,
+    // Session KB scope (面板勾选): forwarded to the worker so kb_search restricts to it.
+    kbIds = [],
+  } = options;
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -1396,6 +1403,8 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       // (/api/rag/search) with the user's own auth — via STDIN on purpose, never the
       // worker env, so agent-spawned Bash children can't read the cookie.
       cookie: ws.cookie,
+      // Session KB scope (面板勾选, prd 阶段3): kb_search restricts to these KBs.
+      kbIds,
     });
     // Newline-delimited + keep stdin OPEN so Ask-mode HITL can stream
     // approval_response lines to the worker mid-run. The worker exits on its own
@@ -1692,6 +1701,7 @@ async function handleMessage(ws, msg) {
         skillSlug: message.skillSlug,
         permissionTier: message.permissionTier,
         model: message.model,
+        kbIds: message.kbIds,
       });
       break;
 
