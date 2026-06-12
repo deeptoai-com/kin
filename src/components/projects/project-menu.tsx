@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, UserPlus, Pencil, Trash2, LogOut } from 'lucide-react';
+import { MoreHorizontal, Settings, UserPlus, Pencil, Trash2, LogOut } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,7 +28,14 @@ import { useProjects, type ProjectDTO } from '~/lib/hooks/use-projects';
  * Backed by useProjects (addMember/updateProject/deleteProject/removeMember). The default
  * "个人" project is special — the caller (ProjectTreeRow) hides the menu for it.
  */
-export function ProjectMenu({ project }: { project: ProjectDTO }) {
+export function ProjectMenu({
+  project,
+  onOpenSettings,
+}: {
+  project: ProjectDTO;
+  /** When provided, the menu shows 「项目设置」(detail-page menu);副侧边栏 omits it. */
+  onOpenSettings?: () => void;
+}) {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { updateProject, deleteProject, addMember, removeMember } = useProjects();
@@ -95,6 +102,12 @@ export function ProjectMenu({ project }: { project: ProjectDTO }) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40" onClick={(e) => e.stopPropagation()}>
+          {onOpenSettings && (
+            <DropdownMenuItem onSelect={onOpenSettings}>
+              <Settings className="h-4 w-4" />
+              项目设置
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => setShareOpen(true)}>
             <UserPlus className="h-4 w-4" />
             分享项目

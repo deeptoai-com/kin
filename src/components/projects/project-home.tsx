@@ -9,6 +9,8 @@ import { Plus, Share2, MessageSquare, FileText, Upload, Loader2 } from 'lucide-r
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs';
 import { LetterAvatar } from '~/components/ui/letter-avatar';
 import { ShareProjectDialog } from './share-project-dialog';
+import { ProjectMenu } from './project-menu';
+import { ProjectSettingsDialog } from './project-settings-dialog';
 import { isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { listProjectSessions } from '~/server/function/projects.server';
 import { useChatSessionStore } from '~/lib/chat-session-store';
@@ -35,6 +37,7 @@ export function ProjectHome({ project, currentUserId, personalLabel }: ProjectHo
   const navigate = useNavigate();
   const setPendingProjectId = useChatSessionStore((s) => s.setPendingProjectId);
   const [shareOpen, setShareOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const isOwner = project.ownerUserId === currentUserId;
 
@@ -76,6 +79,9 @@ export function ProjectHome({ project, currentUserId, personalLabel }: ProjectHo
               <Share2 className="h-4 w-4" />
               {content.home.share}
             </button>
+            {!project.isDefault && (
+              <ProjectMenu project={project} onOpenSettings={() => setSettingsOpen(true)} />
+            )}
           </div>
         </div>
 
@@ -129,6 +135,7 @@ export function ProjectHome({ project, currentUserId, personalLabel }: ProjectHo
       </div>
 
       <ShareProjectDialog open={shareOpen} onOpenChange={setShareOpen} project={project} isOwner={isOwner} />
+      <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} project={project} />
     </div>
   );
 }

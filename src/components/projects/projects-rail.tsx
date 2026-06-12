@@ -17,11 +17,13 @@ import {
   ChevronRight,
   ChevronDown,
   Pin,
+  Pencil,
 } from 'lucide-react';
 import { CreateProjectDialog } from './create-project-dialog';
 import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
 import { SessionMenu } from './session-menu';
 import { ProjectMenu } from './project-menu';
+import { ProjectSettingsDialog } from './project-settings-dialog';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { listProjectSessions } from '~/server/function/projects.server';
 import { useRailStore } from '~/lib/stores/rail-store';
@@ -352,6 +354,7 @@ function ProjectTreeRow({
 }) {
   const displayName = project.isDefault ? personalLabel : project.name;
   const shared = isShared(project);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const fetchSessions = useServerFn(listProjectSessions);
 
   const { data: sessions, isLoading } = useQuery<ProjectSessionRow[]>({
@@ -384,7 +387,18 @@ function ProjectTreeRow({
           </span>
         )}
         {!project.isDefault && (
-          <div className="opacity-0 transition-opacity group-hover/proj:opacity-100">
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/proj:opacity-100">
+            <button
+              type="button"
+              aria-label="项目设置"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSettingsOpen(true);
+              }}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
             <ProjectMenu project={project} />
           </div>
         )}
@@ -430,6 +444,9 @@ function ProjectTreeRow({
             </>
           )}
         </div>
+      )}
+      {!project.isDefault && (
+        <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} project={project} />
       )}
     </div>
   );
