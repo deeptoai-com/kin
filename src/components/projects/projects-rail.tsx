@@ -16,6 +16,7 @@ import {
   Sparkles,
   ChevronRight,
   ChevronDown,
+  Pin,
 } from 'lucide-react';
 import { CreateProjectDialog } from './create-project-dialog';
 import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
@@ -30,6 +31,8 @@ interface RecentSession {
   id: string;
   sdkSessionId: string;
   title: string;
+  favorite?: boolean;
+  projectId?: string | null;
 }
 
 interface ProjectsRailProps {
@@ -99,7 +102,18 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
     },
     refetchInterval: 30000,
   });
-  const recent = data?.sessions ?? [];
+  // 置顶 = favorite sessions across loose + projects; 最近 = loose 非置顶（去重）。
+  const { data: pinnedData } = useQuery<{ sessions: RecentSession[] }>({
+    queryKey: ['agent-sessions', 'all-pinned'],
+    queryFn: async () => {
+      const res = await fetch('/api/agent-sessions?limit=100');
+      if (!res.ok) throw new Error('Failed to fetch sessions');
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+  const pinned = (pinnedData?.sessions ?? []).filter((s) => s.favorite);
+  const recent = (data?.sessions ?? []).filter((s) => !s.favorite);
 
   const handleCreate = async ({ name }: { name: string }) => {
     const project = await createProject({ name });
@@ -218,6 +232,51 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
               )}
             </div>
           ))}
+
+        {/* ---- 置顶 (favorite: loose + project) ---- */}
+        {pinned.length > 0 && (
+          <>
+            <div className="px-2 pt-4 pb-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">置顶</span>
+            </div>
+            <div className="space-y-0.5">
+              {pinned.map((s) => {
+                const label = s.title || toLocalizedString(content.rail.newChat);
+                return (
+                  <div key={s.id} className="group/sess relative">
+                    {s.projectId ? (
+                      <Link
+                        to="/agents/projects/$projectId/c/$sessionId"
+                        params={{ projectId: s.projectId, sessionId: s.sdkSessionId }}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2 pr-8 text-sm text-foreground/80 transition-colors hover:bg-accent"
+                      >
+                        <Pin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{label}</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        to="/agents/c/$sessionId"
+                        params={{ sessionId: s.sdkSessionId }}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2 pr-8 text-sm text-foreground/80 transition-colors hover:bg-accent"
+                      >
+                        <Pin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{label}</span>
+                      </Link>
+                    )}
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/sess:opacity-100">
+                      <SessionMenu
+                        session={{ id: s.id, sdkSessionId: s.sdkSessionId, title: s.title }}
+                        projectId={s.projectId ?? undefined}
+                        personalLabel={toLocalizedString(content.rail.personal)}
+                        favorite
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* ---- Recent (loose chats) ---- */}
         <div className="px-2 pt-4 pb-1">
