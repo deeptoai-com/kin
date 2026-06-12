@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useIntlayer } from 'react-intlayer';
-import { Plus, FolderPlus, Users, MessageSquare, Loader2 } from 'lucide-react';
+import { Plus, FolderPlus, Users, MessageSquare, Loader2, Search, Sparkles } from 'lucide-react';
 import { LetterAvatar } from '~/components/ui/letter-avatar';
 import { CreateProjectDialog } from './create-project-dialog';
+import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { cn, toLocalizedString } from '~/lib/utils';
 
@@ -31,6 +32,19 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
   const navigate = useNavigate();
   const { projects, isLoading: projectsLoading, ensureDefault, createProject } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // ⌘K / Ctrl-K toggles conversation search (IA redesign §4).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Ensure the default "个人/Personal" Project exists — once, only if missing.
   const ensuredRef = useRef(false);
@@ -78,12 +92,38 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
         </button>
       </div>
 
+      {/* Search + Artifacts entries (IA redesign §2.2) */}
+      <div className="shrink-0 space-y-0.5 px-3 pb-1">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-foreground/80 transition-colors hover:bg-accent"
+        >
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-left">搜索</span>
+          <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
+        </button>
+        <button
+          type="button"
+          disabled
+          title="即将上线"
+          className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-foreground/40"
+        >
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">作品</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">待建</span>
+        </button>
+      </div>
+
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
         {/* ---- Projects ---- */}
         <div className="flex items-center justify-between px-2 pt-2 pb-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <Link
+            to="/agents/projects"
+            className="text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+          >
             {content.rail.projectsHeading}
-          </span>
+          </Link>
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
@@ -146,6 +186,7 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
       </div>
 
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
+      <SessionSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }
