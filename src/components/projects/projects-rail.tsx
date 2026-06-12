@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CreateProjectDialog } from './create-project-dialog';
 import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
+import { SessionMenu } from './session-menu';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { listProjectSessions } from '~/server/function/projects.server';
 import { useRailStore } from '~/lib/stores/rail-store';
@@ -233,15 +234,22 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
         ) : (
           <div className="space-y-0.5">
             {recent.map((session) => (
-              <Link
-                key={session.id}
-                to="/agents/c/$sessionId"
-                params={{ sessionId: session.sdkSessionId }}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent"
-              >
-                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">{session.title || toLocalizedString(content.rail.newChat)}</span>
-              </Link>
+              <div key={session.id} className="group/sess relative">
+                <Link
+                  to="/agents/c/$sessionId"
+                  params={{ sessionId: session.sdkSessionId }}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 pr-8 text-sm text-foreground/80 transition-colors hover:bg-accent"
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{session.title || toLocalizedString(content.rail.newChat)}</span>
+                </Link>
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/sess:opacity-100">
+                  <SessionMenu
+                    session={{ id: session.id, sdkSessionId: session.sdkSessionId, title: session.title }}
+                    personalLabel={toLocalizedString(content.rail.personal)}
+                  />
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -328,14 +336,22 @@ function ProjectTreeRow({
           ) : (
             <>
               {shown.map((s) => (
-                <Link
-                  key={s.id}
-                  to="/agents/projects/$projectId/c/$sessionId"
-                  params={{ projectId: project.id, sessionId: s.sdkSessionId }}
-                  className="block truncate rounded-lg px-3 py-1.5 text-sm text-foreground/75 transition-colors hover:bg-accent"
-                >
-                  {s.title || newChatLabel}
-                </Link>
+                <div key={s.id} className="group/sess relative">
+                  <Link
+                    to="/agents/projects/$projectId/c/$sessionId"
+                    params={{ projectId: project.id, sessionId: s.sdkSessionId }}
+                    className="block truncate rounded-lg px-3 py-1.5 pr-8 text-sm text-foreground/75 transition-colors hover:bg-accent"
+                  >
+                    {s.title || newChatLabel}
+                  </Link>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/sess:opacity-100">
+                    <SessionMenu
+                      session={{ id: s.id, sdkSessionId: s.sdkSessionId, title: s.title }}
+                      projectId={project.id}
+                      personalLabel={personalLabel}
+                    />
+                  </div>
+                </div>
               ))}
               {list.length > PROJECT_SESSION_LIMIT && (
                 <Link
