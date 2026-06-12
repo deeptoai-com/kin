@@ -78,8 +78,9 @@ export const Route = createFileRoute('/agents')({
 
 function RouteComponent() {
   const { user } = Route.useRouteContext();
+  // open={false} 受控锁定主侧边栏为常驻图标条（IA redesign §3：主条不折叠，只 hover 提示）。
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider open={false}>
       <AppSidebar variant="inset" user={user} />
       <SidebarInset>
         <SiteHeader />

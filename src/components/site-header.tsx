@@ -1,13 +1,15 @@
+import { PanelLeft } from "lucide-react"
 import { Button } from "~/components/ui/button"
 import { LocaleSwitcher } from "~/components/locale-switcher"
 import { Separator } from "~/components/ui/separator"
-import { SidebarTrigger } from "~/components/ui/sidebar"
 import { useMatches } from "@tanstack/react-router"
 import { useIntlayer } from "react-intlayer"
+import { useRailStore } from "~/lib/stores/rail-store"
 
 export function SiteHeader() {
   const matches = useMatches()
   const content = useIntlayer("app")
+  const toggleRail = useRailStore((s) => s.toggle)
 
   // Get the current route's title from the last matching route
   const currentRoute = matches[matches.length - 1]
@@ -31,14 +33,30 @@ export function SiteHeader() {
 
   const title = content.titles[getTitleKey(pathname)]
 
+  // The collapse key controls the SECONDARY rail (ProjectsRail), which only exists in the
+  // 智能体 module (chat + projects). Main sidebar is now a permanent icon rail (no trigger).
+  const hasRail = pathname.startsWith("/agents/c") || pathname.startsWith("/agents/projects")
+
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          orientation="vertical"
-          className="mx-2 data-[orientation=vertical]:h-4"
-        />
+        {hasRail && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="-ml-1 size-7"
+              onClick={() => toggleRail()}
+              aria-label="折叠/展开侧边栏"
+            >
+              <PanelLeft className="size-4" />
+            </Button>
+            <Separator
+              orientation="vertical"
+              className="mx-2 data-[orientation=vertical]:h-4"
+            />
+          </>
+        )}
         <h1 className="text-base font-medium">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
           <LocaleSwitcher />

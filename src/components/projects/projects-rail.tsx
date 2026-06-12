@@ -9,6 +9,7 @@ import { LetterAvatar } from '~/components/ui/letter-avatar';
 import { CreateProjectDialog } from './create-project-dialog';
 import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
+import { useRailStore } from '~/lib/stores/rail-store';
 import { cn, toLocalizedString } from '~/lib/utils';
 
 interface RecentSession {
@@ -30,6 +31,7 @@ interface ProjectsRailProps {
 export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
   const content = useIntlayer('projects');
   const navigate = useNavigate();
+  const collapsed = useRailStore((s) => s.collapsed);
   const { projects, isLoading: projectsLoading, ensureDefault, createProject } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -72,6 +74,11 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
     const project = await createProject({ name });
     navigate({ to: '/agents/projects/$projectId', params: { projectId: project.id } });
   };
+
+  // Collapsed: hide the rail but keep the search dialog mounted so ⌘K still works.
+  if (collapsed) {
+    return <SessionSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />;
+  }
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
