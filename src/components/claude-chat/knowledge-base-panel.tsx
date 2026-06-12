@@ -170,11 +170,9 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
         throw new Error('Failed to add knowledge base');
       }
 
-      const result = await res.json();
-      const kb = knowledgeBases.find((k) => k.id === kbId);
-      alert(toLocalizedString(content.knowledgeBase.addSuccess).replace('{name}', kb?.name || 'Unknown').replace('{count}', String(result.total)));
-
-      // Refresh the list
+      await res.json();
+      // No blocking alert — closing the picker + the refreshed document list IS the
+      // success feedback (the alert also kept the dialog visually stuck open).
       queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] });
       setShowKbSelector(false);
     } catch (error) {

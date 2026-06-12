@@ -10,6 +10,7 @@ import { writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { db } from '~/db/db-config';
 import { agentSession, sessionDocument, files, knowledgeBases, kbDocuments } from '~/db/schema';
+import { documents } from '~/db/schema/document.schema';
 import { requireUser } from '~/server/require-user';
 import { S3StaticFileImpl } from '~/server/s3/s3';
 import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
@@ -167,39 +168,52 @@ export const Route = createFileRoute('/api/workspace/$sessionId/knowledge-bases'
             const workspaceFilePath = path.join(knowledgeBasePath, prefixedFilename);
             const relativeFilePath = `knowledge-base/${prefixedFilename}`;
 
-            // Download from S3
-            console.log(`[POST] Downloading from S3: ${file.key}`);
-            const fileContent = await fileService.getFileByteArray(file.key);
-            if (!fileContent) {
-              console.log(`[POST] ERROR: Failed to download from S3: ${file.key}`);
-              errors.push({ fileId: file.id, fileName: file.name, error: 'Failed to download from S3' });
-              continue;
-            }
-
-            console.log(`[POST] Downloaded ${fileContent.length} bytes, writing to: ${workspaceFilePath}`);
-
-            // Write to workspace with KB prefix
-            await writeFile(workspaceFilePath, Buffer.from(fileContent));
-            console.log(`[POST] File written successfully`);
-
-            // F3/F4: parse rich docs → markdown the Agent can read, then move the original
-            // binary OUT of the Agent-visible workspace into a hidden .uploads/ dir.
-            // Non-fatal on failure. The session_document record points at the .md on success.
             let recordedFilePath = relativeFilePath;
-            if (needsParse(prefixedFilename)) {
-              try {
-                const parsed = await parseToMarkdown(workspaceFilePath, prefixedFilename, fileContent.length);
-                if (parsed.ok) {
-                  await writeFile(`${workspaceFilePath}.md`, parsed.markdown, 'utf8');
-                  const hiddenAbs = path.join(knowledgeBasePath, '.uploads', prefixedFilename);
-                  await mkdir(path.dirname(hiddenAbs), { recursive: true });
-                  await rename(workspaceFilePath, hiddenAbs);
-                  recordedFilePath = `${relativeFilePath}.md`;
-                } else {
-                  console.error(`[POST] Parse skipped/failed for ${prefixedFilename}: ${parsed.error}`);
+
+            // An ingested KB document already carries parsed markdown (documents.content,
+            // produced by the parser sidecar) — write THAT instead of re-downloading and
+            // re-parsing the binary. Faster (no 7MB download, no markitdown pass), and the
+            // agent reads the exact same text kb_search retrieves. The raw binary stays in
+            // S3 only — the agent can't read PDFs anyway (ARK document-block 400).
+            const [docRow] = await db
+              .select({ content: documents.content })
+              .from(documents)
+              .where(eq(documents.fileId, file.id))
+              .limit(1);
+
+            if (docRow?.content?.trim()) {
+              await writeFile(`${workspaceFilePath}.md`, docRow.content, 'utf8');
+              recordedFilePath = `${relativeFilePath}.md`;
+              console.log(`[POST] Wrote parsed markdown for ${prefixedFilename} (${docRow.content.length} chars)`);
+            } else {
+              // No parsed content (not ingested / parse pending) — fall back to the
+              // original binary + best-effort markitdown parse (F3/F4 behavior).
+              console.log(`[POST] Downloading from S3: ${file.key}`);
+              const fileContent = await fileService.getFileByteArray(file.key);
+              if (!fileContent) {
+                console.log(`[POST] ERROR: Failed to download from S3: ${file.key}`);
+                errors.push({ fileId: file.id, fileName: file.name, error: 'Failed to download from S3' });
+                continue;
+              }
+
+              console.log(`[POST] Downloaded ${fileContent.length} bytes, writing to: ${workspaceFilePath}`);
+              await writeFile(workspaceFilePath, Buffer.from(fileContent));
+
+              if (needsParse(prefixedFilename)) {
+                try {
+                  const parsed = await parseToMarkdown(workspaceFilePath, prefixedFilename, fileContent.length);
+                  if (parsed.ok) {
+                    await writeFile(`${workspaceFilePath}.md`, parsed.markdown, 'utf8');
+                    const hiddenAbs = path.join(knowledgeBasePath, '.uploads', prefixedFilename);
+                    await mkdir(path.dirname(hiddenAbs), { recursive: true });
+                    await rename(workspaceFilePath, hiddenAbs);
+                    recordedFilePath = `${relativeFilePath}.md`;
+                  } else {
+                    console.error(`[POST] Parse skipped/failed for ${prefixedFilename}: ${parsed.error}`);
+                  }
+                } catch (parseError) {
+                  console.error('[POST] Parse error:', parseError);
                 }
-              } catch (parseError) {
-                console.error('[POST] Parse error:', parseError);
               }
             }
 
