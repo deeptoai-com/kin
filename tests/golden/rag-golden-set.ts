@@ -74,13 +74,20 @@ export const GOLDEN_CASES: GoldenCase[] = [
 ];
 
 // ── Golden set v2: REAL corpus (rag-test-docs/minimax.md, 716-page prospectus) ────────
-// Judged by expectText-in-chunk (no section labels in real docs). Queries are
-// paraphrases mined from real facts — none contain the expected literal.
+// Judged by expectText-in-chunk (no section labels in real docs).
+// v2.1 balance fix: v2 was paraphrase-heavy (9/12), which is embedding's home turf —
+// the "BM25 leg hurts / rerank is neutral" conclusion was unfair. v2.1 adds lexical-
+// anchor questions (keyword / entity / clause) whose queries share LITERAL tokens with
+// the target. Anchors are deliberately script-neutral (Latin names, digits, clause
+// numbers like "18C.14"): users type simplified Chinese while the corpus is
+// traditional, so CJK terms never match lexically — only ASCII/digit tokens give the
+// BM25 leg a fair shot.
 
 export interface RealGoldenCase {
   query: string;
   expectText: string;
-  type: 'keyword' | 'paraphrase' | 'entity';
+  /** clause = the query cites a rule/clause number verbatim (上市規則第X條-style). */
+  type: 'keyword' | 'paraphrase' | 'entity' | 'clause';
 }
 
 /** Title used for the persistent golden document row (sourceType 'rag-golden'). */
@@ -99,4 +106,20 @@ export const REAL_GOLDEN_CASES: RealGoldenCase[] = [
   { query: '开放平台付费用户是怎么定义的', expectText: '50美元', type: 'paraphrase' },
   { query: '视频生成用的是哪个模型', expectText: 'Hailuo-02', type: 'entity' },
   { query: '语音合成模型叫什么', expectText: 'Speech-02', type: 'entity' },
+  // ── v2.1: lexical-anchor cases (every anchor verified verbatim in the corpus) ──────
+  // clause: query cites the rule number — BM25's home turf.
+  { query: '上市规则第18C.14条的禁售规定是什么', expectText: '18C.14', type: 'clause' },
+  { query: '上市规则第3.28条对公司秘书资格有什么要求', expectText: '3.28', type: 'clause' },
+  { query: '第8A.24条保留事项的投票是怎么规定的', expectText: '8A.24', type: 'clause' },
+  { query: '现有股东作为基石投资者认购需要根据第10.04条申请什么', expectText: '10.04', type: 'clause' },
+  // keyword: query contains an exact digit token from the target passage.
+  { query: '最高发售价165.00港元之外还要加收什么费用', expectText: '165.00', type: 'keyword' },
+  { query: '备考每股有形资产净值按已发行305,447,288股计算的依据', expectText: '305,447,288', type: 'keyword' },
+  { query: '付费用户650,300名是哪一年达到的', expectText: '650,300', type: 'keyword' },
+  { query: '公司的资金能支撑运营到2030年吗', expectText: '2030年3月', type: 'keyword' },
+  // entity: rare Latin proper noun shared verbatim between query and target.
+  { query: 'Alisoft 持有公司多少股权', expectText: 'Alisoft China Holding Limited', type: 'entity' },
+  { query: 'MiniMax M1 能处理多长的上下文', expectText: '一百萬個tokens', type: 'entity' },
+  { query: 'MiniMax M2 是为什么场景设计的', expectText: '代碼和Agent任務', type: 'entity' },
+  { query: 'Local Linearity 是由谁控制的实体', expectText: 'Local Linearity', type: 'entity' },
 ];

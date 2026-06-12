@@ -86,6 +86,9 @@ async function main() {
   for (const mode of Object.keys(MODES) as Mode[]) {
     let r1 = 0, r4 = 0, r8 = 0, mrr = 0;
     const misses: string[] = [];
+    // v2.1: per-type breakdown — the lexical-anchor cases (keyword/entity/clause) exist
+    // to judge the BM25 leg / rerank on THEIR home turf instead of a paraphrase-only set.
+    const byType = new Map<string, { n: number; r1: number; r4: number; mrr: number }>();
     for (const c of REAL_GOLDEN_CASES) {
       const hits = await searchKb(EVAL_USER, { query: c.query, k: K, ...MODES[mode], trace: false });
       const rank = hits.findIndex((h) => h.text.includes(c.expectText)) + 1;
@@ -93,9 +96,18 @@ async function main() {
       if (rank >= 1 && rank <= 4) r4++;
       if (rank >= 1) { r8++; mrr += 1 / rank; }
       if (rank < 1 || rank > 4) misses.push(`[${c.type}] ${c.query} (rank=${rank || 'none'})`);
+      const t = byType.get(c.type) ?? { n: 0, r1: 0, r4: 0, mrr: 0 };
+      t.n++;
+      if (rank === 1) t.r1++;
+      if (rank >= 1 && rank <= 4) t.r4++;
+      if (rank >= 1) t.mrr += 1 / rank;
+      byType.set(c.type, t);
     }
     const n = REAL_GOLDEN_CASES.length;
     console.log(`${mode.padEnd(9)} ${pct(r1 / n)} ${pct(r4 / n)} ${pct(r8 / n)}  ${(mrr / n).toFixed(3)}`);
+    for (const [type, t] of [...byType.entries()].sort()) {
+      console.log(`    ${type.padEnd(10)} n=${String(t.n).padEnd(2)} R@1 ${pct(t.r1 / t.n)} R@4 ${pct(t.r4 / t.n)} MRR ${(t.mrr / t.n).toFixed(3)}`);
+    }
     for (const m of misses) console.log(`    ✗ ${m}`);
   }
   console.log('\n(golden doc kept for re-runs — `--cleanup` to remove)');
