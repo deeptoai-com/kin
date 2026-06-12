@@ -58,8 +58,13 @@ export const documents = pgTable(
     ragTier: text('rag_tier'),
     /** Document-level digest for holistic routing (R3). */
     summary: text('summary'),
-    /** Section tree [{ path, pageStart, pageEnd }] for agentic drill-down (R3). */
+    /** Section tree [{ path, level, pageStart }] for agentic drill-down (R3). */
     toc: jsonb('toc'),
+    /** Page breakpoints [{ page, line }] over `content` (stripped markdown) — recorded by
+     *  the parse stage from the sidecar's odl-page markers; lets re-ingests recompute
+     *  chunk page ranges without re-parsing. Null for docs that never went through the
+     *  sidecar (client-parsed text, pre-U1 docs). */
+    pageMap: jsonb('page_map'),
     /** Embedding provenance — a model/dim change means re-embedding (final spec D1). */
     embedModel: text('embed_model'),
     embedDim: integer('embed_dim'),

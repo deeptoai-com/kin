@@ -13,6 +13,7 @@ import {
 } from '../../src/server/rag/tier';
 import { SINGLE_CHUNK_MAX_TOKENS, chunkStrategy } from '../../src/server/rag/tier';
 import { CHILD_MAX_TOKENS, chunkMarkdown } from '../../src/server/rag/chunker';
+import { extractPageMap, pageLookup } from '../../src/server/rag/parser-client';
 import { rrfFuse } from '../../src/server/rag/fuse';
 
 describe('estimateTokens', () => {
@@ -101,6 +102,103 @@ describe('chunkMarkdown', () => {
     const r = chunkMarkdown('空', '\n\n  \n');
     expect(r.parents).toHaveLength(0);
     expect(r.children).toHaveLength(0);
+  });
+});
+
+// Marker semantics (verified against opendataloader output): `<!-- odl-page N -->` is a
+// standalone line at the START of page N.
+const MARKED = `<!-- odl-page 1 -->
+前言
+
+# 第一章
+第一章内容A
+
+<!-- odl-page 2 -->
+第一章内容B
+
+# 第二章
+<!-- odl-page 3 -->
+第二章内容`;
+
+describe('extractPageMap + pageLookup — sidecar page markers → page map', () => {
+  it('strips markers and records where each page begins (stripped line index)', () => {
+    const { markdown, pageMap } = extractPageMap(MARKED);
+    expect(markdown).not.toContain('odl-page');
+    expect(pageMap).toEqual([
+      { page: 1, line: 0 },
+      { page: 2, line: 5 },
+      { page: 3, line: 8 },
+    ]);
+    expect(markdown.split('\n')[5]).toBe('第一章内容B');
+    expect(markdown.split('\n')[8]).toBe('第二章内容');
+  });
+
+  it('pageLookup maps line index → page (null before first break / empty map)', () => {
+    const { pageMap } = extractPageMap(MARKED);
+    const at = pageLookup(pageMap);
+    expect(at(0)).toBe(1);
+    expect(at(4)).toBe(1);
+    expect(at(5)).toBe(2);
+    expect(at(7)).toBe(2);
+    expect(at(8)).toBe(3);
+    expect(at(999)).toBe(3);
+    expect(pageLookup([])(0)).toBeNull();
+    expect(pageLookup(null)(0)).toBeNull();
+  });
+});
+
+describe('chunkMarkdown — page ranges (citation mapping)', () => {
+  it('chunks and toc carry page ranges when pageOfLine is provided', () => {
+    const { markdown, pageMap } = extractPageMap(MARKED);
+    const r = chunkMarkdown('文档', markdown, pageLookup(pageMap));
+
+    const preamble = r.parents.find((p) => p.sectionPath === '文档')!;
+    expect([preamble.pageStart, preamble.pageEnd]).toEqual([1, 1]);
+
+    // 第一章 spans the page-2 boundary: 内容A on p.1, 内容B on p.2.
+    const ch1 = r.parents.find((p) => p.sectionPath === '文档 > 第一章')!;
+    expect([ch1.pageStart, ch1.pageEnd]).toEqual([1, 2]);
+
+    const ch2 = r.parents.find((p) => p.sectionPath === '文档 > 第二章')!;
+    expect([ch2.pageStart, ch2.pageEnd]).toEqual([3, 3]);
+
+    for (const c of r.children) {
+      const parent = r.parents[c.parentIndex];
+      expect(c.pageStart).toBe(parent.pageStart);
+      expect(c.pageEnd).toBe(parent.pageEnd);
+    }
+
+    expect(r.toc).toEqual([
+      { path: '文档 > 第一章', level: 1, pageStart: 1 },
+      { path: '文档 > 第二章', level: 1, pageStart: 3 },
+    ]);
+  });
+
+  it('child pieces of a multi-page section get per-piece (not parent-wide) ranges', () => {
+    // Two pages of distinct repeated paragraphs large enough to force ≥2 children.
+    const pageA = Array.from({ length: 30 }, (_, i) => `第一页第${i}段，中文内容撑大体积重复重复重复重复重复重复。`).join('\n\n');
+    const pageB = Array.from({ length: 30 }, (_, i) => `第二页第${i}段，中文内容撑大体积重复重复重复重复重复重复。`).join('\n\n');
+    const marked = `<!-- odl-page 1 -->\n# 大章节\n${pageA}\n<!-- odl-page 2 -->\n${pageB}`;
+    const { markdown, pageMap } = extractPageMap(marked);
+    const r = chunkMarkdown('大文档', markdown, pageLookup(pageMap));
+    expect(r.children.length).toBeGreaterThan(1);
+    const first = r.children[0];
+    const last = r.children[r.children.length - 1];
+    expect(first.pageStart).toBe(1);
+    expect(last.pageEnd).toBe(2);
+    // Every child range is sane and within the document's page span.
+    for (const c of r.children) {
+      expect(c.pageStart).not.toBeNull();
+      expect(c.pageEnd).not.toBeNull();
+      expect(c.pageStart!).toBeLessThanOrEqual(c.pageEnd!);
+    }
+  });
+
+  it('without pageOfLine all page fields are null (back-compat)', () => {
+    const r = chunkMarkdown('测试合同', MD);
+    for (const p of r.parents) expect(p.pageStart).toBeNull();
+    for (const c of r.children) expect(c.pageEnd).toBeNull();
+    for (const t of r.toc) expect(t.pageStart).toBeNull();
   });
 });
 
