@@ -41,11 +41,14 @@ export function SessionMenu({
   session,
   projectId,
   personalLabel,
+  favorite = false,
 }: {
   session: MenuSession;
   /** Present when the session lives inside a project → enables 从项目移除. */
   projectId?: string;
   personalLabel: string;
+  /** Current pinned state → toggles the 置顶/取消置顶 label. */
+  favorite?: boolean;
 }) {
   const qc = useQueryClient();
   const { projects } = useProjects();
@@ -115,9 +118,9 @@ export function SessionMenu({
             <Pencil className="h-4 w-4" />
             重命名
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void patch({ favorite: true })}>
+          <DropdownMenuItem onSelect={() => void patch({ favorite: !favorite })}>
             <Pin className="h-4 w-4" />
-            置顶聊天
+            {favorite ? '取消置顶' : '置顶聊天'}
           </DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
