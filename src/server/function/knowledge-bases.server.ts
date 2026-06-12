@@ -9,8 +9,12 @@ import { getRequest } from '@tanstack/react-start/server';
 import { z } from 'zod';
 import { db } from '~/db/db-config';
 import { knowledgeBases, kbDocuments, files } from '~/db/schema';
+import { documents } from '~/db/schema/document.schema';
 import { auth } from '~/server/auth.server';
 import { eq, and, desc, sql, count } from 'drizzle-orm';
+import { isRagEnabled } from '~/server/rag/flag';
+import { scheduleRagIngest } from '~/server/rag/queue';
+import { estimateTokens } from '~/server/rag/tier';
 
 const requireUser = async () => {
   const { headers } = getRequest();
@@ -218,6 +222,7 @@ export const addKbDocuments = createServerFn({ method: 'POST' })
     // Add documents (ignore duplicates)
     const added = [];
     const errors = [];
+    const docIdsToIngest: string[] = [];
 
     for (const fileId of data.fileIds) {
       try {
@@ -259,12 +264,64 @@ export const addKbDocuments = createServerFn({ method: 'POST' })
           .returning();
 
         added.push(kbDoc);
+
+        // Joining a KB means joining the RAG pipeline (KB redesign prd §4.3): ensure the
+        // file has a documents row and schedule parse/embed. Without this the file sits
+        // in the KB with no status and never becomes searchable.
+        const [existingDoc] = await db
+          .select({ id: documents.id, ingestStatus: documents.ingestStatus, content: documents.content })
+          .from(documents)
+          .where(eq(documents.fileId, fileId))
+          .limit(1);
+
+        const isPdf = (file.name ?? '').toLowerCase().endsWith('.pdf');
+        const ragEnabled = isRagEnabled();
+
+        if (!existingDoc) {
+          // No document yet (plain file-library upload): create one. PDFs get parsed by
+          // the sidecar (parse 'pending'); other binary types have nothing to parse yet.
+          const [createdDoc] = await db
+            .insert(documents)
+            .values({
+              title: file.name,
+              content: '',
+              fileType: file.fileType,
+              filename: file.name,
+              sourceType: 'knowledge-base',
+              source: file.key,
+              fileId: file.id,
+              userId: user.id,
+              clientId: user.id,
+              parseStatus: isPdf ? 'pending' : 'ready',
+              ingestStatus: ragEnabled && isPdf ? 'pending' : 'none',
+            })
+            .returning({ id: documents.id });
+          if (ragEnabled && isPdf && createdDoc) docIdsToIngest.push(createdDoc.id);
+        } else if (ragEnabled && existingDoc.ingestStatus === 'none') {
+          // Document exists but was never embedded — activate it now that it joined a KB.
+          const hasContent = Boolean(existingDoc.content?.trim().length);
+          if (hasContent || isPdf) {
+            await db
+              .update(documents)
+              .set({
+                ingestStatus: 'pending',
+                ...(hasContent ? { tokenEstimate: estimateTokens(existingDoc.content ?? '') } : {}),
+              })
+              .where(eq(documents.id, existingDoc.id));
+            docIdsToIngest.push(existingDoc.id);
+          }
+        }
       } catch (error) {
         errors.push({
           fileId,
           error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
+    }
+
+    // After the loop so a queue failure never breaks the KB membership writes.
+    for (const docId of docIdsToIngest) {
+      await scheduleRagIngest(docId);
     }
 
     return {

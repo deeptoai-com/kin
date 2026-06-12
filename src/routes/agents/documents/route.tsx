@@ -155,7 +155,9 @@ function DocumentsPage() {
   // Query KB documents when a KB is selected
   const { data: kbDocuments = [], isLoading: kbDocsLoading } = useQuery({
     queryKey: ['kb-documents', selectedKbId],
-    queryFn: () => getKbDocumentsFn({ kbId: selectedKbId! }),
+    // NB: server fns take { data: ... } — passing the payload bare makes the validator
+    // see undefined and the query silently error into an empty list (bug: KB 列表显示空).
+    queryFn: () => getKbDocumentsFn({ data: { kbId: selectedKbId! } }),
     enabled: !!selectedKbId,
   });
 
@@ -231,7 +233,15 @@ function DocumentsPage() {
     },
     onSuccess: async () => {
       setSelectedFiles(new Map());
-      await router.invalidate();
+      // The list renders from the 'documents-list' query (loader is only initialData),
+      // so router.invalidate() alone never refreshes it — invalidate every affected query.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['documents-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['documents'] }),
+        queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
+        queryClient.invalidateQueries({ queryKey: ['kb-documents'] }),
+        router.invalidate(),
+      ]);
     },
     onError: (err: unknown) => {
       setDeleteError(err instanceof Error ? err.message : content.selectedBar.delete);
