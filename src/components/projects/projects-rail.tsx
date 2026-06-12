@@ -20,6 +20,7 @@ import {
 import { CreateProjectDialog } from './create-project-dialog';
 import { SessionSearchDialog } from '~/components/claude-chat/session-search-dialog';
 import { SessionMenu } from './session-menu';
+import { ProjectMenu } from './project-menu';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { listProjectSessions } from '~/server/function/projects.server';
 import { useRailStore } from '~/lib/stores/rail-store';
@@ -305,25 +306,30 @@ function ProjectTreeRow({
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={onToggle}
+      <div
         className={cn(
-          'group flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors',
+          'group/proj flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors',
           isActive ? 'bg-accent text-foreground' : 'text-foreground/80 hover:bg-accent/60'
         )}
       >
-        <ChevronRight
-          className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
-        />
-        <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span>
+        <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <ChevronRight
+            className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
+          />
+          <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span>
+        </button>
         {shared && (
           <span className="flex items-center" title={sharedLabel}>
             <Users className="h-3.5 w-3.5 text-muted-foreground" />
           </span>
         )}
-      </button>
+        {!project.isDefault && (
+          <div className="opacity-0 transition-opacity group-hover/proj:opacity-100">
+            <ProjectMenu project={project} />
+          </div>
+        )}
+      </div>
 
       {expanded && (
         <div className="ml-5 space-y-0.5 border-l border-border/50 pl-1.5">
