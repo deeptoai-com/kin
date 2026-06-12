@@ -130,6 +130,19 @@ services:
     networks:
       - private
 
+  # RAG PDF→Markdown parser sidecar (U1). Owns the Java/opendataloader dependency so the
+  # app/worker images stay slim. Internal only (no published port): the worker (ingest)
+  # and app (probe / re-parse server fns) reach it at http://parser:7800 on `private`.
+  # Built locally from ./parser-sidecar (first `up` builds it; no registry image).
+  # Only needed when RAG_ENABLED=true; harmless when idle.
+  parser:
+    build:
+      context: ./parser-sidecar
+    container_name: ${APP_NAME:-OxyGenie}-parser
+    restart: unless-stopped
+    networks:
+      - private
+
   # Database migrations (runs before app starts)
   # Uses the same image built by the app service
   migrate:
@@ -201,6 +214,13 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MODEL_PROBE_ON_BOOT: ${MODEL_PROBE_ON_BOOT:-true}
       MODEL_PROBE_CRON: ${MODEL_PROBE_CRON:-0 */6 * * *}
+      # RAG ingest (rag-line): this BullMQ worker runs the embed pipeline + calls the
+      # parser sidecar. Embedding reuses the ARK token above (doubao default); zhipu is
+      # the optional fallback (ZHIPU_API_KEY). Only exercised when RAG_ENABLED=true.
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     command: ['npx', 'tsx', 'src/worker/index.ts']
@@ -285,6 +305,8 @@ services:
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
       # RAG master switch — default OFF (main ships RAG dark); see src/server/rag/flag.ts
       RAG_ENABLED: ${RAG_ENABLED:-}
+      # RAG: app-side probe / re-parse server fns call the parser sidecar (worker has its own).
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
       # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
