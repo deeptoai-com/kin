@@ -80,6 +80,9 @@ export interface ChatComposerProps {
   permissionInfo: PermissionInfo;
   /** Current session ID (null = no active session) */
   currentSessionId: string | null;
+  /** Lazily create the session (new-chat landing creates nothing until needed). Lets the
+   *  upload/KB/files buttons work BEFORE the first message: click → create → proceed. */
+  ensureSession?: () => Promise<void>;
   /** Session metadata (for context badges display) */
   sessionMetadata: SessionMetadata | null;
   /** Hide Skills trigger (when A2Composer is expanded) */
@@ -167,6 +170,7 @@ async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: str
 export function ChatComposer({
   permissionInfo,
   currentSessionId,
+  ensureSession,
   sessionMetadata,
   showWorkspace,
   setShowWorkspace,
@@ -286,14 +290,35 @@ export function ChatComposer({
     input?.focus();
   }, [api]);
 
+  // Lazy-create the session on first workspace-needing action (upload/KB/files buttons):
+  // new-chat landings create nothing until needed, but a user clicking upload has clear
+  // intent — create the session right there instead of disabling the buttons.
+  const [ensuringSession, setEnsuringSession] = useState(false);
+  const withSession = useCallback(
+    async (action: () => void) => {
+      if (!currentSessionId && ensureSession) {
+        setEnsuringSession(true);
+        try {
+          await ensureSession();
+        } catch (err) {
+          console.error('[Composer] lazy session create failed:', err);
+          setUploadError('创建会话失败，请重试。');
+          return;
+        } finally {
+          setEnsuringSession(false);
+        }
+      }
+      action();
+    },
+    [currentSessionId, ensureSession],
+  );
+
   const handleUploadClick = useCallback(() => {
-    if (!currentSessionId) {
-      setUploadError('请先发送一条消息以创建会话，再上传文件。');
-      return;
-    }
-    setUploadError(null);
-    fileInputRef.current?.click();
-  }, [currentSessionId]);
+    void withSession(() => {
+      setUploadError(null);
+      fileInputRef.current?.click();
+    });
+  }, [withSession]);
 
   const handleFilesSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -470,8 +495,8 @@ export function ChatComposer({
               onClick={handleUploadClick}
               className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="上传文件"
-              disabled={!currentSessionId || isUploading}
-              title={!currentSessionId ? '请先创建会话再上传文件' : '上传文件到工作区'}
+              disabled={isUploading || ensuringSession}
+              title="上传文件到工作区"
             >
               <Plus width={16} height={16} />
             </button>
@@ -501,11 +526,11 @@ export function ChatComposer({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowWorkspace(!showWorkspace)}
+                  onClick={() => void withSession(() => setShowWorkspace(!showWorkspace))}
                   className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="切换工作空间"
                   title="知识库 / 工作区"
-                  disabled={!currentSessionId}
+                  disabled={ensuringSession}
                 >
                   <FolderOpen width={16} height={16} />
                 </button>
@@ -540,11 +565,11 @@ export function ChatComposer({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowSessionFiles(!showSessionFiles)}
+                  onClick={() => void withSession(() => setShowSessionFiles(!showSessionFiles))}
                   className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="会话文件"
                   title="会话文件"
-                  disabled={!currentSessionId}
+                  disabled={ensuringSession}
                 >
                   <FolderTree width={16} height={16} />
                 </button>

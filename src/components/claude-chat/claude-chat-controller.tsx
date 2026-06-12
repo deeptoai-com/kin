@@ -1807,6 +1807,7 @@ function ClaudeChatSurface({
                   composerRef={composerRef}
                   permissionInfo={permissionInfo}
                   currentSessionId={currentSessionId}
+                  ensureSession={ensureSession}
                   showWorkspace={showWorkspace}
                   setShowWorkspace={setShowWorkspace}
                   showSessionFiles={showSessionFiles}
