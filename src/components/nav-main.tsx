@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ComponentType, SVGProps } from "react";
+import { toLocalizedString } from "~/lib/utils";
 import {
 	SidebarGroup,
 	SidebarGroupContent,
@@ -40,7 +41,7 @@ export function NavMain({
 						<SidebarMenu>
 							{section.items.map((item) => (
 								<SidebarMenuItem key={item.title}>
-									<SidebarMenuButton asChild tooltip={item.title}>
+									<SidebarMenuButton asChild tooltip={toLocalizedString(item.title)}>
 										<Link to={item.url}>
 											{item.icon && <item.icon className="size-4" />}
 											<span>{item.title}</span>
