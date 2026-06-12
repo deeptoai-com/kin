@@ -389,9 +389,21 @@ function DocumentsPage() {
           },
         });
       } else {
-        // 2b) fall back to server-side upload route
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = window.btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        // 2b) fall back to server-side upload route.
+        // Encode via FileReader (browser-native, chunked). The old
+        // `String.fromCharCode(...new Uint8Array(buf))` spread a multi-MB byte array
+        // into call arguments and overflowed the stack ("Maximum call stack size
+        // exceeded") on large files — e.g. a 7MB+ prospectus PDF.
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result);
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error ?? new Error('file read failed'));
+          reader.readAsDataURL(file);
+        });
         await directUpload.mutateAsync({
           id,
           key,
