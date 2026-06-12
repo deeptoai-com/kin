@@ -13,12 +13,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '~/components/ui/sidebar';
-import DashboardIcon from 'virtual:icons/ri/dashboard-line';
-import ImageIcon from 'virtual:icons/ri/image-line';
 import FileTextIcon from 'virtual:icons/ri/file-text-line';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
-import FolderIcon from 'virtual:icons/ri/folder-3-line';
 import AppsIcon from 'virtual:icons/ri/apps-2-line';
 import ShieldIcon from 'virtual:icons/ri/shield-line';
 import { FEATURE_CONFIG } from '~/config/features';
@@ -33,7 +30,6 @@ type SidebarUser = {
 
 export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: SidebarUser }) {
   const content = useIntlayer('app');
-  const projectsContent = useIntlayer('projects');
 
   // Query admin status using Server Function directly
   const { data: adminCheck } = useQuery({
@@ -44,9 +40,9 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
   });
   const isAdmin = adminCheck?.isAdmin ?? false;
 
-  // Build navigation sections with i18n content
+  // Three independent modules (IA redesign 2026-06, docs/project/prd/2026-06-navigation-ia-redesign-prd.md).
+  // Projects moved into the agent workbench (副侧边栏 ProjectsRail); dashboards/charts moved to admin.
   const navSections = [
-    // Section 1: Claude Agent SDK
     {
       items: [
         {
@@ -56,34 +52,16 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
           enabled: FEATURE_CONFIG.claudeChat,
         },
         {
-          title: projectsContent.nav.projects,
-          url: '/agents/projects',
-          icon: FolderIcon,
-          enabled: FEATURE_CONFIG.projects,
-        },
-        {
           title: content.nav.capabilityCenter,
           url: '/agents/capabilities',
           icon: AppsIcon,
           enabled: FEATURE_CONFIG.skills || FEATURE_CONFIG.mcpStore,
         },
-      ],
-      hasDivider: true,
-    },
-    // Section 2: Other
-    {
-      items: [
         {
           title: content.nav.documents,
           url: '/agents/documents',
           icon: FileTextIcon,
           enabled: FEATURE_CONFIG.documents,
-        },
-        {
-          title: content.nav.dashboards,
-          url: '/agents/charts',
-          icon: DashboardIcon,
-          enabled: FEATURE_CONFIG.dashboard,
         },
       ],
     },
@@ -123,7 +101,7 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
-              <Link to="/">
+              <Link to="/agents/c">
                 <HomeSmileIcon className="!size-5" />
                 <span className="font-semibold text-base">{content.common.appName}</span>
               </Link>
