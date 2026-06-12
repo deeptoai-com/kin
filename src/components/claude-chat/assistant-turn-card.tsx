@@ -17,6 +17,7 @@ import { ImageArtifact } from '~/components/claude-chat/artifact-image';
 import { DiffView } from '~/components/agent-chat/diff-view';
 import { cn } from '~/lib/utils';
 import { parseSearchResult, type SearchSource } from '~/lib/search-results';
+import { parseKbSearchResult, KbSearchSources, type KbSource } from '~/components/claude-chat/kb-search-sources';
 import { buildAssistantTurn, formatArgsSummary, stripMarkdown, truncate, type RenderItem, type SearchGroup, type StepActivity, type StepActivityStatus } from '~/lib/turn-builder';
 import { useChatSessionStore, type ContentPart } from '~/lib/chat-session-store';
 import { readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
@@ -211,6 +212,19 @@ function ActivityDetailDrawer({
       } as const;
     }
 
+    // kb_search BEFORE the generic search branch (its name contains 'search' too):
+    // render structured knowledge-base sources instead of web-search link cards.
+    if (toolName.includes('kb_search') || toolName.includes('kb-search')) {
+      const kbSources = parseKbSearchResult(target.result);
+      if (kbSources) {
+        return {
+          type: 'kb-sources',
+          title: target.displayName,
+          kbSources,
+        } as const;
+      }
+    }
+
     if (toolName.includes('search')) {
       const searchResult = parseSearchResult(target.result);
       return {
@@ -343,6 +357,7 @@ function ActivityDetailDrawer({
           </DrawerClose>
         </DrawerHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
+          {detail.type === 'kb-sources' && <KbSearchSources sources={detail.kbSources} />}
           {detail.type === 'search' && (
             <>
               {detail.queries && detail.queries.length > 0 && (
@@ -565,6 +580,20 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
   const hasResponse = Boolean(responseText);
   const hasActivities = activities.length > 0;
 
+  // kb_search sources of this turn → [n] markers in the answer become citation chips
+  // (hover/click pops the passage). Later calls win on duplicate numbers.
+  const kbSources = useMemo(() => {
+    let sources: KbSource[] | undefined;
+    for (const a of activities) {
+      if (a.kind !== 'tool') continue;
+      const name = a.toolName.toLowerCase();
+      if (!name.includes('kb_search') && !name.includes('kb-search')) continue;
+      const parsed = parseKbSearchResult(a.result);
+      if (parsed) sources = sources ? [...sources.filter((s) => !parsed.some((p) => p.n === s.n)), ...parsed] : parsed;
+    }
+    return sources;
+  }, [activities]);
+
   // D1.4 Cowork 折叠头：完成后用「Worked Xs · N steps · 改 K 文件」概览（有耗时/步数才显示），
   // 运行中仍用实时 previewText。stepCount=0（纯思考轮）回退到 previewText 避免「0 steps」。
   const summaryText = useMemo(() => {
@@ -758,6 +787,7 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
             mode="minimal"
             onUrlClick={onUrlClick}
             onFileClick={onFileClick}
+            kbSources={kbSources}
           />
         </div>
       )}

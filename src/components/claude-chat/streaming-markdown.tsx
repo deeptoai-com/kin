@@ -11,13 +11,33 @@
  */
 
 import { memo, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import {
   markdownRemarkPlugins,
   createMarkdownComponents,
   preprocessLinks,
   type RenderMode,
 } from '~/components/claude-chat/markdown-components';
+import { KbCitation, type KbSource } from '~/components/claude-chat/kb-search-sources';
+
+/**
+ * Turn bare [n] citation markers (from kb_search answers) into anchor links the `a`
+ * override below renders as clickable source chips. Only applied when the turn actually
+ * has kb sources. Handles runs like [2][3] (matched as a whole, then split), skips
+ * markdown links `[x](...)`/`[x][y]`, index access `arr[1]`, and code spans/fences.
+ */
+function preprocessKbCitations(content: string): string {
+  return content
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((seg, i) =>
+      i % 2 === 1
+        ? seg
+        : seg.replace(/(?<![\w\]])((?:\[\d{1,2}\])+)(?!\()/g, (run) =>
+            run.replace(/\[(\d{1,2})\]/g, '[$1](#kb-cite-$1)'),
+          ),
+    )
+    .join('');
+}
 
 type StreamingMarkdownProps = {
   content: string;
@@ -35,6 +55,11 @@ type StreamingMarkdownProps = {
    * Callback when a file path is clicked
    */
   onFileClick?: (path: string) => void;
+  /**
+   * kb_search sources for this turn — enables rendering bare [n] markers as
+   * clickable citation chips (hover/click → source passage popover).
+   */
+  kbSources?: KbSource[];
 };
 
 type Block = {
@@ -105,18 +130,34 @@ interface MemoizedBlockProps {
   mode?: RenderMode;
   onUrlClick?: (url: string) => void;
   onFileClick?: (path: string) => void;
+  kbSources?: KbSource[];
 }
 
 const MemoizedBlock = memo(
-  function MemoizedBlock({ content, mode = 'minimal', onUrlClick, onFileClick }: MemoizedBlockProps) {
+  function MemoizedBlock({ content, mode = 'minimal', onUrlClick, onFileClick, kbSources }: MemoizedBlockProps) {
+    const hasCitations = !!kbSources?.length;
     // Preprocess content to convert raw URLs and file paths to markdown links
-    const processedContent = useMemo(() => preprocessLinks(content), [content]);
+    const processedContent = useMemo(() => {
+      const linked = preprocessLinks(content);
+      return hasCitations ? preprocessKbCitations(linked) : linked;
+    }, [content, hasCitations]);
 
-    // Create components with callbacks
-    const components = useMemo(
-      () => createMarkdownComponents({ mode, onUrlClick, onFileClick }),
-      [mode, onUrlClick, onFileClick]
-    );
+    // Create components with callbacks; with kb sources, the `a` override renders
+    // #kb-cite-n anchors as source chips (hover/click → passage popover).
+    const components = useMemo<Components>(() => {
+      const base = createMarkdownComponents({ mode, onUrlClick, onFileClick });
+      if (!hasCitations) return base;
+      const BaseA = base.a as React.ComponentType<Record<string, unknown>> | undefined;
+      const CitationAwareA = (props: { href?: string; children?: React.ReactNode } & Record<string, unknown>) => {
+        const href = props.href ?? '';
+        if (href.startsWith('#kb-cite-')) {
+          const n = Number(href.slice('#kb-cite-'.length));
+          return <KbCitation n={n} source={kbSources!.find((s) => s.n === n)} />;
+        }
+        return BaseA ? <BaseA {...props} /> : <a {...(props as React.ComponentProps<'a'>)} />;
+      };
+      return { ...base, a: CitationAwareA as Components['a'] };
+    }, [mode, onUrlClick, onFileClick, hasCitations, kbSources]);
 
     return (
       <ReactMarkdown
@@ -131,7 +172,8 @@ const MemoizedBlock = memo(
     prev.content === next.content &&
     prev.mode === next.mode &&
     prev.onUrlClick === next.onUrlClick &&
-    prev.onFileClick === next.onFileClick
+    prev.onFileClick === next.onFileClick &&
+    prev.kbSources === next.kbSources
 );
 
 export const StreamingMarkdown = ({
@@ -140,6 +182,7 @@ export const StreamingMarkdown = ({
   mode = 'minimal',
   onUrlClick,
   onFileClick,
+  kbSources,
 }: StreamingMarkdownProps) => {
   const blocks = useMemo(
     () => (isStreaming ? splitIntoBlocks(content) : []),
@@ -153,6 +196,7 @@ export const StreamingMarkdown = ({
         mode={mode}
         onUrlClick={onUrlClick}
         onFileClick={onFileClick}
+        kbSources={kbSources}
       />
     );
   }
@@ -169,6 +213,7 @@ export const StreamingMarkdown = ({
             mode={mode}
             onUrlClick={onUrlClick}
             onFileClick={onFileClick}
+            kbSources={block.isCodeBlock ? undefined : kbSources}
           />
         );
       })}
