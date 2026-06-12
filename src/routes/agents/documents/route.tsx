@@ -116,6 +116,8 @@ function DocumentsPage() {
   const [showKB, setShowKB] = useState(false);
   const [selectedUploadKbIds, setSelectedUploadKbIds] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // null = idle; 0-100 = the whole upload flow is running (init → bytes → finalize).
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<
     Map<string, DeleteDocumentsPayload[number]>
   >(new Map());
@@ -310,7 +312,8 @@ function DocumentsPage() {
     return `${value.toFixed(decimals)} ${units[power]}`;
   };
 
-  const uploading = initUpload.isPending || completeUpload.isPending || directUpload.isPending;
+  const uploading =
+    initUpload.isPending || completeUpload.isPending || directUpload.isPending || uploadProgress !== null;
   const deleting = deleteFilesMutation.isPending;
 
   const handleToggleAll = useCallback(
@@ -364,6 +367,7 @@ function DocumentsPage() {
 
     try {
       setErrorMessage(null);
+      setUploadProgress(0);
       // 1) request presigned URL and db draft row
       const initResultRaw = await initUpload.mutateAsync({
         originalName: file.name,
@@ -401,28 +405,23 @@ function DocumentsPage() {
           },
         });
       } else {
-        // 2b) fall back to server-side upload route.
-        // Encode via FileReader (browser-native, chunked). The old
-        // `String.fromCharCode(...new Uint8Array(buf))` spread a multi-MB byte array
-        // into call arguments and overflowed the stack ("Maximum call stack size
-        // exceeded") on large files — e.g. a 7MB+ prospectus PDF.
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = String(reader.result);
-            const comma = result.indexOf(',');
-            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        // 2b) binary direct upload (KB redesign 阶段5): XHR PUTs the RAW file so we get
+        // a real upload progress bar (fetch has no upload progress), the body is ~25%
+        // smaller than the old base64-over-server-fn path, and neither side builds a
+        // giant string. The server route stores bytes + finalizes url/size.
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', `/api/documents/upload?id=${encodeURIComponent(id)}&key=${encodeURIComponent(key ?? '')}`);
+          xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
           };
-          reader.onerror = () => reject(reader.error ?? new Error('file read failed'));
-          reader.readAsDataURL(file);
-        });
-        await directUpload.mutateAsync({
-          id,
-          key,
-          originalName: file.name,
-          size: file.size,
-          mimeType: file.type || undefined,
-          content: base64,
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`上传失败（HTTP ${xhr.status}）`));
+          xhr.onerror = () => reject(new Error('上传失败（网络错误）'));
+          xhr.send(file);
         });
         shouldComplete = false;
       }
@@ -456,6 +455,8 @@ function DocumentsPage() {
     } catch (err) {
       console.error('Upload failed', err);
       setErrorMessage(err instanceof Error ? err.message : content.upload.upload);
+    } finally {
+      setUploadProgress(null);
     }
   };
 
@@ -894,9 +895,31 @@ function DocumentsPage() {
             </p>
           )}
 
+          {uploadProgress !== null && (
+            <div className="space-y-1">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${Math.max(uploadProgress, 3)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {uploadProgress > 0 && uploadProgress < 100
+                  ? `正在上传… ${uploadProgress}%`
+                  : uploadProgress >= 100
+                    ? '处理中…'
+                    : '准备上传…'}
+              </p>
+            </div>
+          )}
+
           <DialogFooter>
             <Button onClick={handleUploadDoc} disabled={uploading || filesToUpload.length === 0}>
-              {uploading ? content.upload.uploading : content.upload.upload}
+              {uploadProgress !== null && uploadProgress > 0 && uploadProgress < 100
+                ? `上传中 ${uploadProgress}%`
+                : uploading
+                  ? content.upload.uploading
+                  : content.upload.upload}
             </Button>
           </DialogFooter>
         </DialogContent>
