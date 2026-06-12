@@ -253,6 +253,9 @@ async function startRun(request) {
       userId,
       // RAG R2: user auth for the kb_search app callback (stdin-only — never env).
       cookie: userCookie = null,
+      // Session KB scope (面板勾选, prd 阶段3): kb_search restricts to these knowledge
+      // bases unless the model explicitly passes its own kbId.
+      kbIds: sessionKbIds = [],
     } = request;
     const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
     const disallowedTools = resolveDisallowedTools(
@@ -532,10 +535,12 @@ async function startRun(request) {
       },
       async (args) => {
         try {
+          // Session scope (面板勾选) applies unless the model narrowed explicitly.
+          const scoped = args.kbId || !sessionKbIds?.length ? args : { ...args, kbIds: sessionKbIds };
           const response = await fetch(`${appUrl}/api/rag/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', cookie: userCookie || '' },
-            body: JSON.stringify(args),
+            body: JSON.stringify(scoped),
           });
           if (!response.ok) {
             const text = await response.text().catch(() => '');

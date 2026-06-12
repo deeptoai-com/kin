@@ -21,9 +21,11 @@ export interface KbSearchParams {
   query: string;
   /** Results to return (default 8). */
   k?: number;
-  /** Optional narrowing: a single document, or a knowledge base (via kb_documents). */
+  /** Optional narrowing: a single document, or knowledge base(s) (via kb_documents). */
   documentId?: string;
   kbId?: string;
+  /** Session-selected scope (KB 面板勾选, prd 阶段3): union of these KBs. kbId wins if set. */
+  kbIds?: string[];
   /** Ablation knobs for the golden-set eval (R4) — production callers leave them unset. */
   skipRerank?: boolean;
   skipBm25?: boolean;
@@ -64,14 +66,16 @@ async function visibleDocIds(userId: string, params: KbSearchParams): Promise<st
     .where(and(visibleDocumentsWhere(userId, projectIds), eq(documents.ingestStatus, 'ready')));
 
   let ids = rows;
+  const kbScope = params.kbId ? [params.kbId] : (params.kbIds ?? []);
   if (params.documentId) {
     ids = ids.filter((r) => r.id === params.documentId);
-  } else if (params.kbId) {
-    // kb_documents links a KB to FILES; documents hang off the same fileId.
+  } else if (kbScope.length > 0) {
+    // kb_documents links KBs to FILES; documents hang off the same fileId. Multiple
+    // selected KBs = the union of their files (session scope picker, prd 阶段3).
     const kbFiles = await db
       .select({ fileId: kbDocuments.fileId })
       .from(kbDocuments)
-      .where(eq(kbDocuments.kbId, params.kbId));
+      .where(inArray(kbDocuments.kbId, kbScope));
     const fileSet = new Set(kbFiles.map((f) => f.fileId));
     ids = ids.filter((r) => r.fileId && fileSet.has(r.fileId));
   }
