@@ -309,10 +309,8 @@ export const requestDocumentParse = createServerFn({ method: 'POST' })
       .limit(1);
     if (!doc) throw new Error('Document not found');
     if (!(await canAccessDocument(user.id, doc))) throw new Error('FORBIDDEN');
-    if (data.method === 'ocr') {
-      // U3: OCR engine not wired yet (model deliberately not locked — possibly a VLM).
-      throw new Error('OCR 解析引擎尚未接入（U3）');
-    }
+    // OCR wired (O1-c): parseMethod='ocr' → ingest parse stage renders pages + runs the VLM
+    // OCR provider (src/server/ocr/provider) instead of the text-layer parser.
     await db
       .update(documents)
       .set({

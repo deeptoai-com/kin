@@ -16,6 +16,7 @@ import { chunkStrategy, estimateTokens, type ChunkStrategy } from './tier';
 import { EMBED_DIM, embedModel, embedTexts } from './embedding';
 import { splitBatches } from './zhipu';
 import { extractPageMap, pageLookup, parsePdfViaSidecar, type PageBreak } from './parser-client';
+import { ocrPdfToMarkdown, ocrImageToMarkdown } from './ocr-ingest';
 import { indexChunks, removeChunksOfDocument } from '~/search/meilisearch';
 
 /** Flat chunk shape fed to the embed+insert loop (parentIndex -1 = a top-level/single chunk). */
@@ -86,13 +87,19 @@ export interface IngestResult {
  * embed are SEPARATE state machines: a parse failure marks parse_status='failed'
  * (visible + retryable with another engine, spec DR-7) without touching chunk state.
  */
+const IMAGE_EXT = /\.(png|jpe?g|webp)$/;
+const imageMediaType = (name: string): string =>
+  name.endsWith('.png') ? 'image/png' : name.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+
 async function parseStage(
   doc: typeof documents.$inferSelect,
 ): Promise<{ markdown: string; pageMap: PageBreak[] } | null> {
   if (!doc.fileId) return null;
   const [file] = await db.select().from(files).where(eq(files.id, doc.fileId)).limit(1);
   const name = (file?.name || doc.filename || '').toLowerCase();
-  if (!file || !name.endsWith('.pdf')) return null; // non-PDF rich types stay on markitdown (U1 scope)
+  const isPdf = name.endsWith('.pdf');
+  const isImage = IMAGE_EXT.test(name);
+  if (!file || (!isPdf && !isImage)) return null; // non-PDF/non-image rich types stay on markitdown (U1 scope)
 
   await setProgress(doc.id, { parseStatus: 'processing' });
   try {
@@ -105,17 +112,42 @@ async function parseStage(
     if (!blob.ok) throw new Error(`file fetch HTTP ${blob.status}`);
     const bytes = Buffer.from(await blob.arrayBuffer());
 
-    const mode = doc.parseMethod === 'simple' ? 'simple' : 'structured';
-    const parsed = await parsePdfViaSidecar(bytes, mode);
-    if (!parsed.ok || !parsed.markdown?.trim()) {
-      throw new Error(parsed.error || 'parser produced no text (scanned PDF? try OCR when available)');
+    // OCR branch (O1-c): an image upload IS one page → OCR directly; a PDF goes to OCR when
+    // the user/probe chose it (parseMethod='ocr') or when text-layer parse comes back empty
+    // (scanned PDF — the U3 hole). OCR output carries `<!-- odl-page N -->` markers so the
+    // existing extractPageMap → chunker → page-citation downstream is reused unchanged.
+    let rawMarkdown: string | null = null;
+    let resolvedMethod = doc.parseMethod || 'structured';
+
+    if (isImage) {
+      rawMarkdown = await ocrImageToMarkdown(bytes, imageMediaType(name));
+      resolvedMethod = 'ocr';
+    } else if (doc.parseMethod === 'ocr') {
+      rawMarkdown = await ocrPdfToMarkdown(bytes);
+      resolvedMethod = 'ocr';
+    } else {
+      const mode = doc.parseMethod === 'simple' ? 'simple' : 'structured';
+      const parsed = await parsePdfViaSidecar(bytes, mode);
+      if (parsed.ok && parsed.markdown?.trim()) {
+        rawMarkdown = parsed.markdown;
+        resolvedMethod = mode;
+      } else {
+        // Empty text layer → scanned PDF; auto-fall back to OCR (closes U3 so uploads "just work").
+        console.warn('[rag-ingest] empty text layer, falling back to OCR:', doc.id);
+        rawMarkdown = await ocrPdfToMarkdown(bytes);
+        resolvedMethod = 'ocr';
+      }
     }
-    const { markdown, pageMap } = extractPageMap(parsed.markdown);
+
+    if (!rawMarkdown?.trim()) {
+      throw new Error('parser/OCR produced no text');
+    }
+    const { markdown, pageMap } = extractPageMap(rawMarkdown);
     await setProgress(doc.id, {
       content: markdown,
       pageMap: pageMap.length ? pageMap : null,
       parseStatus: 'ready',
-      parseMethod: mode,
+      parseMethod: resolvedMethod,
       tokenEstimate: estimateTokens(markdown),
       totalCharCount: markdown.length,
       totalLineCount: markdown.split(/\r?\n/).length,
