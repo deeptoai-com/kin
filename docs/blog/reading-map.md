@@ -2,7 +2,9 @@
 
 > **正传 19 篇（现状）+ 设计篇 6 篇（该有的）· 双语 · 一套自托管、多租户、可计费、可上线的 Web Agent Harness 的工程拆解**
 >
-> **两条线，分清"现状"与"该有的"**：**正传 01–19** 写 OxyGenie **已有的**（每篇都有 `文件:行号` 为证）；**设计篇 D1–D6** 写按 references（baby-agent 的 RAG/记忆/Guardrails/评测章、HarWork 的上下文章）倒推出来、OxyGenie **该有却还没有**的能力（现状有据、设计未实现）。完整的 harness ≠ 只写已有的——所以这套地图把"缺口"也画进来。
+> **两条线，分清"现状"与"该有的"**：**正传 01–19** 写 OxyGenie **已有的**（每篇都有 `文件:行号` 为证）；**设计篇 D1–D6** 写按 references（baby-agent 的 RAG/记忆/Guardrails/评测章、HarWork 的上下文章）倒推出来、OxyGenie **该有却还没有**的能力。完整的 harness ≠ 只写已有的——所以这套地图把"缺口"也画进来。
+>
+> ✅ **2026-06-13 进展**：设计篇已不全是"未实现"。**D1 RAG 整条落地上生产（#153–#182），并连带做出 D4 评测 / D5 Guardrails / D6 可观测的"检索那一刀"**——这四篇均加了 [实现回填] 段（真实 `文件:行号` + 设计 vs 现实的打脸/修正）。D2 记忆、D3 上下文仍为纯设计。
 >
 > 蓝本：[building-an-agent-harness](https://github.com/sky54laozhu/building-an-agent-harness)（HarWork）、[baby-agent](https://github.com/baby-llm/baby-agent)（Agentic RAG / 记忆 / Guardrails / 评测）。
 > 但 OxyGenie 走了一条**不同的路**——HarWork 自己手写了 640 行的 Agent Loop；
@@ -47,18 +49,20 @@
 
 ### 设计篇 · 该有的（现状 → 设计） 📐
 
-> 正传写"已有的"，设计篇写"完整 harness 该有、却还没有的"。每篇结构：**问题 → oxygenie 现状（有 `文件:行号` 为证）→ 朴素方案为什么不行 → 核心方案（该有的设计）→ 落点（复用哪些已有原语）→ 反直觉 → 生产坑**。**未实现**，是设计与缺口分析。
+> 正传写"已有的"，设计篇写"完整 harness 该有、却还没有的"。每篇结构：**问题 → oxygenie 现状（有 `文件:行号` 为证）→ 朴素方案为什么不行 → 核心方案（该有的设计）→ 落点（复用哪些已有原语）→ 反直觉 → 生产坑**。
+>
+> ✅ **2026-06-13 更新**：设计篇不再全是"未实现"了。**做 RAG（D1）整条落地时，连带把 D4 评测 / D5 Guardrails / D6 可观测的"检索那一刀"也做了**——这四篇都已加 [实现回填] 段（真实 `文件:行号` + 设计 vs 现实的"打脸/修正"）。D2 记忆 / D3 上下文仍是纯设计。下表"状态"列标了最新进度。
 
-| 设计篇 | 标题 | 现状一句话 | 该有的一句话 |
+| 设计篇 | 标题 | 状态 | 现状一句话 → 落地了什么 |
 |--------|------|-----------|-------------|
-| **D1** | [Advanced / Agentic RAG](zh/d1-advanced-rag.md) 📐 | `documentChunks.embedding vector(1536)` 列**从没写入过**；检索只有 BM25 + Agent 手动 grep | 离线切分+embed 进 pgvector，在线"向量+BM25 混合→rerank"，**检索做成 Agent 自己会调的 MCP 工具** |
-| **D2** | [长期记忆](zh/d2-long-term-memory.md) 📐 | 无 auto-memory，会话重启即失忆 | 两层记忆（全局/工作区）+ LLM 后台蒸馏 + 注入 system prompt |
-| **D3** | [上下文工程](zh/d3-context-engineering.md) 📐 | 压缩整个交给 SDK，无自有策略 | 渐进压缩 + 卸载到 `message_attachment`（表已存在）+ 预算前置 |
-| **D4** | [评测](zh/d4-evaluation.md) 📐 | 零评测基建，CI 无质量门禁 | 黄金集 + 分层指标（检索/生成）+ CI 回归门禁 |
-| **D5** | [Guardrails](zh/d5-guardrails.md) 📐 | 只有权限/沙箱护栏，无内容/PII/注入防御 | 输入/输出/**检索**三处设防；RAG 文档是新的注入面 |
-| **D6** | [Agent / RAG 可观测](zh/d6-agent-tracing.md) 📐 | Agent 内部只有 console.error，无 step/span 级 trace | 把 seq 事件流（第 04 篇）导成 span + step 级 token/检索指标 |
+| **D1** | [Advanced / Agentic RAG](zh/d1-advanced-rag.md) | ✅ **全落地** | 离线 embed 进 pgvector + 向量∥BM25 混合 + 检索做成 Agent 自调 MCP 工具，**整条上生产（#153–#182）**；设计预言对一半、打脸五处 + 一个"最后一公里" |
+| **D2** | [长期记忆](zh/d2-long-term-memory.md) 📐 | ⬜ 纯设计 | 无 auto-memory；两层记忆 + LLM 蒸馏 + 注入 system prompt，**仍未实现** |
+| **D3** | [上下文工程](zh/d3-context-engineering.md) 📐 | ⬜ 纯设计 | 渐进压缩 + 卸载到 `message_attachment`（表已存在）+ 预算前置，**仍未实现** |
+| **D4** | [评测](zh/d4-evaluation.md) | 🟡 **半落地** | ✅ 检索层黄金集（按腿分型）+ 分层指标 + 消融，**驱动 rerank 反悔**；❌ 生成层指标 + CI 门禁仍设计 |
+| **D5** | [Guardrails](zh/d5-guardrails.md) | 🟡 **半落地** | ✅ 检索注入护栏（"文档=数据"信封，适度护栏）；❌ 输出 PII / 内容护栏仍设计 |
+| **D6** | [Agent / RAG 可观测](zh/d6-agent-tracing.md) | 🟡 **半落地** | ✅ 检索 trace（专用 `rag_search_trace` 表，**修正了"导 seq 流"的结论**）；❌ Agent 级 step/span trace 仍设计 |
 
-📐 = 设计篇（现状有据，设计未实现）。设计篇的共同发现：**该有的零件大多已躺在代码里（向量列、attachment 表、seq 流、FS 启用模式、BullMQ、ARK 网关），缺的不是设计，是接线。**
+📐 = 仍为纯设计 · ✅/🟡 = 全/半落地（带 [实现回填] 段）。设计篇的共同发现仍成立：**该有的零件大多已躺在代码里，缺的是接线**——但 RAG 这一轮也补了一条反向教训：**当关键数据从不流经已有信号通道时（如检索内部之于 seq 流），你就得新造，不是接线**（见 D6 回填）。
 
 ## English · Recommended Order
 
