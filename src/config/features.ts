@@ -14,6 +14,7 @@ export const FEATURE_CONFIG = {
 
   // Section 2: Other
   documents: true,        // Documents / KB page - enabled
+  ocr: true,              // OCR 文字识别 standalone converter (OCR module O2) - enabled
   dashboard: false,       // Dashboards page - hidden
 
   // Cloud features (navClouds section)

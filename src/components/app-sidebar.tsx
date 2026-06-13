@@ -17,6 +17,7 @@ import FileTextIcon from 'virtual:icons/ri/file-text-line';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
 import AppsIcon from 'virtual:icons/ri/apps-2-line';
+import ScanIcon from 'virtual:icons/ri/scan-2-line';
 import ShieldIcon from 'virtual:icons/ri/shield-line';
 import { FEATURE_CONFIG } from '~/config/features';
 import { isAdminUser } from '~/server/function/skills.server';
@@ -62,6 +63,12 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
           url: '/agents/documents',
           icon: FileTextIcon,
           enabled: FEATURE_CONFIG.documents,
+        },
+        {
+          title: content.nav.ocr,
+          url: '/agents/ocr',
+          icon: ScanIcon,
+          enabled: FEATURE_CONFIG.ocr,
         },
       ],
     },

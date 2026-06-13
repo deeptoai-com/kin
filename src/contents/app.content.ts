@@ -48,6 +48,14 @@ const appContent = {
         ko: '문서 / 지식베이스',
         'zh-Hant': '文件 / 知識庫',
       }),
+      ocr: t({
+        en: 'OCR',
+        'zh-Hans': '文字识别',
+        fr: 'OCR',
+        ja: 'OCR',
+        ko: 'OCR',
+        'zh-Hant': '文字識別',
+      }),
       dashboards: t({
         en: 'Dashboards',
         'zh-Hans': '仪表板',
