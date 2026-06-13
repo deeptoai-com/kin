@@ -31,6 +31,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number
 
 export interface OcrIngestOptions {
   provider?: OcrProvider;
+  prompt?: string;
   dpi?: number;
   maxPages?: number;
   concurrency?: number;
@@ -45,7 +46,7 @@ export async function ocrPdfToMarkdown(
   const rendered = await renderPdfViaSidecar(bytes, { dpi: opts.dpi ?? 150, maxPages: opts.maxPages });
   if (!rendered.ok || !rendered.pages?.length) return null;
   const texts = await mapLimit(rendered.pages, opts.concurrency ?? 4, (p) =>
-    ocrImage(p.image, 'image/png', { provider: opts.provider, signal: opts.signal }).catch(() => ''),
+    ocrImage(p.image, 'image/png', { provider: opts.provider, prompt: opts.prompt, signal: opts.signal }).catch(() => ''),
   );
   const blocks = rendered.pages
     .map((p, i) => `${PAGE_MARK(p.page)}\n${texts[i] ?? ''}`.trim())
@@ -60,6 +61,6 @@ export async function ocrImageToMarkdown(
   opts: OcrIngestOptions = {},
 ): Promise<string | null> {
   const b64 = Buffer.from(bytes).toString('base64');
-  const md = await ocrImage(b64, mediaType, { provider: opts.provider, signal: opts.signal });
+  const md = await ocrImage(b64, mediaType, { provider: opts.provider, prompt: opts.prompt, signal: opts.signal });
   return md.trim() || null;
 }

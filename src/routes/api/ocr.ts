@@ -29,20 +29,22 @@ export const Route = createFileRoute('/api/ocr')({
         } catch {
           return Response.json({ error: 'invalid JSON body' }, { status: 400 });
         }
-        const { contentBase64, mediaType, provider } = (body ?? {}) as Record<string, unknown>;
+        const { contentBase64, mediaType, provider, prompt } = (body ?? {}) as Record<string, unknown>;
         if (typeof contentBase64 !== 'string' || !contentBase64) {
           return Response.json({ error: 'contentBase64 is required' }, { status: 400 });
         }
         const mt = typeof mediaType === 'string' ? mediaType : 'application/octet-stream';
         const prov: OcrProvider | undefined = provider === 'mimo' || provider === 'doubao' ? provider : undefined;
+        // Custom prompt (e.g. the 表格 mode's "standard→markdown / irregular→HTML" instruction). Capped.
+        const customPrompt = typeof prompt === 'string' && prompt.trim() ? prompt.slice(0, 2000) : undefined;
 
         const bytes = Buffer.from(contentBase64, 'base64');
         if (bytes.length === 0) return Response.json({ error: 'empty content' }, { status: 400 });
 
         const markdown =
           mt === 'application/pdf'
-            ? await ocrPdfToMarkdown(bytes, { provider: prov })
-            : await ocrImageToMarkdown(bytes, mt, { provider: prov });
+            ? await ocrPdfToMarkdown(bytes, { provider: prov, prompt: customPrompt })
+            : await ocrImageToMarkdown(bytes, mt, { provider: prov, prompt: customPrompt });
 
         if (!markdown) return Response.json({ error: 'OCR produced no text' }, { status: 422 });
         return Response.json({ markdown });

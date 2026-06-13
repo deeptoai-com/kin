@@ -1,16 +1,18 @@
 /**
- * OCR standalone converter (OCR module O2 v2) — the leftmost-rail "文字识别" module.
+ * OCR standalone converter (OCR module O2 v2.1) — leftmost-rail "文字识别" module.
  *
- * 极简且正确（Owner 反馈后重做）：
- *  - PDF → 先用解析器抽文字层（/api/ocr/parse，快/准/免费），不 raster+OCR。
- *  - 某页不对 → 用户手动「用 VLM 重新识别这页」（/api/ocr，只 OCR 这一页）。
- *  - 扫描件（无文字层）→ 提示，逐页或「识别全部」OCR。
- *  - 任何 OCR 可「停止」（AbortController）。选页 = 直接点你要的那几页。
- *  - 左原图 ↔ 右文本，格式切换 MD/文本/HTML（本地派生），复制/导出/加入知识库。
+ * 解析优先（Owner 反馈）：文字 PDF 走 /api/ocr/parse 抽文字层；某页不对→逐页「用 AI 重识别」；
+ * 扫描件→可识别全部；OCR 可「停止」。左原图↔右文本，复制(整篇/本页)/导出/加入知识库。
+ *
+ * v2.1 optimizations (Owner):
+ *  ① 单页复制 — copy just the current page's text.
+ *  ③ 表格模式 — 替掉无用的 HTML：抽出全文所有表格，每个支持 查看/复制/AI 重新生成
+ *     （AI prompt 确认：规则表格→markdown，不规则→HTML 以保留合并单元格结构）。
+ * (② 历史/持久化另起一轮做。)
  */
 import { createFileRoute } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ScanText, FileUp, Copy, Check, Download, BookPlus, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, Sparkles, Square,
@@ -20,20 +22,29 @@ import { initDocumentUpload, completeDocumentUpload } from '~/server/function/do
 
 export const Route = createFileRoute('/agents/ocr')({ component: OcrConverterPage });
 
-type OutputFormat = 'markdown' | 'text' | 'html';
+type OutputFormat = 'markdown' | 'text' | 'tables';
 interface OcrPage {
   page: number;
-  imageUrl: string | null; // data-url for the left pane (null = beyond render cap)
-  imageB64: string | null; // raw base64 for re-OCR (null if no image)
+  imageUrl: string | null;
+  imageB64: string | null;
   mediaType: string;
-  text: string | null; // null = no text yet (scanned page, not OCR'd)
+  text: string | null;
   source: 'parse' | 'ocr' | null;
   ocring: boolean;
   error?: boolean;
 }
+interface DetectedTable {
+  key: string;
+  page: number;
+  md: string;
+}
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp';
 const MEDIA: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+const TABLE_PROMPT =
+  '只提取这张图里的表格。如果是标准规则表格（行列整齐、无合并单元格），输出 Markdown 表格；' +
+  '如果表格不规则（有合并单元格/跨行跨列/嵌套表头），改用 HTML <table> 标签输出以保留结构。' +
+  '只输出表格本身，不要任何额外文字或解释。看不清的单元格留空，不要编造。';
 
 function fileToBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,17 +64,34 @@ function mdToText(md: string): string {
     .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1').replace(/`([^`]+)`/g, '$1')
     .replace(/^\s*[-*]\s+/gm, '• ').replace(/\n{3,}/g, '\n\n').trim();
 }
-function mdToHtml(md: string): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return md
-    .replace(/<!-- odl-page \d+ -->/g, '').split(/\n{2,}/)
-    .map((b) => {
-      const h = b.match(/^(#{1,6})\s+(.*)$/);
-      if (h) return `<h${h[1].length}>${esc(h[2])}</h${h[1].length}>`;
-      if (/^\s*\|.*\|/.test(b)) return `<pre>${esc(b)}</pre>`;
-      return `<p>${esc(b).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')}</p>`;
-    })
-    .join('\n');
+/** Strip script/handlers from AI-generated HTML tables before rendering (trusted-team, light guard). */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+}
+const isHtmlTable = (s: string) => /<table[\s>]/i.test(s);
+
+/** Find markdown table blocks per page (consecutive |-rows containing a |---| separator). */
+function detectTables(pages: OcrPage[]): DetectedTable[] {
+  const tables: DetectedTable[] = [];
+  for (const p of pages) {
+    if (!p.text) continue;
+    const lines = p.text.split('\n');
+    let buf: string[] = [];
+    const flush = () => {
+      const hasSep = buf.some((l) => /-/.test(l) && /^\s*\|?[\s:|-]+\|?\s*$/.test(l));
+      if (buf.length >= 2 && hasSep) tables.push({ key: `${p.page}-${tables.length}`, page: p.page, md: buf.join('\n').trim() });
+      buf = [];
+    };
+    for (const line of lines) {
+      if (/^\s*\|.*\|/.test(line) || (buf.length > 0 && /^\s*\|/.test(line))) buf.push(line);
+      else flush();
+    }
+    flush();
+  }
+  return tables;
 }
 
 function OcrConverterPage() {
@@ -74,32 +102,36 @@ function OcrConverterPage() {
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready'>('idle');
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null); // which copy button flashed ✓
   const [savedToKb, setSavedToKb] = useState<'idle' | 'saving' | 'done'>('idle');
   const [dragOver, setDragOver] = useState(false);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [tableOverrides, setTableOverrides] = useState<Record<string, string>>({});
+  const [tableRegen, setTableRegen] = useState<Record<string, boolean>>({});
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const initUpload = useServerFn(initDocumentUpload);
   const completeUpload = useServerFn(completeDocumentUpload);
 
-  const callOcr = useCallback(async (imageB64: string, mediaType: string, signal: AbortSignal): Promise<string> => {
-    const res = await fetch('/api/ocr', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
-      body: JSON.stringify({ contentBase64: imageB64, mediaType }),
-    });
-    if (!res.ok) throw new Error(`OCR HTTP ${res.status}`);
-    const { markdown } = await res.json();
-    return markdown ?? '';
-  }, []);
+  const callOcr = useCallback(
+    async (imageB64: string, mediaType: string, signal: AbortSignal, prompt?: string): Promise<string> => {
+      const res = await fetch('/api/ocr', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+        body: JSON.stringify({ contentBase64: imageB64, mediaType, prompt }),
+      });
+      if (!res.ok) throw new Error(`OCR HTTP ${res.status}`);
+      const { markdown } = await res.json();
+      return markdown ?? '';
+    },
+    [],
+  );
 
-  /** Re-OCR a single page (user-triggered). Shares abortRef so 「停止」 cancels it. */
   const ocrOnePage = useCallback(
     async (i: number) => {
       const pg = pages[i];
       if (!pg?.imageB64) return;
-      const ctrl = abortRef.current ?? new AbortController();
+      const ctrl = new AbortController();
       abortRef.current = ctrl;
       setPages((prev) => prev.map((p, idx) => (idx === i ? { ...p, ocring: true, error: false } : p)));
       try {
@@ -113,7 +145,6 @@ function OcrConverterPage() {
     [pages, callOcr],
   );
 
-  /** OCR every page lacking text (scanned doc / re-do all). Cancellable. */
   const ocrAll = useCallback(async () => {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -144,6 +175,26 @@ function OcrConverterPage() {
     setBatchRunning(false);
   }, []);
 
+  /** ③ AI regenerate a table: re-OCR its page image with the table-focused prompt. */
+  const regenerateTable = useCallback(
+    async (t: DetectedTable) => {
+      const pg = pages.find((p) => p.page === t.page);
+      if (!pg?.imageB64) return;
+      setTableRegen((m) => ({ ...m, [t.key]: true }));
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      try {
+        const out = await callOcr(pg.imageB64, pg.mediaType, ctrl.signal, TABLE_PROMPT);
+        setTableOverrides((m) => ({ ...m, [t.key]: out.trim() }));
+      } catch {
+        /* aborted or failed — leave original */
+      } finally {
+        setTableRegen((m) => ({ ...m, [t.key]: false }));
+      }
+    },
+    [pages, callOcr],
+  );
+
   const runLoad = useCallback(
     async (file: File) => {
       fileRef.current = file;
@@ -153,6 +204,8 @@ function OcrConverterPage() {
       setSavedToKb('idle');
       setActive(0);
       setPages([]);
+      setTableOverrides({});
+      setTableRegen({});
       const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
       try {
         if (ext === 'pdf') {
@@ -167,8 +220,8 @@ function OcrConverterPage() {
           for (const p of (parseRes.pages ?? []) as { page: number; text: string }[]) textByPage[p.page] = p.text;
           const isScanned = !!parseRes.scanned;
           setScanned(isScanned);
-          const allPages = Array.from(new Set([...Object.keys(images), ...Object.keys(textByPage)].map(Number))).sort((a, b) => a - b);
-          const work: OcrPage[] = (allPages.length ? allPages : Object.keys(images).map(Number)).map((n) => ({
+          const nums = Array.from(new Set([...Object.keys(images), ...Object.keys(textByPage)].map(Number))).sort((a, b) => a - b);
+          const work: OcrPage[] = nums.map((n) => ({
             page: n,
             imageUrl: images[n] ? `data:image/png;base64,${images[n]}` : null,
             imageB64: images[n] ?? null,
@@ -181,7 +234,6 @@ function OcrConverterPage() {
           setPages(work);
           setPhase('ready');
         } else {
-          // Image upload: it IS one page with no text layer → OCR directly (1 call, fast).
           const b64 = await fileToBase64(file);
           const mt = MEDIA[ext] ?? 'image/jpeg';
           setPages([{ page: 1, imageUrl: `data:${mt};base64,${b64}`, imageB64: b64, mediaType: mt, text: null, source: null, ocring: true }]);
@@ -215,21 +267,23 @@ function OcrConverterPage() {
     if (f) void runLoad(f);
   };
 
+  const tables = useMemo(() => detectTables(pages), [pages]);
   const assembled = pages.map((p) => p.text ?? '').filter(Boolean).join('\n\n');
-  const output = format === 'text' ? mdToText(assembled) : format === 'html' ? mdToHtml(assembled) : assembled;
   const current = pages[active];
   const pendingCount = pages.filter((p) => p.imageB64 && p.text === null).length;
 
-  const copyOut = async () => {
-    await navigator.clipboard.writeText(output);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+  const flashCopy = (id: string, text: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied((c) => (c === id ? null : c)), 1600);
   };
+  const copyAll = () => flashCopy('all', format === 'text' ? mdToText(assembled) : assembled);
+  const copyPage = () => current?.text && flashCopy('page', format === 'text' ? mdToText(current.text) : current.text);
   const exportOut = () => {
-    const ext = format === 'html' ? 'html' : format === 'text' ? 'txt' : 'md';
-    const mime = format === 'html' ? 'text/html' : format === 'text' ? 'text/plain' : 'text/markdown';
+    const body = format === 'text' ? mdToText(assembled) : assembled;
+    const ext = format === 'text' ? 'txt' : 'md';
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([output], { type: mime }));
+    a.href = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
     a.download = `${(fileName ?? 'ocr').replace(/\.[^.]+$/, '')}.${ext}`;
     a.click();
     URL.revokeObjectURL(a.href);
@@ -277,9 +331,7 @@ function OcrConverterPage() {
           <span className="text-base font-medium text-foreground">拖入 PDF 或图片，转成可编辑文本</span>
           <span className="text-xs text-muted-foreground">文字版 PDF 直接解析；扫描件 / 照片用 AI 识别</span>
         </button>
-        {error && (
-          <p className="mt-4 flex items-center gap-1.5 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{error}</p>
-        )}
+        {error && <p className="mt-4 flex items-center gap-1.5 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{error}</p>}
         <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={onPick} />
       </div>
     );
@@ -294,7 +346,7 @@ function OcrConverterPage() {
           {phase === 'loading' ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />解析中…</span>
           ) : scanned ? (
-            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600">扫描件 · 无文字层，需 AI 识别</span>
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600">扫描件 · 需 AI 识别</span>
           ) : (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">已解析 · {pages.length} 页</span>
           )}
@@ -311,61 +363,108 @@ function OcrConverterPage() {
             </button>
           )}
           <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
-            {(['markdown', 'text', 'html'] as OutputFormat[]).map((f) => (
+            {(['markdown', 'text', 'tables'] as OutputFormat[]).map((f) => (
               <button key={f} type="button" onClick={() => setFormat(f)}
                 className={`rounded-md px-2.5 py-1 text-xs transition-colors ${format === f ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-                {f === 'markdown' ? 'Markdown' : f === 'text' ? '纯文本' : 'HTML'}
+                {f === 'markdown' ? 'Markdown' : f === 'text' ? '纯文本' : `表格${tables.length ? ` ${tables.length}` : ''}`}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-2">
-        <div className="min-h-0 overflow-auto border-r p-3">
-          <div className="mb-2 text-[11px] text-muted-foreground">原始页 · 第 {current?.page ?? 1} 页</div>
-          {current?.imageUrl ? (
-            <img src={current.imageUrl} alt={`page ${current.page}`} className="w-full rounded-md border" />
+      {format === 'tables' ? (
+        // ③ 表格模式：全文所有表格，每个 查看/复制/AI 重新生成
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {tables.length === 0 ? (
+            <p className="text-sm text-muted-foreground">未检测到表格。若原文有表格未识别出，可在「Markdown」视图对该页「用 AI 重新识别」。</p>
           ) : (
-            <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">本页无预览图</div>
+            <div className="space-y-4">
+              {tables.map((t) => {
+                const content = tableOverrides[t.key] ?? t.md;
+                const html = isHtmlTable(content);
+                return (
+                  <div key={t.key} className="rounded-lg border">
+                    <div className="flex items-center justify-between border-b px-3 py-1.5">
+                      <span className="text-[11px] text-muted-foreground">第 {t.page} 页{html ? ' · HTML' : ''}{tableOverrides[t.key] ? ' · AI 重生成' : ''}</span>
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => flashCopy(`t-${t.key}`, content)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
+                          {copied === `t-${t.key}` ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制
+                        </button>
+                        <button type="button" disabled={tableRegen[t.key]} onClick={() => void regenerateTable(t)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent disabled:opacity-50">
+                          {tableRegen[t.key] ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}AI 重新生成
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-auto p-3 text-sm">
+                      {html ? (
+                        <div className="ocr-html-table" dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }} />
+                      ) : (
+                        <StreamingMarkdown content={content} isStreaming={false} mode="minimal" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-        <div className="min-h-0 overflow-auto p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              识别文本{current?.source === 'parse' ? '（解析器）' : current?.source === 'ocr' ? '（AI 识别）' : ''}
-            </span>
-            {current?.imageB64 && !current.ocring && (
-              <button type="button" onClick={() => void ocrOnePage(active)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
-                <Sparkles className="h-3 w-3" />{current.text === null ? '识别这页' : '用 AI 重新识别'}
-              </button>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-2">
+          <div className="min-h-0 overflow-auto border-r p-3">
+            <div className="mb-2 text-[11px] text-muted-foreground">原始页 · 第 {current?.page ?? 1} 页</div>
+            {current?.imageUrl ? (
+              <img src={current.imageUrl} alt={`page ${current.page}`} className="w-full rounded-md border" />
+            ) : (
+              <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">本页无预览图</div>
             )}
           </div>
-          {current?.ocring ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />AI 识别中…</div>
-          ) : current?.error ? (
-            <p className="text-sm text-destructive">本页识别失败，可重试</p>
-          ) : current?.text === null ? (
-            <p className="text-sm text-muted-foreground">此页无文字层。点上方「识别这页」用 AI 识别。</p>
-          ) : format === 'markdown' ? (
-            <StreamingMarkdown content={current?.text || ''} isStreaming={false} mode="minimal" />
-          ) : (
-            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
-              {format === 'text' ? mdToText(current?.text || '') : mdToHtml(current?.text || '')}
-            </pre>
-          )}
+          <div className="min-h-0 overflow-auto p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                识别文本{current?.source === 'parse' ? '（解析器）' : current?.source === 'ocr' ? '（AI 识别）' : ''}
+              </span>
+              <div className="flex items-center gap-1.5">
+                {current?.text && (
+                  <button type="button" onClick={copyPage} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
+                    {copied === 'page' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制本页
+                  </button>
+                )}
+                {current?.imageB64 && !current.ocring && (
+                  <button type="button" onClick={() => void ocrOnePage(active)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
+                    <Sparkles className="h-3 w-3" />{current.text === null ? '识别这页' : '用 AI 重新识别'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {current?.ocring ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />AI 识别中…</div>
+            ) : current?.error ? (
+              <p className="text-sm text-destructive">本页识别失败，可重试</p>
+            ) : current?.text === null ? (
+              <p className="text-sm text-muted-foreground">此页无文字层。点上方「识别这页」用 AI 识别。</p>
+            ) : format === 'text' ? (
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">{mdToText(current?.text || '')}</pre>
+            ) : (
+              <StreamingMarkdown content={current?.text || ''} isStreaming={false} mode="minimal" />
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 border-t px-4 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <button type="button" disabled={active === 0} onClick={() => setActive((a) => Math.max(0, a - 1))} className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-          <span>{current?.page ?? 1} / {pages.length}</span>
-          <button type="button" disabled={active >= pages.length - 1} onClick={() => setActive((a) => Math.min(pages.length - 1, a + 1))} className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+          {format !== 'tables' && (
+            <>
+              <button type="button" disabled={active === 0} onClick={() => setActive((a) => Math.max(0, a - 1))} className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+              <span>{current?.page ?? 1} / {pages.length}</span>
+              <button type="button" disabled={active >= pages.length - 1} onClick={() => setActive((a) => Math.min(pages.length - 1, a + 1))} className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={copyOut} disabled={!assembled} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-accent disabled:opacity-40">
-            {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}{copied ? '已复制' : '复制'}
+          <button type="button" onClick={copyAll} disabled={!assembled} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-accent disabled:opacity-40">
+            {copied === 'all' ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}{copied === 'all' ? '已复制' : '复制全文'}
           </button>
           <button type="button" onClick={exportOut} disabled={!assembled} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-accent disabled:opacity-40">
             <Download className="h-3.5 w-3.5" />导出
