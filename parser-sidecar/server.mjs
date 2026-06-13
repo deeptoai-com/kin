@@ -86,6 +86,12 @@ async function parsePdf(bytes, mode) {
     const args = [
       '-o', dir, '-f', 'markdown', '--image-output', 'off', '-q',
       '--markdown-page-separator', '<!-- odl-page %page-number% -->',
+      // Tables: `cluster` detects BORDERLESS tables (financial statements align by
+      // whitespace, not borders — border-based misses them and flattens to prose).
+      // `--markdown-with-html` emits <table> for complex/multi-span tables that markdown
+      // pipes can't represent. Together: faithful table capture for converter + RAG.
+      '--table-method', 'cluster',
+      '--markdown-with-html',
     ];
     if (mode !== 'structured') args.push('--reading-order', 'off');
     const t0 = Date.now();

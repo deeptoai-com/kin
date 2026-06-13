@@ -80,7 +80,14 @@ function detectTables(pages: OcrPage[]): DetectedTable[] {
   const tables: DetectedTable[] = [];
   for (const p of pages) {
     if (!p.text) continue;
-    const lines = p.text.split('\n');
+    // 1) HTML <table> blocks (the parser's primary table output with --markdown-with-html;
+    //    borderless financial tables come through here thanks to --table-method cluster).
+    const htmlBlocks = p.text.match(/<table[\s\S]*?<\/table>/gi) ?? [];
+    for (const html of htmlBlocks) {
+      tables.push({ key: `${p.page}-${tables.length}`, page: p.page, md: html.trim() });
+    }
+    // 2) Markdown pipe-tables (fallback for any emitted as | ... | with a |---| separator).
+    const lines = p.text.replace(/<table[\s\S]*?<\/table>/gi, '').split('\n');
     let buf: string[] = [];
     const flush = () => {
       const hasSep = buf.some((l) => /-/.test(l) && /^\s*\|?[\s:|-]+\|?\s*$/.test(l));
