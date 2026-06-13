@@ -113,7 +113,8 @@ flag + `app.content.ts` i18n），路由 `/agents/ocr/route.tsx` 照 `documents`
 | 阶段 | 范围 | 消费者 | 状态 |
 |---|---|---|---|
 | **O1 引擎 + 双消费者后端** | ✅ a provider 抽象(doubao+mimo) / b parser `/render` / c ingest 扫描件分支(堵U3) / d `/api/ocr`+`ocr` MCP 工具。分支 `feat/ocr-provider`，全部实测验证。**未部署**（待 O2 或单独上） | ①② | ✅ **完成** |
-| **O2 独立转换器（极简产品）** | 主栏第 4 模块 + `/agents/ocr` + 拖拽空状态 + 逐页进度(流式) + 左右对照(滚动同步)结果页 + **格式切换(MD/文本/表格/HTML 母格式本地派生)** + 质量徽章 + 复制/导出/加入知识库 | ③ | ⬜ 待做（/api/ocr 后端已就绪） |
+| **O2 独立转换器（极简产品）** | ✅ 主栏第 4 模块「文字识别」+ `/agents/ocr` + 拖拽空状态 + 逐页即显(并发2) + 左右对照结果页 + 格式切换(MD/文本/HTML 本地派生) + 复制/导出/加入知识库 + `/api/ocr/render`。**已部署 oxygenie.cc**（app+worker+parser 重建，OCR env 接线，全栈健康验证通过） | ③ | ✅ **完成·已上线** |
+| O2 后续打磨 | 质量徽章（VLM 幻觉护栏）、滚动同步、表格→CSV、bbox(O4) | ③ | ⬜ 待 Owner 实测反馈 |
 | **O3 gemma provider** | 填入 Owner 提供的 Gemma 配置（端点/鉴权/模型），provider 选择器；同文件换引擎对比 | 全 | 中（待 Owner 给配置） |
 | **O4 bbox 叠加（可选后续）** | grounding VLM 或经典 OCR 协同出坐标 → 点文本高亮原图区域 | ③ | 低（验证好用再做） |
 
