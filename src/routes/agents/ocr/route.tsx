@@ -25,7 +25,6 @@ export const Route = createFileRoute('/agents/ocr')({
 });
 
 type OutputFormat = 'markdown' | 'text' | 'tables';
-const RENDER_DPI = 150;
 interface OcrPage {
   page: number;
   imageUrl: string | null;
@@ -36,7 +35,7 @@ interface OcrPage {
   ocring: boolean;
   error?: boolean;
 }
-interface TableRegion { page: number; bbox: [number, number, number, number]; rows: number | null; cols: number | null }
+interface TablePage { page: number; cells: number; big: boolean }
 interface HistoryItem {
   id: string; title: string; fileName: string; mimeType: string | null;
   pageCount: number; scanned: boolean; createdAt: string | Date;
@@ -68,16 +67,24 @@ function sanitizeHtml(html: string): string {
 }
 const isHtmlTable = (s: string) => /<table[\s>]/i.test(s);
 
-/** bbox (PDF pt, y-from-bottom) → CSS % box on the rendered page image (natural px + DPI). */
-function bboxToPct(bbox: [number, number, number, number], natW: number, natH: number) {
-  const s = RENDER_DPI / 72;
-  const [x0, y0, x1, y1] = bbox;
-  return {
-    left: (x0 * s) / natW * 100,
-    width: ((x1 - x0) * s) / natW * 100,
-    top: (natH - y1 * s) / natH * 100,
-    height: ((y1 - y0) * s) / natH * 100,
-  };
+/**
+ * Find table-bearing pages straight from the ALREADY-PARSED text (cluster+markdown-with-html
+ * emits <table> for every detected table) — full doc coverage, instant, no extra/capped call.
+ * Rank by table-cell count so real data tables float up and tiny false-positives (e.g. a 2×2
+ * infographic = 4 cells) sink. Notice boxes (single cell) are dropped (< 4 cells).
+ */
+function findTablePages(pages: OcrPage[]): TablePage[] {
+  const out: TablePage[] = [];
+  for (const p of pages) {
+    if (!p.text) continue;
+    let cells = 0;
+    for (const t of p.text.match(/<table[\s\S]*?<\/table>/gi) ?? []) cells += (t.match(/<t[dh][\s>]/gi) ?? []).length;
+    const mdRows = p.text.replace(/<table[\s\S]*?<\/table>/gi, '').split('\n')
+      .filter((l) => /^\s*\|.*\|/.test(l) && !/^\s*\|?[\s:|-]+\|?\s*$/.test(l));
+    for (const r of mdRows) cells += Math.max(0, (r.match(/\|/g)?.length ?? 1) - 1);
+    if (cells >= 4) out.push({ page: p.page, cells, big: cells >= 12 });
+  }
+  return out.sort((a, b) => b.cells - a.cells);
 }
 
 function OcrConverterPage() {
@@ -94,13 +101,11 @@ function OcrConverterPage() {
   const [savedToKb, setSavedToKb] = useState<'idle' | 'saving' | 'done'>('idle');
   const [dragOver, setDragOver] = useState(false);
   const [batchRunning, setBatchRunning] = useState(false);
-  // table-v3 detection state
-  const [tableRegions, setTableRegions] = useState<TableRegion[] | null>(null);
-  const [tablesLoading, setTablesLoading] = useState(false);
+  // table-v3.1: detection derived from parsed text (full coverage); selection → VLM read
   const [selPages, setSelPages] = useState<number[]>([]);
   const [tableResult, setTableResult] = useState<string | null>(null);
   const [tableReading, setTableReading] = useState(false);
-  const [imgNat, setImgNat] = useState<{ w: number; h: number } | null>(null);
+  const [rendering, setRendering] = useState<number | null>(null); // page being lazily rendered
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -203,31 +208,43 @@ function OcrConverterPage() {
 
   const stopOcr = useCallback(() => { abortRef.current?.abort(); abortRef.current = null; setBatchRunning(false); setTableReading(false); }, []);
 
-  /** table-v3: detect table locations (lazy, when 表格 mode opened). Needs the current file. */
-  const detectTablesNow = useCallback(async () => {
-    const file = fileRef.current;
-    if (!file || file.name.split('.').pop()?.toLowerCase() !== 'pdf') { setTableRegions([]); return; }
-    setTablesLoading(true);
-    try {
-      const res = await fetch('/api/ocr/tables', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file });
-      const j = await res.json();
-      setTableRegions((j.tables ?? []).filter((t: TableRegion) => t.page && Array.isArray(t.bbox)));
-    } catch { setTableRegions([]); } finally { setTablesLoading(false); }
-  }, []);
-
-  const openTables = useCallback(() => {
-    setFormat('tables');
-    if (tableRegions === null && !tablesLoading) void detectTablesNow();
-  }, [tableRegions, tablesLoading, detectTablesNow]);
+  /** Lazily render a single deep page (beyond the bulk render cap). Returns its base64 (or null). */
+  const ensurePageImage = useCallback(
+    async (pn: number): Promise<string | null> => {
+      const file = fileRef.current;
+      const pg = pages.find((p) => p.page === pn);
+      if (pg?.imageB64) return pg.imageB64;
+      if (!file || !pg || file.name.split('.').pop()?.toLowerCase() !== 'pdf') return null;
+      setRendering(pn);
+      try {
+        const res = await fetch(`/api/ocr/render?page=${pn}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file });
+        const j = await res.json();
+        const img = (j.pages ?? [])[0]?.image as string | undefined;
+        if (img) {
+          setPages((prev) => prev.map((p) => (p.page === pn ? { ...p, imageB64: img, imageUrl: `data:image/png;base64,${img}` } : p)));
+          return img;
+        }
+        return null;
+      } catch {
+        return null;
+      } finally {
+        setRendering((r) => (r === pn ? null : r));
+      }
+    },
+    [pages],
+  );
 
   const toggleSelPage = useCallback((pn: number) => {
     setSelPages((prev) => (prev.includes(pn) ? prev.filter((x) => x !== pn) : [...prev, pn].sort((a, b) => a - b)));
     setTableResult(null);
-  }, []);
+    void ensurePageImage(pn);
+  }, [ensurePageImage]);
 
   /** Read the selected page(s) with the VLM (cross-page tables = multiple images in one call). */
   const readSelectedTables = useCallback(async () => {
-    const imgs = selPages.map((pn) => pages.find((p) => p.page === pn)?.imageB64).filter((b): b is string => !!b);
+    // Ensure every selected page is rendered (deep pages render lazily); use the returns
+    // (state may not have flushed yet) to collect the images for the VLM call.
+    const imgs = (await Promise.all(selPages.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
     if (imgs.length === 0) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -242,12 +259,12 @@ function OcrConverterPage() {
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setTableResult('（识别失败，可重试）');
     } finally { setTableReading(false); }
-  }, [selPages, pages]);
+  }, [selPages, ensurePageImage]);
 
   const resetState = useCallback(() => {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
-    setTableRegions(null); setSelPages([]); setTableResult(null); setImgNat(null); setFormat('markdown'); setPhase('idle');
+    setSelPages([]); setTableResult(null); setRendering(null); setFormat('markdown'); setPhase('idle');
   }, []);
 
   const runLoad = useCallback(
@@ -324,9 +341,8 @@ function OcrConverterPage() {
   const assembled = pages.map((p) => p.text ?? '').filter(Boolean).join('\n\n');
   const current = pages[active];
   const pendingCount = pages.filter((p) => p.imageB64 && p.text === null).length;
-  const tablesByPage = new Map<number, TableRegion[]>();
-  for (const t of tableRegions ?? []) tablesByPage.set(t.page, [...(tablesByPage.get(t.page) ?? []), t]);
-  const previewPage = selPages.length ? pages.find((p) => p.page === selPages[0]) : undefined;
+  const tablePages = findTablePages(pages); // full-doc, instant (from already-parsed text)
+  const previewPage = selPages.length ? pages.find((p) => p.page === selPages[selPages.length - 1]) : undefined;
 
   const flashCopy = (id: string, text: string) => { void navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1600); };
   const copyAll = () => flashCopy('all', format === 'text' ? mdToText(assembled) : assembled);
@@ -408,9 +424,9 @@ function OcrConverterPage() {
           )}
           <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
             {(['markdown', 'text', 'tables'] as OutputFormat[]).map((f) => (
-              <button key={f} type="button" onClick={() => (f === 'tables' ? openTables() : setFormat(f))}
+              <button key={f} type="button" onClick={() => setFormat(f)}
                 className={`rounded-md px-2.5 py-1 text-xs transition-colors ${format === f ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-                {f === 'markdown' ? 'Markdown' : f === 'text' ? '纯文本' : `表格${tableRegions?.length ? ` ${tableRegions.length}` : ''}`}
+                {f === 'markdown' ? 'Markdown' : f === 'text' ? '纯文本' : `表格${tablePages.length ? ` ${tablePages.length}` : ''}`}
               </button>
             ))}
           </div>
@@ -422,24 +438,21 @@ function OcrConverterPage() {
           {/* left: detected table list (multi-select) */}
           <div className="min-h-0 overflow-auto border-r p-3">
             <div className="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><TableIcon className="h-3.5 w-3.5" />检测到的表格</div>
-            {tablesLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />检测中…</div>
-            ) : !fileRef.current ? (
-              <p className="text-xs text-muted-foreground">历史记录未保留原文件，无法检测表格。请重新上传该文件。</p>
-            ) : (tableRegions?.length ?? 0) === 0 ? (
-              <p className="text-xs text-muted-foreground">未检测到表格。</p>
+            {!fileRef.current ? (
+              <p className="text-xs text-muted-foreground">历史记录未保留原文件，无法读取表格。请重新上传该文件。</p>
+            ) : tablePages.length === 0 ? (
+              <p className="text-xs text-muted-foreground">未在解析结果中检测到表格。</p>
             ) : (
               <div className="space-y-1">
-                {(tableRegions ?? []).map((t, i) => {
-                  const big = (t.rows ?? 0) * (t.cols ?? 0) >= 12;
+                {tablePages.map((t) => {
                   const sel = selPages.includes(t.page);
                   return (
-                    <button key={i} type="button" onClick={() => toggleSelPage(t.page)}
+                    <button key={t.page} type="button" onClick={() => toggleSelPage(t.page)}
                       className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
                       {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                       <span className="flex-1">第 {t.page} 页</span>
-                      <span className="text-muted-foreground">{t.rows ?? '?'}×{t.cols ?? '?'}</span>
-                      {big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
+                      <span className="text-muted-foreground">{t.cells} 格</span>
+                      {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
                     </button>
                   );
                 })}
@@ -452,19 +465,14 @@ function OcrConverterPage() {
                 用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
               </button>
             )}
-            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">勾选 1 页或连续多页（跨页表），交给 AI 一起识别。框不准没关系，AI 读整页。</p>
+            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">勾选 1 页或连续多页（跨页表），交给 AI 一起识别。AI 读整页，定位不准也无妨。按"格数"排序，大数据表在前。</p>
           </div>
-          {/* right: page preview with bbox overlay + AI result */}
+          {/* right: selected-page preview (lazy-rendered) + AI result */}
           <div className="min-h-0 overflow-auto p-3">
-            {previewPage?.imageUrl ? (
-              <div className="relative inline-block w-full max-w-[560px]">
-                <img src={previewPage.imageUrl} alt={`page ${previewPage.page}`} className="w-full rounded-md border"
-                  onLoad={(e) => setImgNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
-                {imgNat && (tablesByPage.get(previewPage.page) ?? []).map((t, i) => {
-                  const b = bboxToPct(t.bbox, imgNat.w, imgNat.h);
-                  return <div key={i} className="absolute rounded-sm border-2 border-red-500/80" style={{ left: `${b.left}%`, top: `${b.top}%`, width: `${b.width}%`, height: `${b.height}%` }} />;
-                })}
-              </div>
+            {rendering !== null && selPages.includes(rendering) ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在渲染第 {rendering} 页…</div>
+            ) : previewPage?.imageUrl ? (
+              <img src={previewPage.imageUrl} alt={`page ${previewPage.page}`} className="w-full max-w-[560px] rounded-md border" />
             ) : (
               <p className="text-xs text-muted-foreground">{selPages.length ? '本页无预览图' : '← 从左侧选择有表格的页面'}</p>
             )}

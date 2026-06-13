@@ -20,9 +20,10 @@ export const Route = createFileRoute('/api/ocr/render')({
         await requireUser(request);
         const url = new URL(request.url);
         const dpi = Number(url.searchParams.get('dpi')) || 150;
+        const page = Number(url.searchParams.get('page')) || 0; // single-page lazy render (deep pages)
         const bytes = Buffer.from(await request.arrayBuffer());
         if (bytes.length === 0) return Response.json({ error: 'empty body' }, { status: 400 });
-        const r = await renderPdfViaSidecar(bytes, { dpi });
+        const r = await renderPdfViaSidecar(bytes, { dpi, page: page > 0 ? page : undefined });
         if (!r.ok || !r.pages) {
           return Response.json({ error: r.error || 'render failed' }, { status: 502 });
         }

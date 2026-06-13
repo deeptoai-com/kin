@@ -132,13 +132,14 @@ export interface SidecarRenderResult {
  */
 export async function renderPdfViaSidecar(
   bytes: Uint8Array | Buffer,
-  opts: { dpi?: number; maxPages?: number; timeoutMs?: number } = {},
+  opts: { dpi?: number; maxPages?: number; page?: number; timeoutMs?: number } = {},
 ): Promise<SidecarRenderResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10 * 60_000);
   const qs = new URLSearchParams();
   if (opts.dpi) qs.set('dpi', String(opts.dpi));
   if (opts.maxPages) qs.set('maxPages', String(opts.maxPages));
+  if (opts.page) qs.set('page', String(opts.page)); // single-page lazy render (deep pages)
   try {
     const res = await fetch(`${sidecarUrl()}/render?${qs}`, {
       method: 'POST',

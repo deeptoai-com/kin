@@ -95,14 +95,16 @@ async function detectTables(bytes, maxPages) {
   }
 }
 
-async function renderPdf(bytes, dpi, maxPages) {
+async function renderPdf(bytes, dpi, maxPages, onlyPage) {
   const dir = await mkdtemp(join(tmpdir(), 'render-'));
   try {
     const input = join(dir, 'input.pdf');
     await writeFile(input, bytes);
     const t0 = Date.now();
-    // pdftoppm -png -r <dpi> -l <maxPages> input.pdf <dir>/page  →  page-1.png, page-2.png, …
-    await runCmd('pdftoppm', ['-png', '-r', String(dpi), '-l', String(maxPages), input, join(dir, 'page')]);
+    // pdftoppm -png -r <dpi> [-f N -l N | -l maxPages] input.pdf <dir>/page → page-N.png …
+    // onlyPage → render that single page (lazy render for deep pages beyond the bulk cap).
+    const range = onlyPage ? ['-f', String(onlyPage), '-l', String(onlyPage)] : ['-l', String(maxPages)];
+    await runCmd('pdftoppm', ['-png', '-r', String(dpi), ...range, input, join(dir, 'page')]);
     const files = (await readdir(dir))
       .filter((f) => f.startsWith('page') && f.endsWith('.png'))
       .map((f) => ({ f, n: Number((f.match(/-(\d+)\.png$/) || [])[1] || 0) }))
@@ -196,9 +198,10 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/render') {
       const dpi = Math.min(Math.max(Number(url.searchParams.get('dpi')) || 150, 72), 300);
       const maxPages = Math.min(Number(url.searchParams.get('maxPages')) || MAX_RENDER_PAGES, MAX_RENDER_PAGES);
+      const onlyPage = Number(url.searchParams.get('page')) || 0; // single-page lazy render
       const bytes = await readBody(req);
       if (bytes.length === 0) return send(400, { ok: false, error: 'empty body' });
-      const r = await renderPdf(bytes, dpi, maxPages);
+      const r = await renderPdf(bytes, dpi, maxPages, onlyPage > 0 ? onlyPage : undefined);
       return send(200, {
         ok: true,
         engine: 'pdftoppm',
