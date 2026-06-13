@@ -13,7 +13,7 @@ async function main() {
   const b64 = bytes.toString('base64');
   const mediaType = path.endsWith('.png') ? 'image/png' : 'image/jpeg';
 
-  for (const provider of ['doubao', 'gemma'] as OcrProvider[]) {
+  for (const provider of ['doubao', 'mimo'] as OcrProvider[]) {
     process.stdout.write(`\n===== ${provider} =====\n`);
     const t0 = Date.now();
     try {

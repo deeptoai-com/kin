@@ -1,22 +1,39 @@
 /**
  * OCR provider abstraction (OCR module O1) — one VLM-OCR core, pluggable backends.
  *
- * Two providers, two API shapes, one `ocrImage()` returning markdown:
+ * Model is ALWAYS configurable (env-overridable) with retained candidates. Two providers,
+ * two API shapes, one `ocrImage()` returning markdown:
  *  - `doubao` (DEFAULT): ARK coding gateway `/v1/messages`, Anthropic Messages format,
- *    Bearer ANTHROPIC_AUTH_TOKEN, model `doubao-seed-2.0-lite`. More accurate on Chinese
- *    docs (verified 2026-06-13 vs gemma) + runs on the team's own ARK quota.
- *  - `gemma`: OpenRouter `/chat/completions`, OpenAI format, Bearer OPENROUTER_API_KEY,
- *    model `google/gemma-4-31b-it` (paid — the `:free` tier is rate-limited unusable).
+ *    Bearer ANTHROPIC_AUTH_TOKEN, model `doubao-seed-2.0-mini`. Accurate on Chinese docs +
+ *    runs on the team's own ARK quota (north-star: self-hosted, own gateway, no per-page $).
+ *  - `mimo` (alternative): OpenRouter `/chat/completions`, OpenAI format, Bearer
+ *    OPENROUTER_API_KEY, model `xiaomi/mimo-v2.5`. Accurate, ~14s/page. NB: mimo is a
+ *    REASONING model — we MUST send `reasoning:{enabled:false}` or it burns the token
+ *    budget on chain-of-thought (verified: 3300+ reasoning tokens) and returns empty/
+ *    truncated OCR. OCR needs transcription, not reasoning.
+ *
+ * (gemma-4-31b dropped 2026-06-13: verified inaccurate on Chinese — misread company names,
+ * emitted Burmese glyphs. doubao/mimo both clean on the same page.)
  *
  * Consumers: ① the `ocr` agent tool (via /api/ocr), ② RAG ingest scanned-file branch,
- * ③ the standalone converter module. All get markdown back.
+ * ③ the standalone converter module. All get markdown back. No auto-routing — the provider
+ * is an explicit choice (OCR_PROVIDER env / UI selector), default doubao.
  *
- * NB: VLM OCR hallucinates on hard cells (verified: gemma misread company names / emitted
- * Burmese glyphs; doubao was cleaner). The prompt tells the model NOT to fabricate, but
- * the real guardrail is the side-by-side + quality badge in the UI (PRD §6.1, blog D5).
+ * NB: VLM OCR can hallucinate on hard cells. The prompt says don't fabricate, but the real
+ * guardrail is the side-by-side + quality badge in the UI (PRD §6.1, blog D5).
  */
 
-export type OcrProvider = 'doubao' | 'gemma';
+export type OcrProvider = 'doubao' | 'mimo';
+
+/** Retained candidates for the UI selector (configurable; default first). */
+export const OCR_PROVIDERS: ReadonlyArray<{
+  id: OcrProvider;
+  label: string;
+  hint: string;
+}> = [
+  { id: 'doubao', label: '豆包 Seed 2.0 mini', hint: '自家 ARK 额度 · 准 · ~20s/页' },
+  { id: 'mimo', label: '小米 MiMo v2.5', hint: '快 3 倍 ~6s/页 · 准 · 按页计费' },
+];
 
 export interface OcrOptions {
   /** Override the OCR instruction (e.g. table-focus / handwriting modes). */
@@ -36,7 +53,7 @@ const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
 
 export function defaultOcrProvider(): OcrProvider {
-  return process.env.OCR_PROVIDER === 'gemma' ? 'gemma' : 'doubao';
+  return process.env.OCR_PROVIDER === 'mimo' ? 'mimo' : 'doubao';
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -88,13 +105,13 @@ async function ocrDoubao(imageBase64: string, mediaType: string, opts: OcrOption
   const key = process.env.ARK_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
   if (!key) throw new Error('ARK key not set (ARK_API_KEY or ANTHROPIC_AUTH_TOKEN) — required for doubao OCR.');
   const base = (process.env.ANTHROPIC_BASE_URL || 'https://ark.cn-beijing.volces.com/api/coding').replace(/\/$/, '');
-  const model = process.env.OCR_DOUBAO_MODEL || 'doubao-seed-2.0-lite';
+  const model = process.env.OCR_DOUBAO_MODEL || 'doubao-seed-2.0-mini';
   const res = await postJsonWithRetry(
     `${base}/v1/messages`,
     { Authorization: `Bearer ${key}`, 'anthropic-version': '2023-06-01' },
     {
       model,
-      max_tokens: opts.maxTokens ?? 4096,
+      max_tokens: opts.maxTokens ?? 8192,
       messages: [
         {
           role: 'user',
@@ -115,18 +132,21 @@ async function ocrDoubao(imageBase64: string, mediaType: string, opts: OcrOption
     .trim();
 }
 
-/** gemma via OpenRouter — OpenAI chat format with a base64 data-url image. */
-async function ocrGemma(imageBase64: string, mediaType: string, opts: OcrOptions): Promise<string> {
+/** mimo via OpenRouter — OpenAI chat format with a base64 data-url image. */
+async function ocrMimo(imageBase64: string, mediaType: string, opts: OcrOptions): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error('OPENROUTER_API_KEY not set — required for gemma OCR.');
-  const base = (process.env.OCR_GEMMA_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
-  const model = process.env.OCR_GEMMA_MODEL || 'google/gemma-4-31b-it';
+  if (!key) throw new Error('OPENROUTER_API_KEY not set — required for mimo OCR.');
+  const base = (process.env.OCR_OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+  const model = process.env.OCR_MIMO_MODEL || 'xiaomi/mimo-v2.5';
   const res = await postJsonWithRetry(
     `${base}/chat/completions`,
     { Authorization: `Bearer ${key}` },
     {
       model,
-      max_tokens: opts.maxTokens ?? 4096,
+      max_tokens: opts.maxTokens ?? 8192,
+      // mimo is a reasoning model — disable it: OCR is transcription, and reasoning
+      // tokens otherwise eat the budget and truncate/empty the output.
+      reasoning: { enabled: false },
       messages: [
         {
           role: 'user',
@@ -145,7 +165,7 @@ async function ocrGemma(imageBase64: string, mediaType: string, opts: OcrOptions
 
 /**
  * OCR a single page image → markdown. `imageBase64` is the raw base64 (no data-url prefix);
- * `mediaType` like 'image/jpeg' | 'image/png'. Provider defaults to OCR_PROVIDER env.
+ * `mediaType` like 'image/jpeg' | 'image/png'. Provider defaults to OCR_PROVIDER env (doubao).
  */
 export async function ocrImage(
   imageBase64: string,
@@ -153,7 +173,7 @@ export async function ocrImage(
   opts: OcrOptions = {},
 ): Promise<string> {
   const provider = opts.provider ?? defaultOcrProvider();
-  return provider === 'gemma'
-    ? ocrGemma(imageBase64, mediaType, opts)
+  return provider === 'mimo'
+    ? ocrMimo(imageBase64, mediaType, opts)
     : ocrDoubao(imageBase64, mediaType, opts);
 }
