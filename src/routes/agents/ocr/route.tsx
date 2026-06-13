@@ -35,7 +35,7 @@ interface OcrPage {
   ocring: boolean;
   error?: boolean;
 }
-interface TablePage { page: number; cells: number; big: boolean }
+interface TablePage { page: number; cells: number; big: boolean; via: 'parser' | 'heuristic' }
 interface HistoryItem {
   id: string; title: string; fileName: string; mimeType: string | null;
   pageCount: number; scanned: boolean; createdAt: string | Date;
@@ -68,21 +68,38 @@ function sanitizeHtml(html: string): string {
 const isHtmlTable = (s: string) => /<table[\s>]/i.test(s);
 
 /**
- * Find table-bearing pages straight from the ALREADY-PARSED text (cluster+markdown-with-html
- * emits <table> for every detected table) — full doc coverage, instant, no extra/capped call.
- * Rank by table-cell count so real data tables float up and tiny false-positives (e.g. a 2×2
- * infographic = 4 cells) sink. Notice boxes (single cell) are dropped (< 4 cells).
+ * Find table-bearing pages from the ALREADY-PARSED text — full doc coverage, instant. Two signals:
+ *  (1) PARSER-tagged tables: <td>/<th> in <table> blocks (cluster+markdown-with-html) + markdown
+ *      pipe cells. High confidence, but the parser's cluster detector is INCONSISTENT — it
+ *      flattens many financial tables to plain flowing text (no <table>), so it misses them.
+ *  (2) NUMBER-DENSITY heuristic (catches the parser misses): financial tables are full of "–"
+ *      no-data markers + aligned number columns; prose almost never has runs of standalone dashes.
+ *      So a page with ≥4 standalone dashes is treated as a data-table page even when untagged.
+ * Since the VLM reads the whole page anyway, over-flagging a number-dense page is acceptable.
+ * Rank by cell/token count so big data tables surface first.
  */
 function findTablePages(pages: OcrPage[]): TablePage[] {
   const out: TablePage[] = [];
   for (const p of pages) {
     if (!p.text) continue;
     let cells = 0;
+    let via: 'parser' | 'heuristic' = 'parser';
     for (const t of p.text.match(/<table[\s\S]*?<\/table>/gi) ?? []) cells += (t.match(/<t[dh][\s>]/gi) ?? []).length;
     const mdRows = p.text.replace(/<table[\s\S]*?<\/table>/gi, '').split('\n')
       .filter((l) => /^\s*\|.*\|/.test(l) && !/^\s*\|?[\s:|-]+\|?\s*$/.test(l));
     for (const r of mdRows) cells += Math.max(0, (r.match(/\|/g)?.length ?? 1) - 1);
-    if (cells >= 4) out.push({ page: p.page, cells, big: cells >= 12 });
+    if (cells === 0) {
+      // (2) heuristic: standalone EN/EM dashes (no-data cells) on a number-dense page. Use
+      // EN/EM dash ONLY — hyphen-minus "-" is the markdown list marker (bulleted prose pages
+      // would false-positive otherwise; verified: prose page drops from 9→2 dashes).
+      const dashes = (p.text.match(/(?:^|\s)[–—](?=\s|$)/gm) ?? []).length;
+      if (dashes >= 4) {
+        const numbers = (p.text.match(/\d[\d,]*\.?\d*/g) ?? []).length;
+        cells = dashes + numbers;
+        via = 'heuristic';
+      }
+    }
+    if (cells >= 4) out.push({ page: p.page, cells, big: cells >= 12, via });
   }
   return out.sort((a, b) => b.cells - a.cells);
 }
@@ -451,7 +468,8 @@ function OcrConverterPage() {
                       className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
                       {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                       <span className="flex-1">第 {t.page} 页</span>
-                      <span className="text-muted-foreground">{t.cells} 格</span>
+                      {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
+                      <span className="text-muted-foreground">{t.cells} 项</span>
                       {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
                     </button>
                   );
