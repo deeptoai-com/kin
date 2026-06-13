@@ -14,9 +14,10 @@ next: d2-long-term-memory
 
 > 前 19 篇写的是 oxygenie **已有的**。从这一篇起进入**设计篇**：写 oxygenie **该有、但还没有**的能力——按 references（尤其 baby-agent 第七章 Agentic RAG）的"完整版"倒推。RAG 是最典型的缺口：oxygenie 的 `documentChunks` 表早就带了 `embedding vector(1536)` 列，却**一行都没写进去过**。本文回答两件事：① oxygenie 的检索现状到底空在哪（有代码为证）；② 在 oxygenie 的 per-message worker + MCP 架构里，Advanced RAG **该怎么落**——而答案会颠覆一个直觉：**RAG 不是喂给 prompt 的前处理管线，是 Agent 自己会调的一个工具。**
 
-> 📐 本篇为**设计篇**：现状部分有 `文件:行号` 为证，设计部分是"该有的"的落地方案，未实现。
+> 📐 本篇原为**设计篇**（写于 2026-06-07，现状部分有 `文件:行号` 为证，设计部分是"该有的"的落地方案）。
+> ✅ **2026-06-13 实现回填**：这套设计已**整条落地并上生产**（`rag-line` → PR #153–#182，由 `RAG_ENABLED` flag 控制开关）。本篇保留原设计推理（它是"我们当初怎么想的"的完整记录），并在末尾新增 [实现回填](#实现回填2026-06-13设计落地了但有五处打脸) 一节，用真实代码对照——**设计预言对了一半，也实打实打了五次脸**，那五处"设计没料到/料错了"才是这篇最值钱的部分。
 
-**章节跳转：**[问题](#问题陈述) · [现状：空架子](#oxygenie-的-rag-现状空架子基础设施) · [朴素方案](#朴素方案为什么不行) · [核心方案](#核心方案agentic-rag--检索是一个工具) · [实现要点](#关键实现要点落到-oxygenie) · [反直觉结论](#反直觉结论) · [生产坑](#三个生产坑)
+**章节跳转：**[问题](#问题陈述) · [现状：空架子](#oxygenie-的-rag-现状空架子基础设施) · [朴素方案](#朴素方案为什么不行) · [核心方案](#核心方案agentic-rag--检索是一个工具) · [实现要点](#关键实现要点落到-oxygenie) · [反直觉结论](#反直觉结论) · [生产坑](#三个生产坑) · ⭐[实现回填](#实现回填2026-06-13设计落地了但有五处打脸)
 
 ## 问题陈述
 
@@ -45,6 +46,8 @@ oxygenie 是"团队私有化知识工作台"——用户会把内部文档、代
 注意一个关键事实：**Zhipu 那几个 MCP（search/reader/zread）是纯外部 web 工具**——web 搜索、读 URL、读 GitHub 仓库，**没有一个接到知识库**。所以今天用户把文档加进会话后，Agent 唯一的"检索"手段是**自己 `grep`/`read` workspace 里的文件**——小工作区能凑合，知识库一大、关键词对不上，就召不回。
 
 **一句话现状：1536 维向量声明了、却永远是空的；检索靠关键词 + Agent 手动翻文件。** 缺的不是 schema，是从切分到检索的整条执行链。
+
+> ✅ **回填**：上面整张表是 **2026-06-07 的起点快照**——每一行的 ❌/⚠️ 现在都已变 ✅（真实 `文件:行号` 见末尾 [实现回填](#实现回填2026-06-13设计落地了但有五处打脸)）。连那一行"`vector(1536)`"都改了——实际落地是 **1024 维**（见下文打脸 ①）。
 
 ## 朴素方案为什么不行
 
@@ -120,6 +123,75 @@ file → markitdown 解析 → 切分(overlap)      Agent 判断"要查" → 调
 
 三个坑的共同根源：**RAG 是把"离线重活（切分/embed）"和"在线快路（检索/精排）"和"多租户硬隔离"缝在一起**——每条缝（隔离条件、入库时机、embedding 入口）错一处，要么泄漏、要么炸成本、要么根本跑不起来。
 
+---
+
+## 实现回填（2026-06-13）：设计落地了，但有五处"打脸"
+
+上面是 2026-06-07 的**设计**。六天后（`rag-line` 分支，PR #153–#182）这套设计**整条上了生产**——`oxygenie.cc` 上传一份 716 页招股书 PDF，切成 1467 个带页码的 chunk，Agent 提问时自己调 `kb_search`、带页码引用作答。**核心判断全部成立**：检索确实做成了一个 Agent 自调的 MCP 工具、确实是向量+BM25 混合、确实离线 BullMQ 入库、确实在 SQL 里隔离。
+
+但"设计对"和"做出来"之间，隔着五次结结实实的打脸。**设计篇的价值在推理，实现回填的价值在打脸**——下面每一处都标了真实 `文件:行号`。
+
+### 真实落地的执行链（对照设计图）
+
+```
+离线（BullMQ rag queue / 本地 RAG_INGEST_INLINE 兜底）        在线（worker 里的 kb_search MCP）
+PDF → parser sidecar(opendataloader, Java) → md + pageMap     Agent 判断要查 → kb_search(query,k=8)
+   → 结构切块(parent≤2500 / child≤1024, 无 overlap)             │
+   → sectionPath 前缀拼进正文 → doubao-vision embed @1024       ├─ 向量召回(pgvector,20) ∥ BM25(Meili,20)
+   → documentChunks(content_hash 去重) + HNSW                   ├─ RRF 融合 → rerank【默认关】
+                                                                ├─ small-to-big：child 命中→回取 parent
+                                                                └─ [n] 标题—章节(p.X) 正文 → Agent 带引用作答
+   ↑ 入库即排队，ingestStatus 状态机                              ↑ WHERE visibleDocumentsWhere ∧ ingestStatus='ready'
+```
+
+代码落点（全部可查）：管线 `src/server/rag/search.ts:85` `searchKb()`；切块 `src/server/rag/chunker.ts`、分档 `tier.ts:65`；解析 `src/server/rag/parser-client.ts` + `parser-sidecar/server.mjs`；embedding `src/server/rag/embedding.ts`；入库队列 `src/server/rag/queue.ts`；工具注册 `ws-query-worker.mjs:527`（`kbSearchTool`）→ `:578`（`createSdkMcpServer`）；总开关 `src/server/rag/flag.ts:13` `isRagEnabled()`。
+
+### 设计 ✅ 对了什么
+
+| 设计预言 | 现实 | 证据 |
+|---|---|---|
+| RAG 是 Agent 自调的工具，不是 prompt 前处理 | ✅ 完全成立，本篇最硬的判断 | `ws-query-worker.mjs:527-580` `kb_search` 与 python/glm-image 并列注册 |
+| 向量 ∥ BM25 → RRF 融合 | ✅ 一字未改 | `search.ts:46-47` `VECTOR_RECALL/BM25_RECALL=20`，`fuse.ts` RRF |
+| 离线 BullMQ 入库、上传即排队 | ✅ + 本地 `RAG_INGEST_INLINE` 兜底（无 Redis 时同步跑） | `queue.ts:9`、`ingest.ts:4` |
+| `content_hash` 去重、只重嵌变化块 | ✅ | `ingest.ts:157-165` |
+| 隔离写进 SQL 的 `WHERE`，不事后过滤 | ✅ | `search.ts:66` `visibleDocumentsWhere(userId, projectIds)` |
+| embedding 不走 SDK `query()`，单独客户端 | ✅ 坑三应验 | `embedding.ts`（doubao/zhipu OpenAI 兼容端点） |
+
+### 设计 ❌ 打脸五处（这才是重点）
+
+**打脸 ① 维度：设计写满全篇的 `vector(1536)`，实际是 `1024`。** 1536 是 OpenAI `text-embedding-3` 的惯性数字；真上线用的是团队网关里的 **doubao-embedding-vision**（默认）和 zhipu embedding-3，两者落到 **1024 维**（doubao 靠 MRL 截断、zhipu 原生）。`src/db/schema/document.schema.ts:101` 现在写的是 `vector('embedding', { dimensions: 1024 })`。教训：**embedding 维度不是你选的，是你的 provider 选的**——设计阶段照搬教程数字，到落地必被真实 provider 纠正。
+
+**打脸 ② 解析：设计说"让躺着的 `markitdown-mcp` 从摆设变入库第一步"，实际另起了一个 parser sidecar。** markitdown 解 PDF 的质量 + 拿不到**页码**，撑不起"带页引用"。最终造了一个独立的 **parser sidecar 容器**（Java 的 `opendataloader-pdf`，`parser-sidecar/server.mjs`），输出 markdown **+ pageMap**（`odl-page` 标记→行号→页码映射，`parser-client.ts`）；markitdown 退居"无 sidecar 时的兜底"。教训：**"复用已有零件"是设计阶段的美好假设，落地常被质量要求顶翻**——RAG 的上限往往卡在解析这一步，不是检索。
+
+**打脸 ③ 切块：设计说"递归切分 + overlap"，实际是结构切块、零 overlap。** 没有用经典的滑窗 overlap，而是**沿 Markdown 标题层级**切：小文档（≤2500 tok，`tier.ts:65`）整篇不切；大文档切 **parent（章节，≤2500）/ child（段落包，≤1024，`chunker.ts:16-17`）** 两级。补上下文不靠 overlap，靠两招：**① sectionPath 前缀拼进正文再 embed**（"招股书>業務>研發"+正文，孤立句也自带语境）；**② small-to-big**——用 child 召回，命中后回取它的 parent 给模型（`search.ts:147`）。教训：**overlap 是无结构文本的妥协；只要你有结构（Markdown 标题），结构切块 + 父子回取比机械 overlap 更省更准。**
+
+**打脸 ④ rerank：设计默认它是管线一环，实测把它默认关了。** 用真实黄金集（716 页书、24 题）跑消融：在生产 `k=8`（8 条全喂给模型读）下，**开不开 rerank，R@8 都是 96%**——rerank 只改善"前 4 名的排序"，但模型反正 8 条全看，收益被吃掉，却要白付 **+1.4 秒/查**。于是 `search.ts:56` `rerankEnabled()` 默认读 `RAG_RERANK_ENABLED`（默认 false）。教训：**rerank 不是"加了就好"，要拿你自己的 k 和数据量出来量**；何时该开——把 k 缩到 3-4、或做给用户看的引用排序时。**设计阶段对 rerank 的信仰，被一次 eval 打回原形。**
+
+**打脸 ⑤ 查询改写/HyDE：设计说"用便宜的 haiku 档做"，实际一行没写。** `grep rewrite|hyde src/server/rag/` 是空的。不是忘了，是发现**没必要**：Agentic 架构下，Agent 本来就能"看完首轮结果不满意→自己换个说法再调一次 `kb_search`"——迭代检索由 Loop 天然承担，再加一层显式改写是重复投资。教训：**Agentic RAG 会"吃掉"一部分传统 RAG 的预处理环节**——when-to-retrieve 交给 Loop 后，连 how-to-rewrite 它也顺手干了。
+
+### 最深的一课：设计完全没料到的"最后一公里"
+
+> [!IMPORTANT]
+> **工具注册成功 ≠ 模型会用它。** 这是设计篇通篇没有一个字提到、却差点让整个 RAG 白做的坑。
+>
+> 设计的反直觉结论说得漂亮——"把检索做成工具，何时查交给 Loop"。工具确实注册成功了（日志里 MCP servers 明明白白列着 `kb-search`）。可 Owner 实测：问"MiniMax 招股书里研发团队多少人"，**Agent 直接去 web search 了，根本没调 `kb_search`**。
+>
+> 根因：**Loop 决定"要不要查"的前提，是它知道"库里有没有可能有答案"——而它对自己的知识库一无所知。** 你不会去翻一个你不知道里面有什么的抽屉。
+>
+> 修法：worker 启动时拉一份 `/api/rag/overview`（用户当前可检索的文档清单：标题/页数/所属知识库），把它**注入系统提示**（`ws-query-worker.mjs:695-717`，`kbInventoryInstructions`）——"你现在能 `kb_search` 到这些文档：《MiniMax 招股书》716 页……遇到这些内容里的问题，**先查知识库，别去 web search**"。注入之后，Agent 一次就调对了。
+>
+> **这才是 Agentic RAG 真正的最后一公里**：retrieve-then-generate 是你的活、when-to-retrieve 是 Loop 的活——但"让 Loop 知道有什么可检索"是**你必须喂给它的前置知识**。设计篇的优雅结论，落地时栽在这个最朴素的认知缺口上。所有声称"Agent 自己会调检索"的系统，都得先回答："它怎么知道该调？"
+
+### 设计篇预言之外、真实踩到的坑
+
+原文「三个生产坑」（SQL 隔离、离线增量、embedding 入口）全部应验。落地又补了几个设计没写的：
+
+- **页码引用是"可信"的命门，且要做到可点击。** 设计只字未提引用。现实：1467 chunk 全程带 `pageStart/pageEnd`，`kb_search` 返回 `[n] 标题—章节(p.21) 正文`（`ws-query-worker.mjs:558`），前端再把回答里的 `[1][2]` 渲染成**可悬停/点击弹出原文+页码的 chip**。对律师/财务这类非技术用户，**"[1] 能点开看到第 21 页原文"才是 RAG 兑现可信承诺的那一下**，否则 [n] 只是好看的噪音。
+- **检索只认 `ingestStatus='ready'`。** `search.ts:66` 把状态过滤和隔离写在同一个 `WHERE`——还在切块/embedding 中的文档绝不会进检索结果（半成品召回比召不回更糟）。
+- **总开关 flag 先行。** `RAG_ENABLED`（`flag.ts:13`）让 RAG 能"熄火上 main"——主干默认全黑，单个 release 显式开。新能力切上生产的标准做法，设计阶段没考虑发布策略。
+
+一句话收尾这次回填：**设计篇负责想清楚"形态"（RAG 是工具不是管线，这点对得漂亮），实现负责把"形态"砸进现实的五个硬角——维度归 provider 管、解析定上限、结构胜过 overlap、rerank 要量不要信、以及最致命的"得先让 Loop 知道有什么可查"。** 一篇设计 + 一次回填，合起来才是一门完整的 RAG 课。
+
 ## 配图
 
 1. ![RAG 现状 vs 该有的：空架子 → Agentic RAG](../assets/img/d1-rag-gap.svg)
@@ -135,4 +207,4 @@ RAG 解决"查外部资料"，但 Agent 还缺"记住你"。下一篇按 baby-ag
 ---
 
 📌 系列阅读地图：[reading-map.md](../reading-map.md)
-🔗 现状对照：本篇现状部分基于 oxygenie `main` 2026-06-07 快照；设计部分为"该有的"，未实现。
+🔗 现状对照：本篇"空架子"部分基于 oxygenie `main` 2026-06-07 快照；设计部分已于 **2026-06-13 整条落地上生产**（`rag-line` → PR #153–#182，`RAG_ENABLED` flag 控制），真实代码与"五处打脸"见 [实现回填](#实现回填2026-06-13设计落地了但有五处打脸)。
