@@ -221,6 +221,12 @@ services:
       PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      # OCR module (O1/O2): doubao default reuses ANTHROPIC_AUTH_TOKEN/BASE_URL; mimo uses OpenRouter.
+      OCR_PROVIDER: ${OCR_PROVIDER:-}
+      OCR_DOUBAO_MODEL: ${OCR_DOUBAO_MODEL:-}
+      OCR_MIMO_MODEL: ${OCR_MIMO_MODEL:-}
+      OCR_OPENROUTER_BASE_URL: ${OCR_OPENROUTER_BASE_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     command: ['npx', 'tsx', 'src/worker/index.ts']
@@ -307,6 +313,13 @@ services:
       RAG_ENABLED: ${RAG_ENABLED:-}
       # RAG: app-side probe / re-parse server fns call the parser sidecar (worker has its own).
       PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
+      # OCR module (O1/O2): /api/ocr + /api/ocr/render run server-side here. doubao default
+      # reuses ANTHROPIC_AUTH_TOKEN/BASE_URL below; mimo uses OpenRouter.
+      OCR_PROVIDER: ${OCR_PROVIDER:-}
+      OCR_DOUBAO_MODEL: ${OCR_DOUBAO_MODEL:-}
+      OCR_MIMO_MODEL: ${OCR_MIMO_MODEL:-}
+      OCR_OPENROUTER_BASE_URL: ${OCR_OPENROUTER_BASE_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       # Optional: Zhipu key — only for the GLM image tool + Zhipu MCP servers (unset if unused)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
