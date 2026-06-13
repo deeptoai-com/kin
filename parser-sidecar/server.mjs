@@ -13,9 +13,14 @@
  *        mode=probe      : like simple but returns stats only (no markdown) — feeds
  *                          the "system recommends an engine" UX (spec §3)
  *        → { ok, engine, mode, pages, chars, ms, markdown? , recommend? }
+ *   POST /render?dpi=150&maxPages=100  → body: raw PDF bytes (OCR module O1-b)
+ *        Rasterize each page to PNG (pdftoppm). Feeds BOTH the VLM OCR input AND the
+ *        converter's left-pane original-page display.
+ *        → { ok, engine, dpi, count, truncated, pages: [{ page, image(base64 png) }] }
  *
  * Run locally:  JAVA_HOME=/opt/homebrew/opt/openjdk node parser-sidecar/server.mjs
- * Container:    see parser-sidecar/Dockerfile (bundles a headless JRE).
+ *               (also needs poppler `pdftoppm` on PATH for /render)
+ * Container:    see parser-sidecar/Dockerfile (bundles a headless JRE + poppler-utils).
  */
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
@@ -38,6 +43,39 @@ function run(args) {
       err ? reject(new Error(`${err.message}\n${String(stderr).slice(0, 500)}`)) : resolve(String(stdout)),
     );
   });
+}
+
+const MAX_RENDER_PAGES = Number(process.env.PARSER_MAX_RENDER_PAGES) || 100;
+
+/** PDF → per-page PNG via poppler `pdftoppm` (OCR module O1-b). */
+function runCmd(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 }, (err, _out, stderr) =>
+      err ? reject(new Error(`${cmd}: ${err.message}\n${String(stderr).slice(0, 500)}`)) : resolve(),
+    );
+  });
+}
+
+async function renderPdf(bytes, dpi, maxPages) {
+  const dir = await mkdtemp(join(tmpdir(), 'render-'));
+  try {
+    const input = join(dir, 'input.pdf');
+    await writeFile(input, bytes);
+    const t0 = Date.now();
+    // pdftoppm -png -r <dpi> -l <maxPages> input.pdf <dir>/page  →  page-1.png, page-2.png, …
+    await runCmd('pdftoppm', ['-png', '-r', String(dpi), '-l', String(maxPages), input, join(dir, 'page')]);
+    const files = (await readdir(dir))
+      .filter((f) => f.startsWith('page') && f.endsWith('.png'))
+      .map((f) => ({ f, n: Number((f.match(/-(\d+)\.png$/) || [])[1] || 0) }))
+      .sort((a, b) => a.n - b.n);
+    const pages = [];
+    for (const { f, n } of files) {
+      pages.push({ page: n, image: (await readFile(join(dir, f))).toString('base64') });
+    }
+    return { pages, ms: Date.now() - t0 };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function parsePdf(bytes, mode) {
@@ -102,6 +140,22 @@ const server = createServer(async (req, res) => {
       const base = { ok: true, engine: 'opendataloader-pdf', mode, pages: r.pages, chars: r.chars, ms: r.ms };
       if (mode === 'probe') return send(200, { ...base, recommend: recommend(r.pages, r.chars, r.markdown) });
       return send(200, { ...base, markdown: r.markdown });
+    }
+    if (req.method === 'POST' && url.pathname === '/render') {
+      const dpi = Math.min(Math.max(Number(url.searchParams.get('dpi')) || 150, 72), 300);
+      const maxPages = Math.min(Number(url.searchParams.get('maxPages')) || MAX_RENDER_PAGES, MAX_RENDER_PAGES);
+      const bytes = await readBody(req);
+      if (bytes.length === 0) return send(400, { ok: false, error: 'empty body' });
+      const r = await renderPdf(bytes, dpi, maxPages);
+      return send(200, {
+        ok: true,
+        engine: 'pdftoppm',
+        dpi,
+        count: r.pages.length,
+        truncated: r.pages.length >= maxPages,
+        ms: r.ms,
+        pages: r.pages,
+      });
     }
     send(404, { ok: false, error: 'not found' });
   } catch (err) {

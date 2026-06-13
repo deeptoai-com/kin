@@ -110,6 +110,52 @@ export async function parsePdfViaSidecar(
   }
 }
 
+export interface SidecarRenderPage {
+  page: number;
+  /** base64-encoded PNG of the rendered page. */
+  image: string;
+}
+
+export interface SidecarRenderResult {
+  ok: boolean;
+  dpi?: number;
+  count?: number;
+  truncated?: boolean;
+  ms?: number;
+  pages?: SidecarRenderPage[];
+  error?: string;
+}
+
+/**
+ * Rasterize a PDF to per-page PNGs (OCR module O1-b). Feeds both the VLM OCR input and
+ * the converter's left-pane original-page display. Default dpi 150 (legible + not huge).
+ */
+export async function renderPdfViaSidecar(
+  bytes: Uint8Array | Buffer,
+  opts: { dpi?: number; maxPages?: number; timeoutMs?: number } = {},
+): Promise<SidecarRenderResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10 * 60_000);
+  const qs = new URLSearchParams();
+  if (opts.dpi) qs.set('dpi', String(opts.dpi));
+  if (opts.maxPages) qs.set('maxPages', String(opts.maxPages));
+  try {
+    const res = await fetch(`${sidecarUrl()}/render?${qs}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: bytes as BodyInit,
+      signal: controller.signal,
+    });
+    const json = (await res.json()) as SidecarRenderResult;
+    if (!res.ok || !json.ok) return { ok: false, error: json.error ?? `HTTP ${res.status}` };
+    return json;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Fast text-layer probe → engine recommendation (spec §3 "system recommends"). */
 export async function probePdfViaSidecar(bytes: Uint8Array | Buffer): Promise<SidecarParseResult> {
   const controller = new AbortController();
