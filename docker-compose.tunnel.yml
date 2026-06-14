@@ -295,6 +295,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       # Redis + Meili for app features
       REDIS_URL: redis://redis:6379
+      # MUST match the worker's prefix (else the app enqueues RAG-ingest jobs to a queue the
+      # worker never consumes → docs stuck at parse/ingest 'pending', 0 chunks, kb_search empty).
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       # Authentication

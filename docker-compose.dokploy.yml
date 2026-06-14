@@ -258,6 +258,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       # Redis + Meili for app features
       REDIS_URL: redis://redis:6379
+      # MUST match the worker's prefix, else RAG-ingest jobs go to a queue nobody consumes.
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       # Authentication

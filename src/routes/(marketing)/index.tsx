@@ -9,16 +9,19 @@ export const Route = createFileRoute('/(marketing)/')({
 const GH = 'https://github.com/deeptoai/kin';
 const GH_DEPLOY = 'https://github.com/deeptoai/kin/blob/main/docs/deployment/mac-mini.md';
 
+/* Low-density, image-led layout (Cursor-style): one idea per scroll —
+   short heading + one line + a big visual. Replace .shot placeholders with
+   real screenshots/GIFs of /agents/c later. */
 function RouteComponent() {
   const c = useIntlayer('home');
 
   return (
     <div className="oxy-home">
-      {/* ── Hero ──────────────────────────────────────────────── */}
+      {/* ── Hero: headline + one line + CTA + ONE big visual ──── */}
       <section className="hero" id="top">
         <div className="wrap">
           <div className="tag">
-            $ kin up —— <b>self-hosted</b> · any-model · sandboxed · open-source · AGPLv3
+            $ kin up —— <b>self-hosted</b> · any-model · sandboxed · AGPLv3
           </div>
           <h1>
             <span className="soft">{c.hero.titleSoft}</span>
@@ -27,158 +30,20 @@ function RouteComponent() {
             <span className="cl">{c.hero.titleAccent}</span>
             <i className="cur" />
           </h1>
-          <div className="sub">
-            <div>
-              <p>
-                <b>{c.hero.subtitleStrong}</b> {c.hero.subtitle}
-              </p>
-              <div className="comment">// self-hosted · single-org · multi-user · fully-sandboxed</div>
-              <div className="hero-cta">
-                <Link className="btn-go" to="/agents/c">
-                  {c.hero.ctaPrimary} <span className="ar">→</span>
-                </Link>
-                <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
-                  {c.hero.ctaSecondary}
-                </a>
-              </div>
-            </div>
-            <div className="metaboard">
-              <div>
-                <span>docker compose up</span>
-                {c.hero.metaDeploy}
-              </div>
-              <div>
-                <span>any-model</span>
-                {c.hero.metaModels}
-              </div>
-              <div>
-                <span>per-session</span>
-                {c.hero.metaSandbox}
-              </div>
-            </div>
-          </div>
-          <div className="heroshot">
-            <div className="shot">
-              <span className="ph">screenshot · Kin workspace · /agents/c</span>
-            </div>
+          <p className="hero-sub">{c.hero.subtitleStrong}</p>
+          <div className="hero-cta">
+            <Link className="btn-go" to="/agents/c">
+              {c.hero.ctaPrimary} <span className="ar">→</span>
+            </Link>
+            <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
+              {c.hero.ctaSecondary}
+            </a>
           </div>
         </div>
-      </section>
 
-      {/* ── Trust strip ───────────────────────────────────────── */}
-      <section className="trust">
+        {/* big hero visual — a real-looking product mock */}
         <div className="wrap">
-          <div className="cap">// works with any model · built on open standards</div>
-          <div className="row">
-            <b>Claude</b> <span className="dot">·</span> <b>GPT</b> <span className="dot">·</span>{' '}
-            <b>GLM</b> <span className="dot">·</span> <b>DeepSeek</b> <span className="dot">·</span> MCP{' '}
-            <span className="dot">·</span> Skills <span className="dot">·</span> Claude Agent SDK
-          </div>
-        </div>
-      </section>
-
-      {/* ── Concept ───────────────────────────────────────────── */}
-      <section className="concept" id="concept">
-        <div className="wrap">
-          <span className="eyebrow">
-            <b>[01]</b> concept
-          </span>
-          <div className="lead">
-            <h2>
-              <span className="soft">{c.concept.h2Soft}</span>
-              <br />
-              {c.concept.h2Lead}
-              <span className="cl"> {c.concept.h2Accent}</span>
-            </h2>
-            <div className="body">
-              <p>{c.concept.bodyP1}</p>
-              <p>{c.concept.bodyP2}</p>
-            </div>
-          </div>
-          <div className="princip">
-            <div className="p">
-              <div className="num">01 / self-host</div>
-              <h3>{c.concept.p1Title}</h3>
-              <p>{c.concept.p1Desc}</p>
-            </div>
-            <div className="p">
-              <div className="num">02 / multi-model</div>
-              <h3>{c.concept.p2Title}</h3>
-              <p>{c.concept.p2Desc}</p>
-            </div>
-            <div className="p">
-              <div className="num">03 / sandbox</div>
-              <h3>{c.concept.p3Title}</h3>
-              <p>{c.concept.p3Desc}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Features ──────────────────────────────────────────── */}
-      <section className="features" id="features">
-        <div className="wrap">
-          <span className="eyebrow">
-            <b>[02]</b> features
-          </span>
-          <h2>
-            {c.features.heading} <span className="cl">{c.features.headingAccent}</span>
-          </h2>
-          <div className="fgrid">
-            <div className="fcard">
-              <div className="ix">01</div>
-              <h3>{c.features.f1Title}</h3>
-              <p>{c.features.f1Desc}</p>
-            </div>
-            <div className="fcard">
-              <div className="ix">02</div>
-              <h3>{c.features.f2Title}</h3>
-              <p>{c.features.f2Desc}</p>
-            </div>
-            <div className="fcard">
-              <div className="ix">03</div>
-              <h3>{c.features.f3Title}</h3>
-              <p>{c.features.f3Desc}</p>
-            </div>
-            <div className="fcard">
-              <div className="ix">04</div>
-              <h3>{c.features.f4Title}</h3>
-              <p>{c.features.f4Desc}</p>
-            </div>
-            <div className="fcard">
-              <div className="ix">05</div>
-              <h3>{c.features.f5Title}</h3>
-              <p>{c.features.f5Desc}</p>
-            </div>
-            <div className="fcard">
-              <div className="ix">06</div>
-              <h3>{c.features.f6Title}</h3>
-              <p>{c.features.f6Desc}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Product mock ──────────────────────────────────────── */}
-      <section className="product" id="product">
-        <div className="wrap">
-          <div className="head">
-            <div>
-              <span className="eyebrow">
-                <b>[03]</b> product
-              </span>
-              <h2>
-                {c.product.heading} <span className="cl">{c.product.headingAccent}</span>
-              </h2>
-            </div>
-            <p className="note">
-              // tool calls visible live
-              <br />
-              // output previews on tap
-            </p>
-          </div>
-
-          <div className="app">
+          <div className="app heroapp">
             <div className="app-top">
               <div className="l">
                 <span className="cl">~/</span>kin<span style={{ color: 'var(--line-2)' }}>/</span>
@@ -211,7 +76,7 @@ function RouteComponent() {
                 </span>
                 <div className="bubble user">
                   <div className="who">you</div>
-                  <div className="tx">Reskin the landing to JumpX, then build.</div>
+                  <div className="tx">Reskin the landing, then build.</div>
                 </div>
                 <div className="bubble ai">
                   <div className="who">kin · claude</div>
@@ -255,58 +120,119 @@ function RouteComponent() {
         </div>
       </section>
 
-      {/* ── Models (dark) ─────────────────────────────────────── */}
-      <section className="models" id="models">
+      {/* ── Trust strip ───────────────────────────────────────── */}
+      <section className="trust">
         <div className="wrap">
-          <span className="eyebrow">
-            <b>[04]</b> models
-          </span>
-          <h2>
-            {c.models.heading} <span className="cl">{c.models.headingAccent}</span>
-            {c.models.headingTail}
-          </h2>
-          <p className="lede">{c.models.lede}</p>
-          <div className="mgrid">
-            <div className="mrow">
-              <div>
-                <div className="nm">Claude</div>
-                <div className="id">anthropic/claude · default</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 2.4s
-              </div>
+          <div className="cap">// works with any model · built on open standards</div>
+          <div className="row">
+            <b>Claude</b> <span className="dot">·</span> <b>GPT</b> <span className="dot">·</span>{' '}
+            <b>GLM</b> <span className="dot">·</span> <b>DeepSeek</b> <span className="dot">·</span> MCP{' '}
+            <span className="dot">·</span> Skills <span className="dot">·</span> Claude Agent SDK
+          </div>
+        </div>
+      </section>
+
+      {/* ── Feature rows: one idea per scroll, big image, low text ── */}
+      <section className="fsec">
+        <div className="wrap">
+          <div className="frow">
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[01]</b> private
+              </span>
+              <h2>{c.concept.p1Title}</h2>
+              <p>{c.concept.p1Desc}</p>
             </div>
-            <div className="mrow">
-              <div>
-                <div className="nm">GPT</div>
-                <div className="id">openai/gpt · general</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 3.1s
-              </div>
-            </div>
-            <div className="mrow">
-              <div>
-                <div className="nm">GLM</div>
-                <div className="id">zhipu/glm · cost-saver</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 3.6s
-              </div>
-            </div>
-            <div className="mrow">
-              <div>
-                <div className="nm">DeepSeek</div>
-                <div className="id">deepseek/chat · cost-saver</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 4.0s
-              </div>
+            <div className="shot">
+              <span className="ph">screenshot · 自部署 · 团队登录</span>
             </div>
           </div>
-          <div className="mnote">
-            // configured in <b>.env</b> + admin health board · per-conversation selection · selecting an
-            unhealthy model <b>errors</b>, never a silent fallback
+        </div>
+      </section>
+
+      <section className="fsec">
+        <div className="wrap">
+          <div className="frow rev">
+            <div className="shot">
+              <span className="ph">screenshot · 模型选择 / 健康看板</span>
+            </div>
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[02]</b> any model
+              </span>
+              <h2>{c.concept.p2Title}</h2>
+              <p>{c.concept.p2Desc}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="fsec dark">
+        <div className="wrap">
+          <div className="frow">
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[03]</b> does real work
+              </span>
+              <h2>{c.features.f3Title}</h2>
+              <p>{c.features.f3Desc}</p>
+            </div>
+            <div className="shot">
+              <span className="ph">screenshot · Artifact 真预览</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="fsec">
+        <div className="wrap">
+          <div className="frow rev">
+            <div className="shot">
+              <span className="ph">screenshot · 每会话独立沙盒</span>
+            </div>
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[04]</b> sandbox
+              </span>
+              <h2>{c.concept.p3Title}</h2>
+              <p>{c.concept.p3Desc}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Who it's for ──────────────────────────────────────── */}
+      <section className="icp" id="who">
+        <div className="wrap">
+          <span className="eyebrow">
+            <b>[05]</b> who it's for
+          </span>
+          <h2>
+            {c.icp.heading}
+            <span className="cl">{c.icp.headingAccent}</span>
+          </h2>
+          <p className="lede">{c.icp.lede}</p>
+          <div className="igrid">
+            <div className="icard">
+              <div className="ic">01</div>
+              <h3>{c.icp.c1Title}</h3>
+              <p>{c.icp.c1Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">02</div>
+              <h3>{c.icp.c2Title}</h3>
+              <p>{c.icp.c2Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">03</div>
+              <h3>{c.icp.c3Title}</h3>
+              <p>{c.icp.c3Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">04</div>
+              <h3>{c.icp.c4Title}</h3>
+              <p>{c.icp.c4Desc}</p>
+            </div>
           </div>
         </div>
       </section>
@@ -317,7 +243,7 @@ function RouteComponent() {
           <div className="lead">
             <div>
               <span className="eyebrow">
-                <b>[05]</b> deploy
+                <b>[06]</b> deploy
               </span>
               <h2>
                 {c.deploy.heading}
@@ -353,42 +279,6 @@ function RouteComponent() {
                 <br />
                 <span className="k">$</span> <span className="tcur" />
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Who it's for ──────────────────────────────────────── */}
-      <section className="icp" id="who">
-        <div className="wrap">
-          <span className="eyebrow">
-            <b>[06]</b> who it's for
-          </span>
-          <h2>
-            {c.icp.heading}
-            <span className="cl">{c.icp.headingAccent}</span>
-          </h2>
-          <p className="lede">{c.icp.lede}</p>
-          <div className="igrid">
-            <div className="icard">
-              <div className="ic">01</div>
-              <h3>{c.icp.c1Title}</h3>
-              <p>{c.icp.c1Desc}</p>
-            </div>
-            <div className="icard">
-              <div className="ic">02</div>
-              <h3>{c.icp.c2Title}</h3>
-              <p>{c.icp.c2Desc}</p>
-            </div>
-            <div className="icard">
-              <div className="ic">03</div>
-              <h3>{c.icp.c3Title}</h3>
-              <p>{c.icp.c3Desc}</p>
-            </div>
-            <div className="icard">
-              <div className="ic">04</div>
-              <h3>{c.icp.c4Title}</h3>
-              <p>{c.icp.c4Desc}</p>
             </div>
           </div>
         </div>

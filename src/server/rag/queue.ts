@@ -25,7 +25,10 @@ async function getQueue() {
         import('ioredis'),
       ]);
       const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
-      const prefix = process.env.BULLMQ_PREFIX ?? 'constructa';
+      // Default MUST match the worker's queue prefix (docker-compose worker uses
+      // BULLMQ_PREFIX:-oxygenie). If they diverge, the app enqueues to a queue the worker never
+      // consumes → docs stuck 'pending'. The old 'constructa' default caused exactly that.
+      const prefix = process.env.BULLMQ_PREFIX ?? 'oxygenie';
       return new Queue(RAG_QUEUE, { connection, prefix });
     })();
   }

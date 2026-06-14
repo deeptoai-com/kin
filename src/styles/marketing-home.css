@@ -230,3 +230,33 @@
   .oxy-home .icard { border-right: none; border-bottom: 1px solid var(--line); }
   .oxy-home .icard:last-child { border-bottom: none; }
 }
+
+/* ── Cursor-style low-density feature rows + hero visual ──────────────────── */
+.oxy-home .hero-sub { margin-top: 30px; max-width: 560px; font-size: 18px; line-height: 1.8; color: var(--ink-2); font-weight: 300; }
+.oxy-home .heroapp { margin-top: 56px; }
+
+.oxy-home .fsec { padding: 104px 0; border-top: 1px solid var(--line); }
+.oxy-home .fsec.dark { background: var(--ink); color: var(--paper); border-top: none; }
+/* feature row: small text column + BIG image column, alternating via markup order */
+.oxy-home .fsec .frow { display: grid; grid-template-columns: 0.82fr 1.28fr; gap: 64px; align-items: center; }
+.oxy-home .fsec .frow.rev { grid-template-columns: 1.28fr 0.82fr; }
+.oxy-home .ftext .eyebrow { margin-bottom: 18px; }
+.oxy-home .fsec.dark .eyebrow { color: var(--paper); }
+.oxy-home .fsec.dark .eyebrow b { color: var(--green); }
+.oxy-home .ftext h2 { font-weight: 900; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.18; letter-spacing: 0; }
+.oxy-home .ftext h2 .cl { color: var(--green-deep); }
+.oxy-home .fsec.dark .ftext h2 { color: var(--paper); }
+.oxy-home .fsec.dark .ftext h2 .cl { color: var(--green); }
+.oxy-home .ftext p { margin-top: 18px; font-size: 16px; line-height: 1.85; color: var(--ink-2); font-weight: 300; max-width: 440px; }
+.oxy-home .fsec.dark .ftext p { color: #bdb9b0; }
+.oxy-home .fsec .frow .shot { aspect-ratio: 16 / 11; }
+.oxy-home .fsec.dark .shot { border-color: rgba(255,255,255,.16); box-shadow: none;
+  background: repeating-linear-gradient(45deg, #26241f 0 13px, #2c2a24 13px 26px); }
+.oxy-home .fsec.dark .shot .ph { background: #1f1e1a; color: #bdb9b0; border-color: rgba(255,255,255,.16); }
+
+@media (max-width: 900px) {
+  .oxy-home .fsec .frow, .oxy-home .fsec .frow.rev { grid-template-columns: 1fr; gap: 30px; }
+  .oxy-home .fsec .frow.rev .shot { order: 2; }
+  .oxy-home .fsec .frow.rev .ftext { order: 1; }
+  .oxy-home .fsec { padding: 72px 0; }
+}

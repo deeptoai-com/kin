@@ -92,7 +92,31 @@ export async function searchKb(userId: string, params: KbSearchParams): Promise<
   if (!query) return [];
 
   const docIds = await visibleDocIds(userId, params);
-  if (docIds.length === 0) return [];
+  if (docIds.length === 0) {
+    // Trace the empty-scope case too (was a silent early-return): "0 visible docs" is the most
+    // common "found nothing" cause — nothing ingested-ready in scope. The Retrieval tab needs to
+    // SEE it ("看 0 篇 → 返回 0"), not show a blank. Without this it can't diagnose the failure.
+    if (params.trace !== false) {
+      void db
+        .insert(ragSearchTrace)
+        .values({
+          userId,
+          sessionId: params.sessionId ?? null,
+          query,
+          params: { k: params.k, documentId: params.documentId, kbId: params.kbId },
+          visibleDocCount: 0,
+          vectorIds: [],
+          bm25Ids: [],
+          fusedIds: [],
+          rerankedIds: null,
+          returnedIds: [],
+          degraded: 'ok',
+          latencyMs: Date.now() - startedAt,
+        })
+        .catch((err) => console.warn('[rag-search] empty-scope trace insert failed (non-fatal):', err));
+    }
+    return [];
+  }
 
   let bm25Degraded = false;
   let rerankDegraded = false;
