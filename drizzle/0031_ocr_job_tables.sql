@@ -1,0 +1,1 @@
+ALTER TABLE "ocr_jobs" ADD COLUMN "tables" jsonb DEFAULT '[]'::jsonb NOT NULL;

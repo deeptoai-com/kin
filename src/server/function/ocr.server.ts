@@ -11,7 +11,7 @@ import { getRequest } from '@tanstack/react-start/server';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '~/db/db-config';
-import { ocrJobs, type OcrJobPage } from '~/db/schema/ocr-job.schema';
+import { ocrJobs, type OcrJobPage, type OcrJobTable } from '~/db/schema/ocr-job.schema';
 import { documents } from '~/db/schema/document.schema';
 import { files } from '~/db/schema/file.schema';
 import { auth } from '~/server/auth.server';
@@ -116,6 +116,29 @@ export const getOcrJob = createServerFn({ method: 'GET' })
     return { ...job, fileUrl };
   });
 
+/** Persist a VLM-recognized table (single page or cross-page). Upsert by page-set so re-reading
+ *  a table replaces it. These get injected into the doc content on 加入知识库 — for the Agent. */
+export const saveOcrTableResult = createServerFn({ method: 'POST' })
+  .inputValidator((input) => normalize(input, z.object({
+    id: z.string().min(1),
+    pages: z.array(z.number().int()).min(1),
+    content: z.string().min(1),
+  })))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const [job] = await db
+      .select({ tables: ocrJobs.tables })
+      .from(ocrJobs)
+      .where(and(eq(ocrJobs.id, data.id), eq(ocrJobs.userId, user.id)))
+      .limit(1);
+    if (!job) throw new Error('OCR job not found');
+    const key = (ps: number[]) => [...ps].sort((a, b) => a - b).join(',');
+    const next = (job.tables as OcrJobTable[]).filter((t) => key(t.pages) !== key(data.pages));
+    next.push({ pages: [...data.pages].sort((a, b) => a - b), content: data.content });
+    await db.update(ocrJobs).set({ tables: next }).where(and(eq(ocrJobs.id, data.id), eq(ocrJobs.userId, user.id)));
+    return { ok: true as const, count: next.length };
+  });
+
 export const deleteOcrJob = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalize(input, z.object({ id: z.string().min(1) })))
   .handler(async ({ data }) => {
@@ -138,7 +161,13 @@ export const addOcrJobToKb = createServerFn({ method: 'POST' })
     if (!job) throw new Error('OCR job not found');
     if (!job.fileId) throw new Error('该转换记录没有可用的原始文件');
 
-    const content = (job.pages as OcrJobPage[]).map((p) => p.text).filter(Boolean).join('\n\n');
+    // Document content = per-page text + the VLM-recognized tables APPENDED. The point: the
+    // Agent's kb_search retrieves the ACCURATE tables, not the parser's flattened text.
+    const baseText = (job.pages as OcrJobPage[]).map((p) => p.text).filter(Boolean).join('\n\n');
+    const recognized = (job.tables as OcrJobTable[])
+      .map((t) => `\n\n## 识别表格（第 ${t.pages.join('、')} 页）\n${t.content}`)
+      .join('');
+    const content = baseText + recognized;
     const [file] = await db.select().from(files).where(eq(files.id, job.fileId)).limit(1);
     const [doc] = await db
       .insert(documents)

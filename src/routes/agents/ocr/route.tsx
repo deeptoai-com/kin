@@ -17,7 +17,10 @@ import {
 } from 'lucide-react';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { initDocumentUpload } from '~/server/function/documents.server';
-import { saveOcrJob, listOcrJobs, getOcrJob, deleteOcrJob, addOcrJobToKb } from '~/server/function/ocr.server';
+import { saveOcrJob, saveOcrTableResult, listOcrJobs, getOcrJob, deleteOcrJob, addOcrJobToKb } from '~/server/function/ocr.server';
+
+interface RecognizedTable { pages: number[]; content: string }
+const tableKey = (ps: number[]) => [...ps].sort((a, b) => a - b).join(',');
 
 export const Route = createFileRoute('/agents/ocr')({
   loader: async () => ({ history: await listOcrJobs() }),
@@ -120,8 +123,9 @@ function OcrConverterPage() {
   const [batchRunning, setBatchRunning] = useState(false);
   // table-v3.1: detection derived from parsed text (full coverage); selection → VLM read
   const [selPages, setSelPages] = useState<number[]>([]);
-  const [tableResult, setTableResult] = useState<string | null>(null);
+  const [recognizedTables, setRecognizedTables] = useState<RecognizedTable[]>([]); // persisted VLM tables
   const [tableReading, setTableReading] = useState(false);
+  const [tableError, setTableError] = useState<string | null>(null);
   const [rendering, setRendering] = useState<number | null>(null); // page being lazily rendered
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +138,7 @@ function OcrConverterPage() {
   const getJob = useServerFn(getOcrJob);
   const delJob = useServerFn(deleteOcrJob);
   const addToKbFn = useServerFn(addOcrJobToKb);
+  const saveTableFn = useServerFn(saveOcrTableResult);
 
   const refreshHistory = useCallback(() => { void router.invalidate(); }, [router]);
 
@@ -253,35 +258,40 @@ function OcrConverterPage() {
 
   const toggleSelPage = useCallback((pn: number) => {
     setSelPages((prev) => (prev.includes(pn) ? prev.filter((x) => x !== pn) : [...prev, pn].sort((a, b) => a - b)));
-    setTableResult(null);
+    setTableError(null);
     void ensurePageImage(pn);
   }, [ensurePageImage]);
 
-  /** Read the selected page(s) with the VLM (cross-page tables = multiple images in one call). */
+  /** Read the selected page(s) with the VLM, then PERSIST the result (survives reopen + gets
+   *  injected into the doc on 加入知识库 — these tables are for the Agent, not just display). */
   const readSelectedTables = useCallback(async () => {
-    // Ensure every selected page is rendered (deep pages render lazily); use the returns
-    // (state may not have flushed yet) to collect the images for the VLM call.
-    const imgs = (await Promise.all(selPages.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
+    const sel = [...selPages];
+    const imgs = (await Promise.all(sel.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
     if (imgs.length === 0) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    setTableReading(true); setTableResult(null);
+    setTableReading(true); setTableError(null);
     try {
       const res = await fetch('/api/ocr', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
         body: JSON.stringify({ images: imgs, mediaType: 'image/png', prompt: TABLE_PROMPT }),
       });
       const { markdown } = await res.json();
-      setTableResult(markdown ?? '');
+      const md = (markdown ?? '').trim();
+      if (!md) { setTableError('识别为空，可重试'); return; }
+      setRecognizedTables((prev) => [...prev.filter((t) => tableKey(t.pages) !== tableKey(sel)), { pages: sel, content: md }].sort((a, b) => a.pages[0] - b.pages[0]));
+      // persist: ensure the job exists (file already uploaded by load), then save the table.
+      if (!jobIdRef.current) await persist(pages, { scanned });
+      if (jobIdRef.current) await saveTableFn({ data: { id: jobIdRef.current, pages: sel, content: md } }).catch(() => {});
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setTableResult('（识别失败，可重试）');
+      if ((e as Error).name !== 'AbortError') setTableError('识别失败，可重试');
     } finally { setTableReading(false); }
-  }, [selPages, ensurePageImage]);
+  }, [selPages, ensurePageImage, persist, pages, scanned, saveTableFn]);
 
   const resetState = useCallback(() => {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
-    setSelPages([]); setTableResult(null); setRendering(null); setFormat('markdown'); setPhase('idle');
+    setSelPages([]); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
   }, []);
 
   const runLoad = useCallback(
@@ -337,11 +347,12 @@ function OcrConverterPage() {
     async (id: string) => {
       resetState();
       try {
-        const job = (await getJob({ data: { id } })) as { id: string; title: string; fileName: string; mimeType: string | null; scanned: boolean; pages: { page: number; text: string; source: 'parse' | 'ocr' }[] };
+        const job = (await getJob({ data: { id } })) as { id: string; title: string; fileName: string; mimeType: string | null; scanned: boolean; pages: { page: number; text: string; source: 'parse' | 'ocr' }[]; tables?: RecognizedTable[] };
         jobIdRef.current = job.id;
         uploadedFileIdRef.current = 'reopened'; // file already in S3; don't re-upload on persist
         setFileName(job.fileName); setScanned(job.scanned);
         setPages(job.pages.map((p) => ({ page: p.page, imageUrl: null, imageB64: null, mediaType: 'image/png', text: p.text, source: p.source, ocring: false })));
+        setRecognizedTables(job.tables ?? []); // restore previously-recognized tables
         setPhase('ready');
         // Pull the stored original back so previews can render + tables can be read (deep pages
         // render lazily). MinIO isn't browser-reachable → the app proxies the bytes.
@@ -475,7 +486,7 @@ function OcrConverterPage() {
           <div className="flex min-h-0 flex-col border-r">
             <div className="flex items-center justify-between gap-1.5 border-b px-3 py-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5"><TableIcon className="h-3.5 w-3.5" />检测到的表格{tablePages.length ? ` · ${tablePages.length}` : ''}</span>
-              {selPages.length > 0 && <button type="button" onClick={() => { setSelPages([]); setTableResult(null); }} className="hover:text-foreground">清空</button>}
+              {selPages.length > 0 && <button type="button" onClick={() => setSelPages([])} className="hover:text-foreground">清空</button>}
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
               {!fileRef.current ? (
@@ -514,12 +525,14 @@ function OcrConverterPage() {
           </div>
           {/* right: selected-page preview + prominent read button + AI result */}
           <div className="min-h-0 overflow-auto p-3">
-            {selPages.length > 0 && tableResult === null && !tableReading && (
+            {selPages.length > 0 && !tableReading && (
               <button type="button" onClick={() => void readSelectedTables()}
                 className="mb-3 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                <Sparkles className="h-4 w-4" />用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
+                <Sparkles className="h-4 w-4" />{recognizedTables.some((t) => tableKey(t.pages) === tableKey(selPages)) ? '重新识别' : '用 AI 识别'}选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
               </button>
             )}
+            {tableReading && <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />AI 识别中…</div>}
+            {tableError && <p className="mb-3 text-sm text-destructive">{tableError}</p>}
             {rendering !== null && selPages.includes(rendering) ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在渲染第 {rendering} 页…</div>
             ) : previewPage?.imageUrl ? (
@@ -527,17 +540,22 @@ function OcrConverterPage() {
             ) : (
               <p className="text-xs text-muted-foreground">{selPages.length ? '本页无预览图' : '← 从左侧勾选有表格的页面'}</p>
             )}
-            {tableResult !== null && (
-              <div className="mt-3 rounded-lg border">
-                <div className="flex items-center justify-between border-b px-3 py-1.5">
-                  <span className="text-[11px] text-muted-foreground">AI 识别结果{isHtmlTable(tableResult) ? ' · HTML' : ''}</span>
-                  <button type="button" onClick={() => flashCopy('tres', tableResult)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
-                    {copied === 'tres' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制
-                  </button>
-                </div>
-                <div className="overflow-auto p-3 text-sm">
-                  {isHtmlTable(tableResult) ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(tableResult) }} /> : <StreamingMarkdown content={tableResult} isStreaming={false} mode="minimal" />}
-                </div>
+            {recognizedTables.length > 0 && (
+              <div className="mt-4 space-y-3">
+                <div className="text-[11px] text-muted-foreground">已识别并保存的表格（{recognizedTables.length}）· 加入知识库时随文档一起交给 AI 检索</div>
+                {recognizedTables.map((t) => (
+                  <div key={tableKey(t.pages)} className="rounded-lg border">
+                    <div className="flex items-center justify-between border-b px-3 py-1.5">
+                      <span className="text-[11px] text-muted-foreground">第 {t.pages.join('、')} 页{isHtmlTable(t.content) ? ' · HTML' : ''}</span>
+                      <button type="button" onClick={() => flashCopy(`rt-${tableKey(t.pages)}`, t.content)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
+                        {copied === `rt-${tableKey(t.pages)}` ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制
+                      </button>
+                    </div>
+                    <div className="overflow-auto p-3 text-sm">
+                      {isHtmlTable(t.content) ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(t.content) }} /> : <StreamingMarkdown content={t.content} isStreaming={false} mode="minimal" />}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

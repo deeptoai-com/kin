@@ -218,6 +218,13 @@
       "when": 1781362528360,
       "tag": "0030_ocr_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781427229628,
+      "tag": "0031_ocr_job_tables",
+      "breakpoints": true
     }
   ]
 }

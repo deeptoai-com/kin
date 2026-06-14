@@ -20,6 +20,16 @@ export interface OcrJobPage {
   source: 'parse' | 'ocr';
 }
 
+/** A VLM-recognized table (single page or cross-page merged). Persisted so it survives reopen
+ *  AND gets injected into the document content on 加入知识库 — the whole point is the Agent
+ *  (kb_search) reading the ACCURATE table instead of the parser's flattened text. */
+export interface OcrJobTable {
+  /** The page(s) the table spans (1 = single, >1 = cross-page merged). */
+  pages: number[];
+  /** Markdown or HTML table the VLM produced. */
+  content: string;
+}
+
 export const ocrJobs = pgTable(
   'ocr_jobs',
   {
@@ -33,6 +43,8 @@ export const ocrJobs = pgTable(
     pageCount: integer('page_count').notNull().default(0),
     scanned: boolean('scanned').notNull().default(false),
     pages: jsonb('pages').$type<OcrJobPage[]>().notNull().default([]),
+    /** VLM-recognized tables (injected into the doc content on 加入知识库 → for the Agent). */
+    tables: jsonb('tables').$type<OcrJobTable[]>().notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
