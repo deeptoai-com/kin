@@ -101,7 +101,7 @@ function findTablePages(pages: OcrPage[]): TablePage[] {
     }
     if (cells >= 4) out.push({ page: p.page, cells, big: cells >= 12, via });
   }
-  return out.sort((a, b) => b.cells - a.cells);
+  return out.sort((a, b) => a.page - b.page); // page order (Owner: 按页数排序)
 }
 
 function OcrConverterPage() {
@@ -452,47 +452,61 @@ function OcrConverterPage() {
 
       {format === 'tables' ? (
         <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr]">
-          {/* left: detected table list (multi-select) */}
-          <div className="min-h-0 overflow-auto border-r p-3">
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><TableIcon className="h-3.5 w-3.5" />检测到的表格</div>
-            {!fileRef.current ? (
-              <p className="text-xs text-muted-foreground">历史记录未保留原文件，无法读取表格。请重新上传该文件。</p>
-            ) : tablePages.length === 0 ? (
-              <p className="text-xs text-muted-foreground">未在解析结果中检测到表格。</p>
-            ) : (
-              <div className="space-y-1">
-                {tablePages.map((t) => {
-                  const sel = selPages.includes(t.page);
-                  return (
-                    <button key={t.page} type="button" onClick={() => toggleSelPage(t.page)}
-                      className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
-                      {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                      <span className="flex-1">第 {t.page} 页</span>
-                      {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
-                      <span className="text-muted-foreground">{t.cells} 项</span>
-                      {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {selPages.length > 0 && (
-              <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
+          {/* left: table-page list (scrolls) + ALWAYS-VISIBLE action footer */}
+          <div className="flex min-h-0 flex-col border-r">
+            <div className="flex items-center justify-between gap-1.5 border-b px-3 py-2 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5"><TableIcon className="h-3.5 w-3.5" />检测到的表格{tablePages.length ? ` · ${tablePages.length}` : ''}</span>
+              {selPages.length > 0 && <button type="button" onClick={() => { setSelPages([]); setTableResult(null); }} className="hover:text-foreground">清空</button>}
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-3">
+              {!fileRef.current ? (
+                <p className="text-xs text-muted-foreground">历史记录未保留原文件，无法读取表格。请重新上传该文件。</p>
+              ) : tablePages.length === 0 ? (
+                <p className="text-xs text-muted-foreground">未在解析结果中检测到表格。</p>
+              ) : (
+                <div className="space-y-1">
+                  {tablePages.map((t) => {
+                    const sel = selPages.includes(t.page);
+                    return (
+                      <button key={t.page} type="button" onClick={() => toggleSelPage(t.page)}
+                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
+                        {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                        <span className="flex-1">第 {t.page} 页</span>
+                        {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
+                        <span className="text-muted-foreground">{t.cells} 项</span>
+                        {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="border-t p-3">
+              {selPages.length > 0 ? (
+                <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
+                </button>
+              ) : (
+                <p className="text-[10px] leading-relaxed text-muted-foreground">勾选 1 页（连续多页 = 跨页表）→ 点「用 AI 识别」。AI 读整页，定位不准也无妨。</p>
+              )}
+            </div>
+          </div>
+          {/* right: selected-page preview + prominent read button + AI result */}
+          <div className="min-h-0 overflow-auto p-3">
+            {selPages.length > 0 && tableResult === null && !tableReading && (
+              <button type="button" onClick={() => void readSelectedTables()}
+                className="mb-3 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                <Sparkles className="h-4 w-4" />用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
               </button>
             )}
-            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">勾选 1 页或连续多页（跨页表），交给 AI 一起识别。AI 读整页，定位不准也无妨。按"格数"排序，大数据表在前。</p>
-          </div>
-          {/* right: selected-page preview (lazy-rendered) + AI result */}
-          <div className="min-h-0 overflow-auto p-3">
             {rendering !== null && selPages.includes(rendering) ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在渲染第 {rendering} 页…</div>
             ) : previewPage?.imageUrl ? (
               <img src={previewPage.imageUrl} alt={`page ${previewPage.page}`} className="w-full max-w-[560px] rounded-md border" />
             ) : (
-              <p className="text-xs text-muted-foreground">{selPages.length ? '本页无预览图' : '← 从左侧选择有表格的页面'}</p>
+              <p className="text-xs text-muted-foreground">{selPages.length ? '本页无预览图' : '← 从左侧勾选有表格的页面'}</p>
             )}
             {tableResult !== null && (
               <div className="mt-3 rounded-lg border">
