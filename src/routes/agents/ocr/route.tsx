@@ -126,6 +126,7 @@ function OcrConverterPage() {
   const [recognizedTables, setRecognizedTables] = useState<RecognizedTable[]>([]); // persisted VLM tables
   const [tableReading, setTableReading] = useState(false);
   const [tableError, setTableError] = useState<string | null>(null);
+  const [tableBatch, setTableBatch] = useState<{ done: number; total: number } | null>(null); // 全选批量进度
   const [rendering, setRendering] = useState<number | null>(null); // page being lazily rendered
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -262,31 +263,65 @@ function OcrConverterPage() {
     void ensurePageImage(pn);
   }, [ensurePageImage]);
 
-  /** Read the selected page(s) with the VLM, then PERSIST the result (survives reopen + gets
-   *  injected into the doc on 加入知识库 — these tables are for the Agent, not just display). */
-  const readSelectedTables = useCallback(async () => {
-    const sel = [...selPages];
-    const imgs = (await Promise.all(sel.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
-    if (imgs.length === 0) return;
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setTableReading(true); setTableError(null);
-    try {
+  /** Render → VLM-recognize → PERSIST one page-set. Returns the markdown ('' = empty/failed).
+   *  Persisted results survive reopen AND get injected into the doc on 加入知识库 — for the Agent.
+   *  Shared by manual select-read and 全选 batch. Caller owns the AbortController + UI state. */
+  const recognizeOne = useCallback(
+    async (sel: number[], signal: AbortSignal): Promise<string> => {
+      const imgs = (await Promise.all(sel.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
+      if (imgs.length === 0) return '';
       const res = await fetch('/api/ocr', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
         body: JSON.stringify({ images: imgs, mediaType: 'image/png', prompt: TABLE_PROMPT }),
       });
       const { markdown } = await res.json();
       const md = (markdown ?? '').trim();
-      if (!md) { setTableError('识别为空，可重试'); return; }
+      if (!md) return '';
       setRecognizedTables((prev) => [...prev.filter((t) => tableKey(t.pages) !== tableKey(sel)), { pages: sel, content: md }].sort((a, b) => a.pages[0] - b.pages[0]));
-      // persist: ensure the job exists (file already uploaded by load), then save the table.
       if (!jobIdRef.current) await persist(pages, { scanned });
       if (jobIdRef.current) await saveTableFn({ data: { id: jobIdRef.current, pages: sel, content: md } }).catch(() => {});
+      return md;
+    },
+    [ensurePageImage, persist, pages, scanned, saveTableFn],
+  );
+
+  /** Manual: read the selected page(s) as ONE (cross-page) table. */
+  const readSelectedTables = useCallback(async () => {
+    const sel = [...selPages];
+    if (sel.length === 0) return;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setTableReading(true); setTableError(null);
+    try {
+      const md = await recognizeOne(sel, ctrl.signal);
+      if (!md) setTableError('识别为空，可重试');
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setTableError('识别失败，可重试');
     } finally { setTableReading(false); }
-  }, [selPages, ensurePageImage, persist, pages, scanned, saveTableFn]);
+  }, [selPages, recognizeOne]);
+
+  /** 全选一键: VLM-recognize EVERY detected table page individually (each page = its own table,
+   *  NOT merged), concurrency 2, cancellable, with progress. Re-recognizes pages already done. */
+  const recognizeAllTables = useCallback(async () => {
+    const targets = findTablePages(pages).map((t) => t.page);
+    if (targets.length === 0) return;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setTableError(null);
+    setTableBatch({ done: 0, total: targets.length });
+    if (!jobIdRef.current) await persist(pages, { scanned }); // create job once up-front (avoid worker race)
+    let idx = 0;
+    const worker = async () => {
+      while (idx < targets.length && !ctrl.signal.aborted) {
+        const pn = targets[idx++];
+        try { await recognizeOne([pn], ctrl.signal); }
+        catch (e) { if ((e as Error).name === 'AbortError') return; }
+        setTableBatch((b) => (b ? { ...b, done: b.done + 1 } : b));
+      }
+    };
+    try { await Promise.all([worker(), worker()]); }
+    finally { setTableBatch(null); }
+  }, [recognizeOne, persist, pages, scanned]);
 
   const resetState = useCallback(() => {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
@@ -389,7 +424,11 @@ function OcrConverterPage() {
   const current = pages[active];
   const pendingCount = pages.filter((p) => p.imageB64 && p.text === null).length;
   const tablePages = findTablePages(pages); // full-doc, instant (from already-parsed text)
-  const previewPage = selPages.length ? pages.find((p) => p.page === selPages[selPages.length - 1]) : undefined;
+  // table-mode comparison (原图 / 文字识别 / VLM): everything derived for the current selection.
+  const recognizedSet = new Set(recognizedTables.flatMap((t) => t.pages)); // which pages have a saved table
+  const selImages = selPages.map((pn) => pages.find((p) => p.page === pn)).filter((p): p is OcrPage => !!p?.imageUrl);
+  const selParserText = selPages.map((pn) => pages.find((p) => p.page === pn)?.text).filter(Boolean).join('\n\n');
+  const selVlm = recognizedTables.find((t) => tableKey(t.pages) === tableKey(selPages))?.content ?? null;
 
   const flashCopy = (id: string, text: string) => { void navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1600); };
   const copyAll = () => flashCopy('all', format === 'text' ? mdToText(assembled) : assembled);
@@ -463,7 +502,7 @@ function OcrConverterPage() {
           )}
         </span>
         <div className="flex items-center gap-2">
-          {(batchRunning || pages.some((p) => p.ocring) || tableReading) && (
+          {(batchRunning || pages.some((p) => p.ocring) || tableReading || tableBatch !== null) && (
             <button type="button" onClick={stopOcr} className="flex items-center gap-1 rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"><Square className="h-3 w-3" />停止</button>
           )}
           {pendingCount > 0 && !batchRunning && format !== 'tables' && (
@@ -481,12 +520,12 @@ function OcrConverterPage() {
       </div>
 
       {format === 'tables' ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr]">
+        <div className="grid min-h-0 flex-1 grid-cols-[240px_1fr]">
           {/* left: table-page list (scrolls) + ALWAYS-VISIBLE action footer */}
           <div className="flex min-h-0 flex-col border-r">
             <div className="flex items-center justify-between gap-1.5 border-b px-3 py-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5"><TableIcon className="h-3.5 w-3.5" />检测到的表格{tablePages.length ? ` · ${tablePages.length}` : ''}</span>
-              {selPages.length > 0 && <button type="button" onClick={() => setSelPages([])} className="hover:text-foreground">清空</button>}
+              {recognizedSet.size > 0 && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">{recognizedSet.size} 已识别</span>}
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
               {!fileRef.current ? (
@@ -497,13 +536,14 @@ function OcrConverterPage() {
                 <div className="space-y-1">
                   {tablePages.map((t) => {
                     const sel = selPages.includes(t.page);
+                    const done = recognizedSet.has(t.page);
                     return (
                       <button key={t.page} type="button" onClick={() => toggleSelPage(t.page)}
-                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
+                        className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
                         {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                         <span className="flex-1">第 {t.page} 页</span>
+                        {done && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
                         {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
-                        <span className="text-muted-foreground">{t.cells} 项</span>
                         {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
                       </button>
                     );
@@ -511,51 +551,85 @@ function OcrConverterPage() {
                 </div>
               )}
             </div>
-            <div className="border-t p-3">
-              {selPages.length > 0 ? (
-                <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                  {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  用 AI 识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
-                </button>
-              ) : (
-                <p className="text-[10px] leading-relaxed text-muted-foreground">勾选 1 页（连续多页 = 跨页表）→ 点「用 AI 识别」。AI 读整页，定位不准也无妨。</p>
-              )}
+            <div className="space-y-2 border-t p-3">
+              {tableBatch ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />一键识别中 {tableBatch.done}/{tableBatch.total}…</div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${tableBatch.total ? (tableBatch.done / tableBatch.total) * 100 : 0}%` }} /></div>
+                </div>
+              ) : tablePages.length > 0 && fileRef.current ? (
+                <>
+                  <button type="button" onClick={() => void recognizeAllTables()}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                    <Sparkles className="h-3.5 w-3.5" />一键识别全部 {tablePages.length} 个表
+                  </button>
+                  {selPages.length > 0 && (
+                    <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs hover:bg-accent disabled:opacity-50">
+                      {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      仅识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
+                    </button>
+                  )}
+                  <p className="text-[10px] leading-relaxed text-muted-foreground">勾选页可单独/跨页识别 · 已识别的表格会随文档一起进知识库给 AI 用。</p>
+                </>
+              ) : null}
             </div>
           </div>
-          {/* right: selected-page preview + prominent read button + AI result */}
-          <div className="min-h-0 overflow-auto p-3">
-            {selPages.length > 0 && !tableReading && (
-              <button type="button" onClick={() => void readSelectedTables()}
-                className="mb-3 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                <Sparkles className="h-4 w-4" />{recognizedTables.some((t) => tableKey(t.pages) === tableKey(selPages)) ? '重新识别' : '用 AI 识别'}选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
-              </button>
-            )}
-            {tableReading && <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />AI 识别中…</div>}
-            {tableError && <p className="mb-3 text-sm text-destructive">{tableError}</p>}
-            {rendering !== null && selPages.includes(rendering) ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在渲染第 {rendering} 页…</div>
-            ) : previewPage?.imageUrl ? (
-              <img src={previewPage.imageUrl} alt={`page ${previewPage.page}`} className="w-full max-w-[560px] rounded-md border" />
+          {/* right: 三栏对比 —— PDF 原图 / 文字识别（解析器）/ AI 识别（VLM），让"前→后"提升一眼可见 */}
+          <div className="min-h-0 overflow-hidden">
+            {selPages.length === 0 ? (
+              <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                ← 勾选表格页，查看「PDF 原图 / 文字识别 / AI 识别」三栏对比
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground">{selPages.length ? '本页无预览图' : '← 从左侧勾选有表格的页面'}</p>
-            )}
-            {recognizedTables.length > 0 && (
-              <div className="mt-4 space-y-3">
-                <div className="text-[11px] text-muted-foreground">已识别并保存的表格（{recognizedTables.length}）· 加入知识库时随文档一起交给 AI 检索</div>
-                {recognizedTables.map((t) => (
-                  <div key={tableKey(t.pages)} className="rounded-lg border">
-                    <div className="flex items-center justify-between border-b px-3 py-1.5">
-                      <span className="text-[11px] text-muted-foreground">第 {t.pages.join('、')} 页{isHtmlTable(t.content) ? ' · HTML' : ''}</span>
-                      <button type="button" onClick={() => flashCopy(`rt-${tableKey(t.pages)}`, t.content)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent">
-                        {copied === `rt-${tableKey(t.pages)}` ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制
-                      </button>
-                    </div>
-                    <div className="overflow-auto p-3 text-sm">
-                      {isHtmlTable(t.content) ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(t.content) }} /> : <StreamingMarkdown content={t.content} isStreaming={false} mode="minimal" />}
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                  <span className="text-xs font-medium">第 {selPages.join('、')} 页 · 对比</span>
+                  <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {selVlm ? '重新识别' : '用 AI 识别'}{selPages.length > 1 ? '（跨页合并）' : ''}
+                  </button>
+                </div>
+                {tableError && <p className="border-b bg-destructive/5 px-3 py-1.5 text-xs text-destructive">{tableError}</p>}
+                <div className="grid min-h-0 flex-1 grid-cols-3 divide-x">
+                  {/* col 1: PDF 原图 */}
+                  <div className="flex min-h-0 flex-col">
+                    <div className="border-b bg-muted/30 px-2 py-1 text-[11px] font-medium text-muted-foreground">PDF 原图</div>
+                    <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
+                      {rendering !== null && selPages.includes(rendering) ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />渲染中…</div>
+                      ) : selImages.length ? (
+                        selImages.map((p) => <img key={p.page} src={p.imageUrl!} alt={`page ${p.page}`} className="w-full rounded border" />)
+                      ) : (
+                        <p className="text-xs text-muted-foreground">本页无预览图</p>
+                      )}
                     </div>
                   </div>
-                ))}
+                  {/* col 2: 文字识别（解析器）— the "before" */}
+                  <div className="flex min-h-0 flex-col">
+                    <div className="flex items-center justify-between border-b bg-muted/30 px-2 py-1 text-[11px] font-medium text-muted-foreground"><span>文字识别（解析器）</span><span className="rounded bg-muted px-1 text-[10px]">识别前</span></div>
+                    <div className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 text-xs leading-relaxed text-muted-foreground">
+                      {selParserText || '（解析器在此页未提取到文字）'}
+                    </div>
+                  </div>
+                  {/* col 3: AI 识别（VLM）— the "after" */}
+                  <div className="flex min-h-0 flex-col">
+                    <div className="flex items-center justify-between border-b bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary">
+                      <span className="flex items-center gap-1">AI 识别<span className="rounded bg-primary/10 px-1 text-[10px]">识别后</span></span>
+                      {selVlm && <button type="button" onClick={() => flashCopy('selvlm', selVlm)} className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent">{copied === 'selvlm' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制</button>}
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto p-2 text-sm">
+                      {tableReading ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />AI 识别中…</div>
+                      ) : selVlm ? (
+                        isHtmlTable(selVlm) ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(selVlm) }} /> : <StreamingMarkdown content={selVlm} isStreaming={false} mode="minimal" />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">点上方「用 AI 识别」生成此页表格 →</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
