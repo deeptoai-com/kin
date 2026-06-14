@@ -46,10 +46,16 @@ interface HistoryItem {
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp';
 const MEDIA: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
-const TABLE_PROMPT =
-  '提取这些图里的表格（可能跨页，请合并成一个表）。如果是标准规则表格（行列整齐、无合并单元格），输出 ' +
-  'Markdown 表格；如果不规则（合并单元格/跨行跨列/嵌套表头），改用 HTML <table> 保留结构。' +
-  '只输出表格本身，看不清的单元格留空，不要编造。';
+// We give the VLM the page IMAGE + the parser's text (prose right, table mangled) and ask it to
+// return the WHOLE page with ONLY the table swapped for a correct HTML <table>. The page image is
+// the source of truth for the table; the parser text keeps the prose faithful (no prose re-OCR).
+// Output = the corrected full page → it REPLACES the parser page for display AND for the Agent.
+const PAGE_PROMPT =
+  '下面是文档某一页的图片，以及解析器从这页提取的文字——正文基本正确，但其中的表格被压平成了错乱文字。' +
+  '请输出这一页的完整内容（HTML）：正文照抄解析器文字、保持原样，用 <p> 分段；把错乱的表格部分替换为' +
+  '按图片还原的正确表格，用 <table>（含 <thead>/<tbody>/<tr>/<th>/<td>，还原表头层级、合并单元格与数字，' +
+  '看不清的留空、不要编造）。若跨多页同属一张表请合并。按阅读顺序排列，只输出该页内容本身的 HTML，' +
+  '不要解释、不要用 ``` 代码块包裹。';
 
 function fileToBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -68,7 +74,6 @@ function mdToText(md: string): string {
 function sanitizeHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*"[^"]*"/gi, '').replace(/\son\w+\s*=\s*'[^']*'/gi, '');
 }
-const isHtmlTable = (s: string) => /<table[\s>]/i.test(s);
 
 /**
  * Find table-bearing pages from the ALREADY-PARSED text — full doc coverage, instant. Two signals:
@@ -270,12 +275,15 @@ function OcrConverterPage() {
     async (sel: number[], signal: AbortSignal): Promise<string> => {
       const imgs = (await Promise.all(sel.map((pn) => ensurePageImage(pn)))).filter((b): b is string => !!b);
       if (imgs.length === 0) return '';
+      // hand the VLM the parser text too → it keeps prose, only fixes the table (returns full page).
+      const parserText = sel.map((pn) => pages.find((p) => p.page === pn)?.text).filter(Boolean).join('\n\n');
+      const prompt = parserText ? `${PAGE_PROMPT}\n\n【解析器文字】\n${parserText}` : PAGE_PROMPT;
       const res = await fetch('/api/ocr', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
-        body: JSON.stringify({ images: imgs, mediaType: 'image/png', prompt: TABLE_PROMPT }),
+        body: JSON.stringify({ images: imgs, mediaType: 'image/png', prompt }),
       });
       const { markdown } = await res.json();
-      const md = (markdown ?? '').trim();
+      const md = (markdown ?? '').trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/i, '').trim();
       if (!md) return '';
       setRecognizedTables((prev) => [...prev.filter((t) => tableKey(t.pages) !== tableKey(sel)), { pages: sel, content: md }].sort((a, b) => a.pages[0] - b.pages[0]));
       if (!jobIdRef.current) await persist(pages, { scanned });
@@ -488,6 +496,8 @@ function OcrConverterPage() {
 
   return (
     <div className="flex h-[calc(100vh-theme(spacing.16))] flex-col">
+      {/* render the VLM's full-page HTML readably: bordered tables, paragraph spacing. */}
+      <style>{`.ocr-page p{margin:.4em 0}.ocr-page table{border-collapse:collapse;width:100%;font-size:12px;margin:.5em 0}.ocr-page th,.ocr-page td{border:1px solid var(--border);padding:3px 6px;text-align:left;vertical-align:top}.ocr-page th{background:var(--muted);font-weight:600}.ocr-page h1,.ocr-page h2,.ocr-page h3{font-weight:600;margin:.5em 0}`}</style>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
         <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <button type="button" onClick={resetState} title="新转换 / 返回" className="shrink-0 rounded-md border px-1.5 py-1 text-muted-foreground hover:bg-accent"><RotateCcw className="h-3.5 w-3.5" /></button>
@@ -525,7 +535,7 @@ function OcrConverterPage() {
           <div className="flex min-h-0 flex-col border-r">
             <div className="flex items-center justify-between gap-1.5 border-b px-3 py-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5"><TableIcon className="h-3.5 w-3.5" />检测到的表格{tablePages.length ? ` · ${tablePages.length}` : ''}</span>
-              {recognizedSet.size > 0 && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">{recognizedSet.size} 已识别</span>}
+              {recognizedSet.size > 0 && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">已修正 {recognizedSet.size} 页</span>}
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
               {!fileRef.current ? (
@@ -542,9 +552,14 @@ function OcrConverterPage() {
                         className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
                         {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                         <span className="flex-1">第 {t.page} 页</span>
-                        {done && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
-                        {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
-                        {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
+                        {done ? (
+                          <span className="flex shrink-0 items-center gap-0.5 rounded bg-emerald-500/10 px-1 text-[10px] font-medium text-emerald-600"><Check className="h-3 w-3" />已修正</span>
+                        ) : (
+                          <>
+                            {t.via === 'heuristic' && <span className="rounded bg-amber-500/10 px-1 text-[10px] text-amber-600">推测</span>}
+                            {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
+                          </>
+                        )}
                       </button>
                     );
                   })}
@@ -570,7 +585,7 @@ function OcrConverterPage() {
                       仅识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
                     </button>
                   )}
-                  <p className="text-[10px] leading-relaxed text-muted-foreground">勾选页可单独/跨页识别 · 已识别的表格会随文档一起进知识库给 AI 用。</p>
+                  <p className="text-[10px] leading-relaxed text-muted-foreground">AI 识别会用图片还原的正确表格<span className="text-foreground">替换</span>文字识别的错误结果。加入知识库时，已修正的页用 AI 版本——Agent 读到的就是对的。</p>
                 </>
               ) : null}
             </div>
@@ -592,6 +607,12 @@ function OcrConverterPage() {
                   </button>
                 </div>
                 {tableError && <p className="border-b bg-destructive/5 px-3 py-1.5 text-xs text-destructive">{tableError}</p>}
+                {/* the replacement is the whole point — say it loudly once the page is corrected. */}
+                {selVlm ? (
+                  <p className="flex items-center gap-1.5 border-b border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-xs text-emerald-700"><Check className="h-3.5 w-3.5 shrink-0" /><span>这一页已用 <b>AI 识别</b> 替换文字识别的错误表格 · 加入知识库后，Agent 读到的就是右侧这份正确内容。</span></p>
+                ) : (
+                  <p className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">尚未识别 · 点「用 AI 识别」用图片还原表格，<span className="text-foreground">替换</span>中间文字识别的错误结果。</p>
+                )}
                 <div className="grid min-h-0 flex-1 grid-cols-3 divide-x">
                   {/* col 1: PDF 原图 */}
                   <div className="flex min-h-0 flex-col">
@@ -606,26 +627,29 @@ function OcrConverterPage() {
                       )}
                     </div>
                   </div>
-                  {/* col 2: 文字识别（解析器）— the "before" */}
+                  {/* col 2: 文字识别（解析器）— the "before". Once replaced, visibly superseded. */}
                   <div className="flex min-h-0 flex-col">
-                    <div className="flex items-center justify-between border-b bg-muted/30 px-2 py-1 text-[11px] font-medium text-muted-foreground"><span>文字识别（解析器）</span><span className="rounded bg-muted px-1 text-[10px]">识别前</span></div>
-                    <div className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 text-xs leading-relaxed text-muted-foreground">
+                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${selVlm ? 'bg-destructive/5 text-destructive' : 'bg-muted/30 text-muted-foreground'}`}>
+                      <span className={selVlm ? 'line-through decoration-destructive/50' : ''}>文字识别（解析器）</span>
+                      <span className={`rounded px-1 text-[10px] ${selVlm ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>{selVlm ? '✗ 已被替换' : '识别前'}</span>
+                    </div>
+                    <div className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 text-xs leading-relaxed text-muted-foreground ${selVlm ? 'opacity-40 grayscale' : ''}`}>
                       {selParserText || '（解析器在此页未提取到文字）'}
                     </div>
                   </div>
-                  {/* col 3: AI 识别（VLM）— the "after" */}
-                  <div className="flex min-h-0 flex-col">
-                    <div className="flex items-center justify-between border-b bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary">
-                      <span className="flex items-center gap-1">AI 识别<span className="rounded bg-primary/10 px-1 text-[10px]">识别后</span></span>
+                  {/* col 3: AI 识别（VLM）— the "after". When present it's the authoritative version. */}
+                  <div className={`flex min-h-0 flex-col ${selVlm ? 'ring-2 ring-inset ring-emerald-500/40' : ''}`}>
+                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${selVlm ? 'bg-emerald-500/10 text-emerald-700' : 'bg-primary/5 text-primary'}`}>
+                      <span className="flex items-center gap-1">AI 识别<span className={`rounded px-1 text-[10px] ${selVlm ? 'bg-emerald-500/15 text-emerald-700' : 'bg-primary/10'}`}>{selVlm ? '✓ 生效中' : '识别后'}</span></span>
                       {selVlm && <button type="button" onClick={() => flashCopy('selvlm', selVlm)} className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent">{copied === 'selvlm' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制</button>}
                     </div>
-                    <div className="min-h-0 flex-1 overflow-auto p-2 text-sm">
+                    <div className="ocr-page min-h-0 flex-1 overflow-auto p-2 text-sm">
                       {tableReading ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />AI 识别中…</div>
                       ) : selVlm ? (
-                        isHtmlTable(selVlm) ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(selVlm) }} /> : <StreamingMarkdown content={selVlm} isStreaming={false} mode="minimal" />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(selVlm) }} />
                       ) : (
-                        <p className="text-xs text-muted-foreground">点上方「用 AI 识别」生成此页表格 →</p>
+                        <p className="text-xs text-muted-foreground">点上方「用 AI 识别」→ 用图片还原这一页的正确表格</p>
                       )}
                     </div>
                   </div>

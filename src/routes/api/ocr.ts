@@ -32,8 +32,9 @@ export const Route = createFileRoute('/api/ocr')({
         const { contentBase64, images, mediaType, provider, prompt } = (body ?? {}) as Record<string, unknown>;
         const mt = typeof mediaType === 'string' ? mediaType : 'application/octet-stream';
         const prov: OcrProvider | undefined = provider === 'mimo' || provider === 'doubao' ? provider : undefined;
-        // Custom prompt (e.g. the 表格 mode's "standard→markdown / irregular→HTML" instruction). Capped.
-        const customPrompt = typeof prompt === 'string' && prompt.trim() ? prompt.slice(0, 2000) : undefined;
+        // Custom prompt. The 表格 mode embeds the page's parser text (prose to keep) so the VLM
+        // returns the full page with only the table fixed — so the cap must fit a page of text.
+        const customPrompt = typeof prompt === 'string' && prompt.trim() ? prompt.slice(0, 12000) : undefined;
 
         // Multi-image (cross-page tables, table-v3): read several page images in one VLM call.
         if (Array.isArray(images) && images.length > 0) {

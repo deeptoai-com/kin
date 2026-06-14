@@ -161,13 +161,26 @@ export const addOcrJobToKb = createServerFn({ method: 'POST' })
     if (!job) throw new Error('OCR job not found');
     if (!job.fileId) throw new Error('该转换记录没有可用的原始文件');
 
-    // Document content = per-page text + the VLM-recognized tables APPENDED. The point: the
-    // Agent's kb_search retrieves the ACCURATE tables, not the parser's flattened text.
-    const baseText = (job.pages as OcrJobPage[]).map((p) => p.text).filter(Boolean).join('\n\n');
-    const recognized = (job.tables as OcrJobTable[])
-      .map((t) => `\n\n## 识别表格（第 ${t.pages.join('、')} 页）\n${t.content}`)
-      .join('');
-    const content = baseText + recognized;
+    // Document content, page by page, with corrected pages REPLACING the parser's flattened text.
+    // A VLM correction holds the whole page (prose + the table fixed to HTML); on a corrected page
+    // we use the AI version INSTEAD of the parser text — so kb_search reads the accurate table, not
+    // the garbage. Cross-page tables (>1 page) are emitted once at their first page.
+    const corrections = job.tables as OcrJobTable[];
+    const anchorContent = new Map<number, string>(); // first page of a corrected set -> AI content
+    const covered = new Set<number>(); // every page a correction spans
+    for (const t of corrections) {
+      const sorted = [...t.pages].sort((a, b) => a - b);
+      anchorContent.set(sorted[0], t.content);
+      for (const p of sorted) covered.add(p);
+    }
+    const byPage = [...(job.pages as OcrJobPage[])].sort((a, b) => a.page - b.page);
+    const parts: string[] = [];
+    for (const p of byPage) {
+      if (anchorContent.has(p.page)) parts.push(anchorContent.get(p.page)!); // corrected → replaces parser
+      else if (covered.has(p.page)) continue; // non-anchor page of a cross-page table (already emitted)
+      else if (p.text) parts.push(p.text); // uncorrected parser page
+    }
+    const content = parts.join('\n\n');
     const [file] = await db.select().from(files).where(eq(files.id, job.fileId)).limit(1);
     const [doc] = await db
       .insert(documents)
