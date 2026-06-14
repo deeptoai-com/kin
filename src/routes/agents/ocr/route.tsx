@@ -337,20 +337,39 @@ function OcrConverterPage() {
     async (id: string) => {
       resetState();
       try {
-        const job = (await getJob({ data: { id } })) as { id: string; title: string; fileName: string; scanned: boolean; pages: { page: number; text: string; source: 'parse' | 'ocr' }[] };
+        const job = (await getJob({ data: { id } })) as { id: string; title: string; fileName: string; mimeType: string | null; scanned: boolean; pages: { page: number; text: string; source: 'parse' | 'ocr' }[] };
         jobIdRef.current = job.id;
+        uploadedFileIdRef.current = 'reopened'; // file already in S3; don't re-upload on persist
         setFileName(job.fileName); setScanned(job.scanned);
         setPages(job.pages.map((p) => ({ page: p.page, imageUrl: null, imageB64: null, mediaType: 'image/png', text: p.text, source: p.source, ocring: false })));
         setPhase('ready');
+        // Pull the stored original back so previews can render + tables can be read (deep pages
+        // render lazily). MinIO isn't browser-reachable → the app proxies the bytes.
+        try {
+          const res = await fetch(`/api/ocr/file?jobId=${encodeURIComponent(id)}`);
+          if (res.ok) {
+            const blob = await res.blob();
+            fileRef.current = new File([blob], job.fileName, { type: job.mimeType || blob.type || 'application/octet-stream' });
+            if (job.fileName.toLowerCase().endsWith('.pdf') && job.pages[0]) void ensurePageImage(job.pages[0].page);
+          }
+        } catch { /* original unavailable; text-only reopen */ }
       } catch { setError('打开历史失败'); }
     },
-    [resetState, getJob],
+    [resetState, getJob, ensurePageImage],
   );
 
   const removeJob = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try { await delJob({ data: { id } }); refreshHistory(); } catch { /* ignore */ }
   }, [delJob, refreshHistory]);
+
+  /** Navigate pages in the normal view, lazily rendering the target image (reopen / deep pages). */
+  const goToPage = useCallback((idx: number) => {
+    const clamped = Math.max(0, Math.min(pages.length - 1, idx));
+    setActive(clamped);
+    const pg = pages[clamped];
+    if (pg && !pg.imageB64) void ensurePageImage(pg.page);
+  }, [pages, ensurePageImage]);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void runLoad(f); };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void runLoad(f); };
@@ -527,7 +546,13 @@ function OcrConverterPage() {
         <div className="grid min-h-0 flex-1 grid-cols-2">
           <div className="min-h-0 overflow-auto border-r p-3">
             <div className="mb-2 text-[11px] text-muted-foreground">原始页 · 第 {current?.page ?? 1} 页</div>
-            {current?.imageUrl ? <img src={current.imageUrl} alt={`page ${current.page}`} className="w-full rounded-md border" /> : <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">本页无预览图（历史记录只存文本）</div>}
+            {current?.imageUrl ? (
+              <img src={current.imageUrl} alt={`page ${current.page}`} className="w-full rounded-md border" />
+            ) : rendering !== null && current?.page === rendering ? (
+              <div className="flex items-center gap-2 rounded-md border border-dashed p-8 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在渲染本页…</div>
+            ) : (
+              <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">{fileRef.current ? '加载中…' : '本页无预览图'}</div>
+            )}
           </div>
           <div className="min-h-0 overflow-auto p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -556,9 +581,9 @@ function OcrConverterPage() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {format !== 'tables' && (
             <>
-              <button type="button" disabled={active === 0} onClick={() => setActive((a) => Math.max(0, a - 1))} className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" disabled={active === 0} onClick={() => goToPage(active - 1)} className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
               <span>{current?.page ?? 1} / {pages.length}</span>
-              <button type="button" disabled={active >= pages.length - 1} onClick={() => setActive((a) => Math.min(pages.length - 1, a + 1))} className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" disabled={active >= pages.length - 1} onClick={() => goToPage(active + 1)} className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
             </>
           )}
         </div>
