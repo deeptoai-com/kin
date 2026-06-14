@@ -12,9 +12,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { and, eq } from 'drizzle-orm';
 import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
+import { documents } from '~/db/schema/document.schema';
 import { requireUser } from '~/server/require-user';
+import { isRagEnabled } from '~/server/rag/flag';
 import { S3StaticFileImpl } from '~/server/s3/s3';
-import { scheduleIngestForLandedFile } from '~/server/function/documents.server';
 
 const fileService = new S3StaticFileImpl();
 
@@ -52,10 +53,21 @@ export const Route = createFileRoute('/api/documents/upload')({
           .set({ url: fullUrl, size: body.length, updatedAt: now, accessedAt: now })
           .where(eq(files.id, file.id));
 
-        // Bytes are in S3 now → schedule a content-less KB document awaiting ingest (race-free).
-        // Without this, a content-less PDF uploaded via the KB/upload flow stays 'pending' forever
-        // unless the user separately triggers the parse dialog. Best-effort; never fails the upload.
-        await scheduleIngestForLandedFile(file.id).catch(() => {});
+        // Bytes are in S3 now → schedule a content-less KB document awaiting ingest (race-free,
+        // dedup by jobId). Without this, a content-less PDF uploaded via the KB/upload flow stays
+        // 'pending' forever unless the user separately triggers the parse dialog. Inlined (NOT a
+        // shared helper import) so this api route never drags db/postgres into the client bundle.
+        if (isRagEnabled()) {
+          const [doc] = await db
+            .select({ id: documents.id, ingestStatus: documents.ingestStatus, content: documents.content })
+            .from(documents)
+            .where(eq(documents.fileId, file.id))
+            .limit(1);
+          if (doc && doc.ingestStatus === 'pending' && !doc.content?.trim().length) {
+            const { scheduleRagIngest } = await import('~/server/rag/queue');
+            await scheduleRagIngest(doc.id);
+          }
+        }
 
         return Response.json({ id: file.id, url: fullUrl, size: body.length });
       },

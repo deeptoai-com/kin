@@ -534,8 +534,12 @@ export const completeDocumentUpload = createServerFn({ method: 'POST' })
 
 /** Schedule ingest for a content-less document whose file bytes just landed in S3. Marked
  *  'pending' at create time (initDocumentUpload / addKbDocuments) but deliberately NOT scheduled
- *  there — its bytes didn't exist yet. Call from every byte-landing path. Idempotent. */
-export async function scheduleIngestForLandedFile(fileId: string): Promise<void> {
+ *  there — its bytes didn't exist yet. Idempotent.
+ *  NOT exported on purpose: a public plain (non-createServerFn) export from this .server.ts that
+ *  touches `db` can't be tree-shaken out of the client bundle (the documents page imports this
+ *  module), dragging the postgres driver into the browser build → vite externalize error. Keep it
+ *  internal (dead-code-eliminated with the handlers); other byte-landing paths inline the logic. */
+async function scheduleIngestForLandedFile(fileId: string): Promise<void> {
   if (!isRagEnabled()) return;
   const [doc] = await db
     .select({ id: documents.id, ingestStatus: documents.ingestStatus, content: documents.content })
