@@ -240,42 +240,39 @@ export const addKbDocuments = createServerFn({ method: 'POST' })
           continue;
         }
 
-        // Check if already in KB
+        // Link into the KB if not already (idempotent). Do NOT skip the rest when already
+        // linked — a previously-linked file whose document got stuck (failed / never scheduled,
+        // e.g. the BULLMQ_PREFIX bug) must still be (re)activated below, else "重新加入" can
+        // never recover it.
         const [existing] = await db
           .select()
           .from(kbDocuments)
-          .where(and(
-            eq(kbDocuments.kbId, data.kbId),
-            eq(kbDocuments.fileId, fileId)
-          ));
-
-        if (existing) {
-          errors.push({ fileId, error: 'Already in knowledge base' });
-          continue;
+          .where(and(eq(kbDocuments.kbId, data.kbId), eq(kbDocuments.fileId, fileId)));
+        if (!existing) {
+          const [kbDoc] = await db
+            .insert(kbDocuments)
+            .values({ kbId: data.kbId, fileId })
+            .returning();
+          added.push(kbDoc);
         }
 
-        // Add to KB
-        const [kbDoc] = await db
-          .insert(kbDocuments)
-          .values({
-            kbId: data.kbId,
-            fileId,
-          })
-          .returning();
-
-        added.push(kbDoc);
-
-        // Joining a KB means joining the RAG pipeline (KB redesign prd §4.3): ensure the
-        // file has a documents row and schedule parse/embed. Without this the file sits
-        // in the KB with no status and never becomes searchable.
+        // Joining a KB means joining the RAG pipeline (KB redesign prd §4.3): ensure the file has
+        // a documents row and is scheduled for parse/embed unless already done/in-flight.
         const [existingDoc] = await db
-          .select({ id: documents.id, ingestStatus: documents.ingestStatus, content: documents.content })
+          .select({
+            id: documents.id,
+            ingestStatus: documents.ingestStatus,
+            content: documents.content,
+            projectId: documents.projectId,
+          })
           .from(documents)
           .where(eq(documents.fileId, fileId))
           .limit(1);
 
         const isPdf = (file.name ?? '').toLowerCase().endsWith('.pdf');
         const ragEnabled = isRagEnabled();
+        // Inherit the KB's project so project members can retrieve it (personal KB → null).
+        const inheritProjectId = kb.projectId ?? null;
 
         if (!existingDoc) {
           // No document yet (plain file-library upload): create one. PDFs get parsed by
@@ -292,15 +289,26 @@ export const addKbDocuments = createServerFn({ method: 'POST' })
               fileId: file.id,
               userId: user.id,
               clientId: user.id,
+              projectId: inheritProjectId,
               parseStatus: isPdf ? 'pending' : 'ready',
               ingestStatus: ragEnabled && isPdf ? 'pending' : 'none',
             })
             .returning({ id: documents.id });
           if (ragEnabled && isPdf && createdDoc) docIdsToIngest.push(createdDoc.id);
-        } else if (ragEnabled && existingDoc.ingestStatus === 'none') {
-          // Document exists but was never embedded — activate it now that it joined a KB.
+        } else {
+          // Backfill projectId if this doc has none but the KB is project-scoped.
+          if (inheritProjectId && !existingDoc.projectId) {
+            await db.update(documents).set({ projectId: inheritProjectId }).where(eq(documents.id, existingDoc.id));
+          }
+          // (Re)activate anything not already done/in-flight: 'none' (never embedded), 'failed'
+          // (retry), or a stuck 'pending' whose job was lost. Skip 'ready'/'processing'.
           const hasContent = Boolean(existingDoc.content?.trim().length);
-          if (hasContent || isPdf) {
+          const reingestable =
+            ragEnabled &&
+            existingDoc.ingestStatus !== 'ready' &&
+            existingDoc.ingestStatus !== 'processing' &&
+            (hasContent || isPdf);
+          if (reingestable) {
             await db
               .update(documents)
               .set({
@@ -319,9 +327,11 @@ export const addKbDocuments = createServerFn({ method: 'POST' })
       }
     }
 
-    // After the loop so a queue failure never breaks the KB membership writes.
+    // After the loop so a queue failure never breaks the KB membership writes. Surface enqueue
+    // failures (was silently swallowed → doc stuck 'pending' with no signal).
     for (const docId of docIdsToIngest) {
-      await scheduleRagIngest(docId);
+      const mode = await scheduleRagIngest(docId);
+      if (mode === 'error') errors.push({ fileId: docId, error: 'ingest enqueue failed (no auto-retry)' });
     }
 
     return {

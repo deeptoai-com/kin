@@ -14,6 +14,7 @@ import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
 import { requireUser } from '~/server/require-user';
 import { S3StaticFileImpl } from '~/server/s3/s3';
+import { scheduleIngestForLandedFile } from '~/server/function/documents.server';
 
 const fileService = new S3StaticFileImpl();
 
@@ -50,6 +51,11 @@ export const Route = createFileRoute('/api/documents/upload')({
           .update(files)
           .set({ url: fullUrl, size: body.length, updatedAt: now, accessedAt: now })
           .where(eq(files.id, file.id));
+
+        // Bytes are in S3 now → schedule a content-less KB document awaiting ingest (race-free).
+        // Without this, a content-less PDF uploaded via the KB/upload flow stays 'pending' forever
+        // unless the user separately triggers the parse dialog. Best-effort; never fails the upload.
+        await scheduleIngestForLandedFile(file.id).catch(() => {});
 
         return Response.json({ id: file.id, url: fullUrl, size: body.length });
       },

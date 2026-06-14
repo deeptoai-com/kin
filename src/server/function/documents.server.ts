@@ -9,6 +9,7 @@ import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
 import { documents } from '~/db/schema/document.schema';
 import { kbDocuments } from '~/db/schema/kb-document.schema';
+import { knowledgeBases } from '~/db/schema';
 import { auth } from '~/server/auth.server';
 import { S3StaticFileImpl } from '~/server/s3/s3';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -351,6 +352,17 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     // RAG flag off → the documents row is still created (the knowledge base predates
     // RAG), but nothing is embedded: ingest_status stays 'none', no ingest scheduled.
     const ragEnabled = isRagEnabled();
+    const isPdf = originalName.toLowerCase().endsWith('.pdf');
+    // Inherit the selected KB's project so project members can retrieve the upload (#6).
+    let inheritProjectId: string | null = null;
+    if (kbIds.length > 0) {
+      const [k] = await db
+        .select({ projectId: knowledgeBases.projectId, userId: knowledgeBases.userId })
+        .from(knowledgeBases)
+        .where(eq(knowledgeBases.id, kbIds[0]))
+        .limit(1);
+      if (k && k.userId === user.id) inheritProjectId = k.projectId ?? null;
+    }
 
     const { fileRecord, ragDocumentId } = await db.transaction(async (tx) => {
       const [createdFile] = await tx
@@ -394,14 +406,19 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
             fileId: createdFile.id,
             userId: user.id,
             clientId: user.id,
+            projectId: inheritProjectId,
             tokenEstimate: tokenEstimate || null,
-            // parse_status: text already present → 'ready'; else awaits the parse stage (U1)
-            parseStatus: hasContent ? 'ready' : 'pending',
-            // embed every document with text (full-coverage); ragTier (single|structured)
-            // is recorded by the ingest pipeline once it chunks.
-            ingestStatus: ragEnabled && hasContent ? 'pending' : 'none',
+            // parse_status: text present → 'ready'; content-less PDF awaits the parse sidecar
+            // ('pending'); a content-less non-PDF has nothing to parse → 'ready'.
+            parseStatus: hasContent ? 'ready' : isPdf ? 'pending' : 'ready',
+            // embed every document with text/PDF (full-coverage). A content-less PDF is marked
+            // 'pending' here but scheduled by the byte-landing upload handler (PUT / direct),
+            // NOT now — its S3 bytes don't exist yet, so the parse stage would fetch nothing.
+            ingestStatus: ragEnabled && (hasContent || isPdf) ? 'pending' : 'none',
           })
           .returning({ id: documents.id });
+        // Schedule inline ONLY when content is already present (no S3 fetch needed). Content-less
+        // PDFs are scheduled after their bytes land (see /api/documents/upload + directDocumentUpload).
         if (ragEnabled && hasContent) createdRagDocId = createdDoc?.id ?? null;
       }
 
@@ -508,8 +525,27 @@ export const completeDocumentUpload = createServerFn({ method: 'POST' })
       })
       .where(eq(files.key, file.key));
 
+    // Bytes are in S3 now → schedule a content-less KB document that's awaiting ingest
+    // (race-free: the parse stage can fetch the bytes; dedup by jobId makes repeats no-ops).
+    await scheduleIngestForLandedFile(file.id);
+
     return { id: file.id, url };
   });
+
+/** Schedule ingest for a content-less document whose file bytes just landed in S3. Marked
+ *  'pending' at create time (initDocumentUpload / addKbDocuments) but deliberately NOT scheduled
+ *  there — its bytes didn't exist yet. Call from every byte-landing path. Idempotent. */
+export async function scheduleIngestForLandedFile(fileId: string): Promise<void> {
+  if (!isRagEnabled()) return;
+  const [doc] = await db
+    .select({ id: documents.id, ingestStatus: documents.ingestStatus, content: documents.content })
+    .from(documents)
+    .where(eq(documents.fileId, fileId))
+    .limit(1);
+  if (doc && doc.ingestStatus === 'pending' && !doc.content?.trim().length) {
+    await scheduleRagIngest(doc.id);
+  }
+}
 
 export const directDocumentUpload = createServerFn({ method: 'POST' })
   .inputValidator((input) => normalizeInput(input, directUploadSchema))
