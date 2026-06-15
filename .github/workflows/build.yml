@@ -1,9 +1,12 @@
 name: build-image
 
-# Publishes multi-arch (linux/amd64 + linux/arm64) images for BOTH first-party
+# Publishes multi-arch (linux/amd64 + linux/arm64) images for the THREE first-party
 # images to GHCR:
-#   - ghcr.io/deeptoai-com/kin/app      (the main app: app/worker/migrate/preview-controller/updater)
+#   - ghcr.io/deeptoai-com/kin/app      (the main app: app/worker/migrate/preview-controller)
 #   - ghcr.io/deeptoai-com/kin/parser   (the PDF parser sidecar)
+#   - ghcr.io/deeptoai-com/kin/updater  (online auto-update executor; DEDICATED Dockerfile.updater
+#                                        based on docker:cli — it shells out to `docker compose`,
+#                                        which the app image lacks, so it is NOT part of /app)
 #
 # Strategy = Docker's standard "distributed build across native runners":
 # each arch builds on its OWN native runner (no QEMU), pushes BY DIGEST, then a
@@ -39,6 +42,8 @@ jobs:
           - { image: app,    context: '.',                dockerfile: 'Dockerfile',                   platform: linux/arm64, runner: ubuntu-24.04-arm }
           - { image: parser, context: './parser-sidecar', dockerfile: './parser-sidecar/Dockerfile', platform: linux/amd64, runner: ubuntu-latest }
           - { image: parser, context: './parser-sidecar', dockerfile: './parser-sidecar/Dockerfile', platform: linux/arm64, runner: ubuntu-24.04-arm }
+          - { image: updater, context: '.',               dockerfile: 'Dockerfile.updater',           platform: linux/amd64, runner: ubuntu-latest }
+          - { image: updater, context: '.',               dockerfile: 'Dockerfile.updater',           platform: linux/arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [app, parser]
+        image: [app, parser, updater]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
