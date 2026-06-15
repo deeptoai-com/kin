@@ -23,7 +23,7 @@ version: '3.8'
 # Note: VITE_WS_URL is intentionally NOT baked — the frontend falls back to a runtime
 # wss://<current-host>/ws/agent (src/claude/adapters/ws-adapter.ts), so one image works
 # for any domain. OAuth/PostHog VITE_* can be added to build.yml build-args if needed.
-x-app-image: &app_image '${APP_IMAGE:-ghcr.io/foreveryh/oxygenie/app}:${APP_TAG:-latest}'
+x-app-image: &app_image '${APP_IMAGE:-ghcr.io/deeptoai-com/kin/app}:${APP_TAG:-latest}'
 
 services:
   # PostgreSQL database with pgvector extension

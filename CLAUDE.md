@@ -715,6 +715,12 @@ services:
 
 **更新 oxygenie.cc（= 更新本地 stack；不走 amd64/GHCR/Dokploy）：**
 
+> ⚠️ **M0（多架构镜像 + D1 生产收敛）合并后此流程变化**：`docker-compose.tunnel.yml` 默认已改为
+> 从 `ghcr.io/deeptoai-com/kin/{app,parser}` **拉取**（`pull_policy` 默认 `always`）。要继续**本地构建**
+> （不拉 GHCR），必须显式 `APP_PULL_POLICY=never` 并叠加 `-f docker-compose.build.yml`（让 app+parser
+> 走本地 `build:`）。GHCR 镜像发布且设为 public 后，推荐直接 `docker compose pull` + `up -d`。下方旧命令
+> 仅在加了上述两项后仍有效。
+
 ```bash
 git pull
 DOCKER_BUILDKIT=1 docker build -t oxygenie:local .     # 本机 arm64 即可，无需 buildx/push

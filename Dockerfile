@@ -144,5 +144,11 @@ ENV APP_URL=http://localhost:5000
 # Claude Agent sessions root directory
 ENV CLAUDE_SESSIONS_ROOT=/data/users
 
+# Build identity — the git SHA this image was built from, passed by CI (build.yml).
+# Surfaced at runtime via /api/health so the online-updater can report current-vs-latest.
+# Placed last so changing it only invalidates this tiny final layer (fast incremental pulls).
+ARG BUILD_SHA=dev
+ENV BUILD_SHA=${BUILD_SHA}
+
 # Start production script (runs both Nitro and WebSocket servers in same process)
 CMD ["node", "start-production.mjs"]

@@ -22,7 +22,8 @@
 #
 # Image: defaults to GHCR (build off-server → pull). To build on the VPS instead, set
 # APP_IMAGE=oxygenie APP_TAG=local APP_PULL_POLICY=never and `docker build -t oxygenie:local .`.
-x-app-image: &app_image '${APP_IMAGE:-ghcr.io/foreveryh/oxygenie/app}:${APP_TAG:-latest}'
+x-app-image: &app_image '${APP_IMAGE:-ghcr.io/deeptoai-com/kin/app}:${APP_TAG:-latest}'
+x-parser-image: &parser_image '${PARSER_IMAGE:-ghcr.io/deeptoai-com/kin/parser}:${PARSER_TAG:-latest}'
 
 services:
   db:
@@ -122,6 +123,19 @@ services:
     networks:
       - private
 
+  # RAG PDF→Markdown parser sidecar (U1). Owns the Java/opendataloader dependency so the
+  # app/worker images stay slim. Internal only (no published port): worker (ingest) and app
+  # (probe / re-parse server fns) reach it at http://parser:7800 on `private`.
+  # Pulled from GHCR (multi-arch); add `-f docker-compose.build.yml` to build locally.
+  # Only needed when RAG_ENABLED=true; harmless when idle.
+  parser:
+    image: *parser_image
+    pull_policy: ${APP_PULL_POLICY:-always}
+    container_name: ${APP_NAME:-OxyGenie}-parser
+    restart: unless-stopped
+    networks:
+      - private
+
   migrate:
     image: *app_image
     pull_policy: ${APP_PULL_POLICY:-always}
@@ -167,6 +181,13 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      # RAG ingest (parser + embeddings); only active when RAG_ENABLED=true. Mirrors tunnel.yml.
+      RAG_ENABLED: ${RAG_ENABLED:-}
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     command: ['npx', 'tsx', 'src/worker/index.ts']
     restart: unless-stopped
     networks:
@@ -212,6 +233,11 @@ services:
       REDIS_URL: redis://redis:6379
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # RAG: app-side probe / re-parse + query embedding (worker owns ingest). Mirrors tunnel.yml.
+      RAG_ENABLED: ${RAG_ENABLED:-}
+      PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}

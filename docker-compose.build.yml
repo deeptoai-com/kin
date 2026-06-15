@@ -1,0 +1,40 @@
+# Optional BUILD override — ONLY for contributors/devs who want to BUILD the images
+# locally instead of pulling the prebuilt multi-arch images from GHCR.
+#
+# The default install PULLS (docker-compose.prod.yml for VPS, docker-compose.tunnel.yml for
+# Mac/OrbStack). Layer this file on top to re-introduce `build:` for the app image and the
+# parser sidecar:
+#
+#   docker compose -f docker-compose.tunnel.yml -f docker-compose.build.yml up -d --build
+#   docker compose -f docker-compose.prod.yml   -f docker-compose.build.yml up -d --build
+#
+# Notes:
+# - Only `app` and `parser` carry a build context. The other app-image services
+#   (migrate/worker/preview-controller/updater) are flipped to pull_policy: never so they
+#   REUSE the image `app` just built locally (instead of pulling from GHCR).
+# - Building the SSR app image peaks >8GB RAM — use a 16GB+ machine, or just pull instead.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
+        VITE_WS_URL: ${VITE_WS_URL:-}
+        VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
+        VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
+    pull_policy: build
+
+  migrate:
+    pull_policy: never
+
+  worker:
+    pull_policy: never
+
+  preview-controller:
+    pull_policy: never
+
+  parser:
+    build:
+      context: ./parser-sidecar
+    pull_policy: build
