@@ -181,6 +181,7 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      MESSAGE_REINDEX_ON_BOOT: ${MESSAGE_REINDEX_ON_BOOT:-false}
       # RAG ingest (parser + embeddings); only active when RAG_ENABLED=true. Mirrors tunnel.yml.
       RAG_ENABLED: ${RAG_ENABLED:-}
       PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
@@ -238,6 +239,9 @@ services:
       PARSER_SIDECAR_URL: ${PARSER_SIDECAR_URL:-http://parser:7800}
       EMBED_PROVIDER: ${EMBED_PROVIDER:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      # Conversation search: ws-server enqueues message-index jobs — match the worker's queue/prefix.
+      BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}

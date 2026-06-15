@@ -208,6 +208,7 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      MESSAGE_REINDEX_ON_BOOT: ${MESSAGE_REINDEX_ON_BOOT:-false}
       # Multi-model health probe (runs here): needs the ARK Bearer token to call
       # {baseUrl}/v1/messages. baseUrl/model come from the DB; the token is read by
       # name (tokenEnv). Probes on boot + every 6h.
@@ -301,6 +302,10 @@ services:
       BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # Conversation search: ws-server (in this app process) enqueues incremental message-index
+      # jobs — MUST match the worker's queue/prefix or the worker won't pick them up.
+      BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000

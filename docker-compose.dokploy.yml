@@ -194,6 +194,7 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      MESSAGE_REINDEX_ON_BOOT: ${MESSAGE_REINDEX_ON_BOOT:-false}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     command: ['npx', 'tsx', 'src/worker/index.ts']
@@ -262,6 +263,9 @@ services:
       BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # Conversation search: ws-server enqueues message-index jobs — match the worker's queue/prefix.
+      BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000

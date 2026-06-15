@@ -27,10 +27,36 @@ import { PreviewAuth } from './src/preview/auth.js';
 import { PreviewRuntime } from './src/preview/runtime.js';
 import { buildWorkerEnv } from './src/server/models/build-worker-env.js';
 import { isSyntheticTranscriptEntry } from './src/server/history/transcript-filter.js';
+import IORedis from 'ioredis';
+import { Queue as BullmqQueue } from 'bullmq';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKER_PATH = path.join(__dirname, 'ws-query-worker.mjs');
+
+// Conversation search (FR2): enqueue an incremental message-index job to the BullMQ 'system'
+// queue when a turn completes. MUST use the same connection/queue/prefix as src/worker/index.ts
+// — the app container has to set BULLMQ_PREFIX to match the worker (compose), else jobs are
+// invisible to it. Best-effort + fire-and-forget: indexing must never affect chat.
+const messageIndexConnection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+  maxRetriesPerRequest: null,
+});
+const messageIndexQueue = new BullmqQueue(process.env.BULLMQ_QUEUE ?? 'system', {
+  connection: messageIndexConnection,
+  prefix: process.env.BULLMQ_PREFIX ?? 'constructa',
+});
+async function enqueueMessageIndex(userId, sdkSessionId) {
+  if (!userId || !sdkSessionId) return;
+  try {
+    await messageIndexQueue.add(
+      'index-session-messages',
+      { userId, sdkSessionId },
+      { removeOnComplete: true, removeOnFail: 50 },
+    );
+  } catch (err) {
+    console.error('[WS Server] enqueue message-index failed (non-fatal):', err?.message || err);
+  }
+}
 
 // Privacy: user messages contain prompts (PII). By default log only a safe summary
 // (type + byte length), never raw content. Set DEBUG_WS_MESSAGES=true to see previews.
@@ -1517,6 +1543,9 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           // forget; applies to silent runs too (they still consume tokens).
           if (event.type === 'result') {
             recordUsage(ws, event);
+            // Conversation search increment (FR2): the turn's transcript is written by now —
+            // re-index this session so the new messages become searchable within seconds.
+            void enqueueMessageIndex(ws.userId, ws.workspaceSessionId);
           }
           if (!silentInit) {
             // Forward the worker's monotonic seq so the client store can order/merge

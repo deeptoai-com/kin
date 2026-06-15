@@ -210,6 +210,7 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+      MESSAGE_REINDEX_ON_BOOT: ${MESSAGE_REINDEX_ON_BOOT:-false}
       # RAG ingest: embedding providers — doubao (default; ARK key) / zhipu fallback.
       # The ingest pipeline embeds in this worker (see src/server/rag/embedding.ts).
       ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
@@ -264,6 +265,9 @@ services:
       REDIS_URL: redis://redis:6379
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # Conversation search: ws-server enqueues message-index jobs — match the worker's queue/prefix.
+      BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       # Authentication (Docker port mapping: 5050:5000)
       # External URL for browser redirects
       BETTER_AUTH_URL: http://localhost:5050

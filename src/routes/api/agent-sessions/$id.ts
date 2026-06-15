@@ -16,6 +16,7 @@ import { agentSession } from '~/db/schema';
 import { user as userTable } from '~/db/schema/auth.schema';
 import { requireUser } from '~/server/require-user';
 import { canAccessSession, canMutateSession } from '~/server/projects/access';
+import { removeMessagesOfSession } from '~/search/meilisearch';
 import { rm } from 'fs/promises';
 import { join } from 'path';
 
@@ -90,6 +91,10 @@ export const Route = createFileRoute('/api/agent-sessions/$id')({
 
         // Delete the DB record
         await db.delete(agentSession).where(eq(agentSession.id, id));
+
+        // Purge this session's messages from the conversation-search index (FR8).
+        // doc.sessionId = sdkSessionId; removeMessagesOfSession swallows its own errors.
+        await removeMessagesOfSession(session.sdkSessionId);
 
         // Clean up workspace and JSONL files (best-effort; DB record is already gone)
         try {
