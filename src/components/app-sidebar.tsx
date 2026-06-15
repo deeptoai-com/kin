@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router';
 import type * as React from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useIntlayer } from 'react-intlayer';
+import { ArrowUpCircle } from 'lucide-react';
 import { NavMain } from '~/components/nav-main';
 import { NavUser } from '~/components/nav-user';
 import {
@@ -21,6 +23,8 @@ import ScanIcon from 'virtual:icons/ri/scan-2-line';
 import ShieldIcon from 'virtual:icons/ri/shield-line';
 import { FEATURE_CONFIG } from '~/config/features';
 import { isAdminUser } from '~/server/function/skills.server';
+import { getUpdateStatus } from '~/server/function/updater.server';
+import { ServerUpdateDialog } from '~/components/admin/server-update-dialog';
 
 type SidebarUser = {
   name?: string | null;
@@ -31,6 +35,7 @@ type SidebarUser = {
 
 export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: SidebarUser }) {
   const content = useIntlayer('app');
+  const sv = useIntlayer('serverUpdate');
 
   // Query admin status using Server Function directly
   const { data: adminCheck } = useQuery({
@@ -40,6 +45,28 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
     refetchOnWindowFocus: false,
   });
   const isAdmin = adminCheck?.isAdmin ?? false;
+
+  // Online auto-update: "auto-check" (default ON) controls the background re-poll cadence.
+  // Persisted per-browser; the worker always checks server-side regardless.
+  const [autoCheck, setAutoCheck] = useState(true);
+  useEffect(() => {
+    const v = typeof window !== 'undefined' ? window.localStorage.getItem('kin.autoCheckUpdates') : null;
+    if (v !== null) setAutoCheck(v === 'true');
+  }, []);
+  const handleAutoCheck = (value: boolean) => {
+    setAutoCheck(value);
+    if (typeof window !== 'undefined') window.localStorage.setItem('kin.autoCheckUpdates', String(value));
+  };
+
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const { data: updateStatus } = useQuery({
+    queryKey: ['update-status'],
+    queryFn: async () => await getUpdateStatus(),
+    enabled: isAdmin,
+    staleTime: 60 * 1000,
+    refetchInterval: autoCheck ? 10 * 60 * 1000 : false,
+    refetchOnWindowFocus: false,
+  });
 
   // Three independent modules (IA redesign 2026-06, docs/project/prd/2026-06-navigation-ia-redesign-prd.md).
   // Projects moved into the agent workbench (副侧边栏 ProjectsRail); dashboards/charts moved to admin.
@@ -103,25 +130,52 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
     : navSections;
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
-              <Link to="/agents/c">
-                <HomeSmileIcon className="!size-5" />
-                <span className="font-semibold text-base">{content.common.appName}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain sections={allSections} />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={resolvedUser} />
-      </SidebarFooter>
-    </Sidebar>
+    <>
+      <Sidebar collapsible="icon" {...props}>
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
+                <Link to="/agents/c">
+                  <HomeSmileIcon className="!size-5" />
+                  <span className="font-semibold text-base">{content.common.appName}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+          <NavMain sections={allSections} />
+          {isAdmin && updateStatus?.updateAvailable && (
+            <SidebarMenu className="px-2">
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => setUpdateOpen(true)}>
+                  <ArrowUpCircle className="size-4 text-primary" />
+                  <span>{sv.sidebar.updateAvailable}</span>
+                  <span className="ml-auto inline-block size-2 rounded-full bg-primary" aria-hidden="true" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
+        </SidebarContent>
+        <SidebarFooter>
+          <NavUser user={resolvedUser} />
+        </SidebarFooter>
+      </Sidebar>
+      {isAdmin && updateStatus && (
+        <ServerUpdateDialog
+          open={updateOpen}
+          onOpenChange={setUpdateOpen}
+          status={{
+            currentSha: updateStatus.currentSha,
+            latestSha: updateStatus.latestSha,
+            updateAvailable: updateStatus.updateAvailable,
+            image: updateStatus.image,
+          }}
+          autoCheck={autoCheck}
+          onAutoCheckChange={handleAutoCheck}
+        />
+      )}
+    </>
   );
 }

@@ -19,6 +19,9 @@ interface HealthCheck {
 interface HealthStatus {
   status: 'healthy' | 'unhealthy';
   timestamp: string;
+  /** Current running version — git SHA baked into the image at build time (FR1).
+   * Used by the online auto-update flow to detect/poll the running version. */
+  version: string;
   checks: {
     sessionsVolume: HealthCheck;
   };
@@ -50,6 +53,7 @@ export const Route = createFileRoute('/api/health')({
         const healthStatus: HealthStatus = {
           status: isHealthy ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
+          version: process.env.BUILD_SHA ?? 'dev',
           checks,
         };
 

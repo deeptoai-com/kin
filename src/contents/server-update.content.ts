@@ -1,0 +1,201 @@
+import type { Dictionary } from 'intlayer';
+import { t } from 'intlayer';
+
+/**
+ * Online auto-update ("Web server update") content dictionary.
+ * Drives the admin sidebar "update available" entry + the 4-step update dialog (Kin M3).
+ */
+const serverUpdateContent = {
+  content: {
+    sidebar: {
+      updateAvailable: t({
+        en: 'Update available',
+        'zh-Hans': '有可用更新',
+        'zh-Hant': '有可用更新',
+        fr: 'Mise à jour disponible',
+        ja: 'アップデートあり',
+        ko: '업데이트 있음',
+      }),
+    },
+    common: {
+      currentVersion: t({
+        en: 'Current',
+        'zh-Hans': '当前',
+        'zh-Hant': '當前',
+        fr: 'Actuelle',
+        ja: '現在',
+        ko: '현재',
+      }),
+      cancel: t({ en: 'Cancel', 'zh-Hans': '取消', 'zh-Hant': '取消', fr: 'Annuler', ja: 'キャンセル', ko: '취소' }),
+      close: t({ en: 'Close', 'zh-Hans': '关闭', 'zh-Hant': '關閉', fr: 'Fermer', ja: '閉じる', ko: '닫기' }),
+    },
+    step1: {
+      title: t({
+        en: 'Web server update',
+        'zh-Hans': '服务端更新',
+        'zh-Hant': '服務端更新',
+        fr: 'Mise à jour du serveur',
+        ja: 'サーバー更新',
+        ko: '서버 업데이트',
+      }),
+      newVersion: t({
+        en: 'New version available',
+        'zh-Hans': '有新版本可用',
+        'zh-Hant': '有新版本可用',
+        fr: 'Nouvelle version disponible',
+        ja: '新しいバージョンがあります',
+        ko: '새 버전이 있습니다',
+      }),
+      upToDate: t({
+        en: "You're on the latest version",
+        'zh-Hans': '已是最新版本',
+        'zh-Hant': '已是最新版本',
+        fr: 'Vous avez la dernière version',
+        ja: '最新バージョンです',
+        ko: '최신 버전입니다',
+      }),
+      releaseNotes: t({
+        en: 'Release notes',
+        'zh-Hans': '更新说明',
+        'zh-Hant': '更新說明',
+        fr: 'Notes de version',
+        ja: 'リリースノート',
+        ko: '릴리스 노트',
+      }),
+      autoCheck: t({
+        en: 'Check for updates automatically',
+        'zh-Hans': '自动检查更新',
+        'zh-Hant': '自動檢查更新',
+        fr: 'Vérifier les mises à jour automatiquement',
+        ja: '自動的に更新を確認',
+        ko: '자동으로 업데이트 확인',
+      }),
+      updateServer: t({
+        en: 'Update server',
+        'zh-Hans': '更新服务端',
+        'zh-Hant': '更新服務端',
+        fr: 'Mettre à jour',
+        ja: 'サーバーを更新',
+        ko: '서버 업데이트',
+      }),
+    },
+    step2: {
+      title: t({
+        en: 'Are you absolutely sure?',
+        'zh-Hans': '确定要继续吗？',
+        'zh-Hant': '確定要繼續嗎？',
+        fr: 'Êtes-vous absolument sûr ?',
+        ja: '本当によろしいですか？',
+        ko: '정말 계속하시겠습니까?',
+      }),
+      warning: t({
+        en: 'The panel will be briefly unavailable during the upgrade and the page will reload automatically when it finishes. Please confirm all services are running first.',
+        'zh-Hans': '升级期间面板会短暂不可用，完成后页面会自动刷新。建议先确认各项服务都在运行。',
+        'zh-Hant': '升級期間面板會短暫不可用，完成後頁面會自動重新整理。建議先確認各項服務都在執行。',
+        fr: "Le panneau sera brièvement indisponible pendant la mise à jour et la page se rechargera automatiquement à la fin. Veuillez d'abord confirmer que tous les services sont actifs.",
+        ja: 'アップグレード中はパネルが一時的に利用できなくなり、完了後にページが自動的に再読み込みされます。先にすべてのサービスが稼働中か確認してください。',
+        ko: '업그레이드 중에는 패널을 잠시 사용할 수 없으며 완료되면 페이지가 자동으로 새로고침됩니다. 먼저 모든 서비스가 실행 중인지 확인하세요.',
+      }),
+      verifyStatus: t({
+        en: 'Check service status',
+        'zh-Hans': '检查服务状态',
+        'zh-Hant': '檢查服務狀態',
+        fr: 'Vérifier les services',
+        ja: 'サービス状態を確認',
+        ko: '서비스 상태 확인',
+      }),
+    },
+    step3: {
+      title: t({
+        en: 'Ready to update',
+        'zh-Hans': '准备升级',
+        'zh-Hant': '準備升級',
+        fr: 'Prêt à mettre à jour',
+        ja: '更新の準備完了',
+        ko: '업데이트 준비 완료',
+      }),
+      checking: t({
+        en: 'Checking services…',
+        'zh-Hans': '正在检查服务…',
+        'zh-Hant': '正在檢查服務…',
+        fr: 'Vérification des services…',
+        ja: 'サービスを確認中…',
+        ko: '서비스 확인 중…',
+      }),
+      allRunning: t({
+        en: 'All services are running. You can continue.',
+        'zh-Hans': '所有服务在运行，可以继续。',
+        'zh-Hant': '所有服務都在執行，可以繼續。',
+        fr: 'Tous les services sont actifs. Vous pouvez continuer.',
+        ja: 'すべてのサービスが稼働中です。続行できます。',
+        ko: '모든 서비스가 실행 중입니다. 계속할 수 있습니다.',
+      }),
+      someNotRunning: t({
+        en: 'Some services are not running. Updating now is not recommended.',
+        'zh-Hans': '部分服务未在运行，不建议此时升级。',
+        'zh-Hant': '部分服務未在執行，不建議此時升級。',
+        fr: "Certains services ne sont pas actifs. La mise à jour n'est pas recommandée maintenant.",
+        ja: '一部のサービスが稼働していません。今の更新は推奨されません。',
+        ko: '일부 서비스가 실행되고 있지 않습니다. 지금 업데이트하는 것은 권장되지 않습니다.',
+      }),
+      recheck: t({ en: 'Re-check', 'zh-Hans': '重新检查', 'zh-Hant': '重新檢查', fr: 'Revérifier', ja: '再確認', ko: '다시 확인' }),
+      confirmUpgrade: t({
+        en: 'Confirm update',
+        'zh-Hans': '确认升级',
+        'zh-Hant': '確認升級',
+        fr: 'Confirmer la mise à jour',
+        ja: '更新を確定',
+        ko: '업데이트 확인',
+      }),
+    },
+    step4: {
+      title: t({
+        en: 'Server update in progress',
+        'zh-Hans': '正在升级服务端',
+        'zh-Hant': '正在升級服務端',
+        fr: 'Mise à jour en cours',
+        ja: 'サーバー更新中',
+        ko: '서버 업데이트 진행 중',
+      }),
+      willReload: t({
+        en: 'Updating, please wait — the page will reload automatically when it finishes.',
+        'zh-Hans': '正在升级，请稍候 —— 完成后页面会自动刷新到新版本。',
+        'zh-Hant': '正在升級，請稍候 —— 完成後頁面會自動重新整理到新版本。',
+        fr: 'Mise à jour en cours, veuillez patienter — la page se rechargera automatiquement à la fin.',
+        ja: '更新中です。完了するとページが自動的に再読み込みされます。',
+        ko: '업데이트 중입니다. 완료되면 페이지가 자동으로 새로고침됩니다.',
+      }),
+      phasePull: t({ en: 'Pull image', 'zh-Hans': '拉镜像', 'zh-Hant': '拉取映像', fr: "Récupérer l'image", ja: 'イメージ取得', ko: '이미지 받기' }),
+      phaseMigrate: t({ en: 'Migrate', 'zh-Hans': '迁移数据库', 'zh-Hant': '遷移資料庫', fr: 'Migrer', ja: 'マイグレーション', ko: '마이그레이션' }),
+      phaseWorker: t({ en: 'Swap worker', 'zh-Hans': '换 worker', 'zh-Hant': '換 worker', fr: 'Remplacer worker', ja: 'worker 切替', ko: 'worker 교체' }),
+      phaseApp: t({ en: 'Swap app', 'zh-Hans': '换 app', 'zh-Hant': '換 app', fr: "Remplacer l'app", ja: 'app 切替', ko: 'app 교체' }),
+      done: t({
+        en: 'Update complete. Reloading…',
+        'zh-Hans': '升级完成，正在刷新…',
+        'zh-Hant': '升級完成，正在重新整理…',
+        fr: 'Mise à jour terminée. Rechargement…',
+        ja: '更新が完了しました。再読み込み中…',
+        ko: '업데이트 완료. 새로고침 중…',
+      }),
+      failed: t({
+        en: 'Update failed.',
+        'zh-Hans': '升级失败。',
+        'zh-Hant': '升級失敗。',
+        fr: 'Échec de la mise à jour.',
+        ja: '更新に失敗しました。',
+        ko: '업데이트에 실패했습니다.',
+      }),
+      rolledBack: t({
+        en: 'Update failed and was rolled back to the previous version.',
+        'zh-Hans': '升级失败，已回滚到上一个版本。',
+        'zh-Hant': '升級失敗，已回滾到上一個版本。',
+        fr: 'La mise à jour a échoué et a été annulée vers la version précédente.',
+        ja: '更新に失敗し、前のバージョンにロールバックされました。',
+        ko: '업데이트에 실패하여 이전 버전으로 롤백되었습니다.',
+      }),
+    },
+  },
+  key: 'serverUpdate',
+} satisfies Dictionary;
+
+export default serverUpdateContent;
