@@ -1,0 +1,23 @@
+# Updater sidecar image — Kin online auto-update (M3).
+#
+# Deliberately a DEDICATED, minimal image (not the app image): this decouples the updater
+# from the app stack so it is never pulled/recreated when the app is upgraded, and so it can
+# never force-recreate itself (防自杀, spec §4.2/§5). It provides exactly what controller.mjs
+# needs to drive the host daemon over the mounted /var/run/docker.sock:
+#   - the docker CLI + bundled `docker compose` v2 plugin (official docker:*-cli images ship it)
+#   - node (to run the Node-stdlib controller; no npm deps)
+#
+# Build:  docker build -f Dockerfile.updater -t kin-updater:local .
+# (If a future base image ever drops the bundled compose plugin, add:
+#    RUN apk add --no-cache docker-cli-compose )
+FROM docker:28-cli
+
+RUN apk add --no-cache nodejs
+
+WORKDIR /app
+COPY src/updater/controller.mjs ./src/updater/controller.mjs
+
+# Internal-only service — compose does NOT publish this port to the host.
+EXPOSE 5066
+
+CMD ["node", "src/updater/controller.mjs"]
