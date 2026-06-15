@@ -305,6 +305,10 @@ services:
       # Conversation search: ws-server (in this app process) enqueues incremental message-index
       # jobs under the SAME queue/prefix as the worker (BULLMQ_PREFIX already set above) — set queue.
       BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      # Online auto-update: the admin "Web Server Update" server fn POSTs to the updater sidecar
+      # (Bearer UPDATER_TOKEN). Empty token → updater rejects all → feature stays disabled.
+      UPDATER_URL: ${UPDATER_URL:-http://updater:5066}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
@@ -432,6 +436,39 @@ services:
   # Phase C preview controller. This is the only service that mounts the Docker
   # socket; app calls it over the private network to create/remove preview
   # containers with Traefik labels.
+  # Online auto-update executor (M3). DEDICATED docker-cli image (Dockerfile.updater) — NOT the
+  # app image: controller.mjs drives `docker compose` (CLI), which the app image lacks. Decoupled
+  # so it is never caught in the stack's --force-recreate (防自杀). Mounts the docker socket +
+  # the compose dir (read-only) to run pull/migrate/recreate on the live stack. Internal-only
+  # (no published port); auth-gated by UPDATER_TOKEN (empty = feature disabled).
+  # Local build: docker-compose.build.yml supplies its `build:`. The GHCR
+  # ghcr.io/deeptoai-com/kin/updater image must be published by CI (build.yml) for pure-pull prod.
+  updater:
+    image: ${UPDATER_IMAGE:-ghcr.io/deeptoai-com/kin/updater}:${UPDATER_TAG:-latest}
+    pull_policy: ${APP_PULL_POLICY:-always}
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-updater
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      UPDATER_PORT: ${UPDATER_PORT:-5066}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      # MUST match the compose project name the stack is brought up with (e.g. `-p kin`).
+      UPDATER_COMPOSE_PROJECT: ${UPDATER_COMPOSE_PROJECT:-kin}
+      UPDATER_COMPOSE_FILE: ${UPDATER_COMPOSE_FILE:-/work/docker-compose.tunnel.yml}
+      UPDATER_HEALTH_URL: ${UPDATER_HEALTH_URL:-http://app:5000/api/health}
+      APP_IMAGE: ${APP_IMAGE:-ghcr.io/deeptoai-com/kin/app}
+      APP_TAG: ${APP_TAG:-latest}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/work:ro
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
   preview-controller:
     image: *app_image
     pull_policy: ${APP_PULL_POLICY:-always}

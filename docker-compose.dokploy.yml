@@ -266,6 +266,9 @@ services:
       # Conversation search: ws-server enqueues message-index jobs under the same queue/prefix as the
       # worker (BULLMQ_PREFIX already set above) — set queue.
       BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
+      # Online auto-update: admin server fn → updater sidecar (Bearer UPDATER_TOKEN; empty = off).
+      UPDATER_URL: ${UPDATER_URL:-http://updater:5066}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
@@ -407,6 +410,34 @@ services:
   # Phase C preview controller. This is the only service that mounts the Docker
   # socket; app calls it over the private network to create/remove preview
   # containers with Traefik labels.
+  # Online auto-update executor (M3) — dedicated docker-cli image (Dockerfile.updater), drives
+  # `docker compose` over the mounted socket; NOT in any --force-recreate list (防自杀). Internal
+  # only; auth-gated by UPDATER_TOKEN (empty = off). Rationale/comments: see docker-compose.tunnel.yml.
+  updater:
+    image: ${UPDATER_IMAGE:-ghcr.io/deeptoai-com/kin/updater}:${UPDATER_TAG:-latest}
+    pull_policy: always
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-updater
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      UPDATER_PORT: ${UPDATER_PORT:-5066}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      UPDATER_COMPOSE_PROJECT: ${UPDATER_COMPOSE_PROJECT:-kin}
+      UPDATER_COMPOSE_FILE: ${UPDATER_COMPOSE_FILE:-/work/docker-compose.dokploy.yml}
+      UPDATER_HEALTH_URL: ${UPDATER_HEALTH_URL:-http://app:5000/api/health}
+      APP_IMAGE: ${APP_IMAGE:-ghcr.io/deeptoai-com/kin/app}
+      APP_TAG: ${APP_TAG:-latest}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/work:ro
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
   preview-controller:
     image: *app_image
     pull_policy: always

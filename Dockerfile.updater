@@ -17,7 +17,12 @@ RUN apk add --no-cache nodejs
 WORKDIR /app
 COPY src/updater/controller.mjs ./src/updater/controller.mjs
 
+# Reset the base image's ENTRYPOINT (docker:*-cli sets `docker` as entrypoint, which would turn
+# our CMD into `docker node …`). We run node directly; the `docker` CLI is still on PATH for the
+# controller to shell out to.
+ENTRYPOINT []
+
 # Internal-only service — compose does NOT publish this port to the host.
 EXPOSE 5066
 
-CMD ["node", "src/updater/controller.mjs"]
+CMD ["node", "/app/src/updater/controller.mjs"]

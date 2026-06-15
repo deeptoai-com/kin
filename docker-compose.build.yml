@@ -9,9 +9,10 @@
 #   docker compose -f docker-compose.prod.yml   -f docker-compose.build.yml up -d --build
 #
 # Notes:
-# - Only `app` and `parser` carry a build context. The other app-image services
-#   (migrate/worker/preview-controller/updater) are flipped to pull_policy: never so they
-#   REUSE the image `app` just built locally (instead of pulling from GHCR).
+# - `app`, `parser` and `updater` carry a build context (updater = its own docker-cli image,
+#   Dockerfile.updater — it shells out to `docker compose`, which the app image lacks). The other
+#   app-image services (migrate/worker/preview-controller) are flipped to pull_policy: never so
+#   they REUSE the image `app` just built locally (instead of pulling from GHCR).
 # - Building the SSR app image peaks >8GB RAM — use a 16GB+ machine, or just pull instead.
 services:
   app:
@@ -37,4 +38,10 @@ services:
   parser:
     build:
       context: ./parser-sidecar
+    pull_policy: build
+
+  updater:
+    build:
+      context: .
+      dockerfile: Dockerfile.updater
     pull_policy: build
