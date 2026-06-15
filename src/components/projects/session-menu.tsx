@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import { MoreHorizontal, Pencil, Pin, FolderInput, FolderMinus, Trash2 } from 'lucide-react';
@@ -51,6 +52,9 @@ export function SessionMenu({
   favorite?: boolean;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  // Optional read of the open-session param (this menu also renders on non-chat routes).
+  const params = useParams({ strict: false }) as { sessionId?: string };
   const { projects } = useProjects();
   const move = useServerFn(assignSessionToProject);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -95,6 +99,11 @@ export function SessionMenu({
     if (!window.confirm('删除这个对话？此操作不可撤销。')) return;
     await fetch(`/api/agent-sessions/${session.id}`, { method: 'DELETE' });
     refresh();
+    // If the deleted session is the one currently open in the URL, leave the now-dead
+    // route — otherwise the page lingers on a deleted session (resume → 404 → blank).
+    if (params.sessionId && params.sessionId === session.sdkSessionId) {
+      void navigate({ to: '/agents/c' });
+    }
   };
 
   // Move targets = projects other than the one it's already in.
