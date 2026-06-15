@@ -263,9 +263,9 @@ services:
       BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
-      # Conversation search: ws-server enqueues message-index jobs — match the worker's queue/prefix.
+      # Conversation search: ws-server enqueues message-index jobs under the same queue/prefix as the
+      # worker (BULLMQ_PREFIX already set above) — set queue.
       BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
-      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000

@@ -303,9 +303,8 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
       # Conversation search: ws-server (in this app process) enqueues incremental message-index
-      # jobs — MUST match the worker's queue/prefix or the worker won't pick them up.
+      # jobs under the SAME queue/prefix as the worker (BULLMQ_PREFIX already set above) — set queue.
       BULLMQ_QUEUE: ${BULLMQ_QUEUE:-system}
-      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       # Authentication
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
