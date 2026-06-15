@@ -19,7 +19,7 @@ import {
   ClipboardIcon,
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1265,6 +1265,30 @@ function ClaudeChatSurface({
   const isThreadRunning = useChatSessionStore((state) => state.isRunning);
   const hasHistoricalMessages = messages.length > 0;
 
+  // Conversation-search deep link (?m=<messageUuid>): after the transcript loads
+  // (messages_loaded → the target id appears in `messages`), scroll to its DOM anchor and
+  // briefly highlight it. NOT on mount — resume is async, the list is empty until the
+  // messages_loaded callback returns. Re-runs only when the target or the message set changes.
+  const deepLinkSearch = useSearch({ strict: false }) as { m?: string };
+  const targetMessageId = deepLinkSearch?.m ?? null;
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const scrolledForTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!targetMessageId) {
+      scrolledForTargetRef.current = null;
+      return;
+    }
+    if (scrolledForTargetRef.current === targetMessageId) return;
+    if (!messages.some((m) => m.id === targetMessageId)) return; // wait for messages_loaded
+    scrolledForTargetRef.current = targetMessageId;
+    const el = typeof document !== 'undefined' ? document.getElementById(`msg-${targetMessageId}`) : null;
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlightedMessageId(targetMessageId);
+    const timer = setTimeout(() => setHighlightedMessageId(null), 2200);
+    return () => clearTimeout(timer);
+  }, [targetMessageId, messages]);
+
   const runtime = useExternalStoreRuntime<ThreadMessage>({
     messages,
     isRunning: isThreadRunning,
@@ -1769,14 +1793,24 @@ function ClaudeChatSurface({
                   ? (msg.isInherited ? branchInfo.sourceOwner : branchInfo.owner)
                   : null;
                 return (
-                  <HistoricalMessage
+                  <div
                     key={msg.id}
-                    message={msg}
-                    attachments={attachmentsByMessage.get(msg.id)}
-                    sessionId={currentSessionId}
-                    authorName={author?.name ?? null}
-                    authorImage={author?.image ?? null}
-                  />
+                    id={`msg-${msg.id}`}
+                    data-message-id={msg.id}
+                    className={
+                      highlightedMessageId === msg.id
+                        ? 'rounded-xl bg-primary/5 transition-colors duration-700'
+                        : 'transition-colors duration-700'
+                    }
+                  >
+                    <HistoricalMessage
+                      message={msg}
+                      attachments={attachmentsByMessage.get(msg.id)}
+                      sessionId={currentSessionId}
+                      authorName={author?.name ?? null}
+                      authorImage={author?.image ?? null}
+                    />
+                  </div>
                 );
               })}
 

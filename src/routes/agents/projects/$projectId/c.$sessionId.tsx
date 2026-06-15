@@ -13,6 +13,10 @@ import { ensureDefaultSkillsFn } from '~/server/function/skills.server';
  */
 export const Route = createFileRoute('/agents/projects/$projectId/c/$sessionId')({
   component: ProjectChatPage,
+  // ?m=<messageUuid> — conversation-search deep link target (controller scrolls + highlights).
+  validateSearch: (search: Record<string, unknown>): { m?: string } => ({
+    m: typeof search.m === 'string' ? search.m : undefined,
+  }),
   // Same as the solo chat loader: permission + idempotent default-skills. No WS resume in SSR.
   loader: async () => {
     const [permissionInfo] = await Promise.all([

@@ -14,6 +14,10 @@ import { ensureDefaultSkillsFn } from '~/server/function/skills.server';
  */
 export const Route = createFileRoute('/agents/c/$sessionId')({
   component: SoloChatPage,
+  // ?m=<messageUuid> — conversation-search deep link target (controller scrolls + highlights).
+  validateSearch: (search: Record<string, unknown>): { m?: string } => ({
+    m: typeof search.m === 'string' ? search.m : undefined,
+  }),
   loader: async () => {
     const [permissionInfo] = await Promise.all([
       getPermissionInfo(),
