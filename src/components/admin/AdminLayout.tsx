@@ -32,6 +32,8 @@ export function AdminLayout() {
     if (pathname.startsWith('/admin/skills')) return 'skills';
     if (pathname.startsWith('/admin/updates')) return 'updates';
     if (pathname.startsWith('/admin/audit')) return 'audit';
+    if (pathname.startsWith('/admin/health')) return 'health';
+    if (pathname.startsWith('/admin/performance')) return 'performance';
 
     return 'overview';
   };

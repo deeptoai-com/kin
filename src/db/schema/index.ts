@@ -17,3 +17,4 @@ export * from './model.schema';
 export * from './rag-trace.schema';
 export * from './ocr-job.schema';
 export * from './update-status.schema';
+export * from './perf-sample.schema';

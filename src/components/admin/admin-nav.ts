@@ -116,14 +116,14 @@ export const adminNavGroups: AdminNavGroup[] = [
         label: 'Health',
         description: 'Service health checks',
         icon: RiServerLine,
-        disabled: true,
+        path: '/admin/health',
       },
       {
         section: 'performance',
         label: 'Performance',
         description: 'Latency and capacity trends',
         icon: RiPulseLine,
-        disabled: true,
+        path: '/admin/performance',
       },
       {
         section: 'updates',

@@ -458,6 +458,63 @@ async function recordUsage(ws, event, sessionId = ws.workspaceSessionId) {
 }
 
 /**
+ * P2 observability: record runtime performance samples for one finished run.
+ *
+ * Derived purely from the terminal SDK `result` event (no per-delta hot-path
+ * change): total wall-clock generation time and output throughput. Fire-and-
+ * forget via /api/perf — must never block or break a run. True runtime TTFT
+ * (first-token latency) needs per-delta instrumentation and is deferred (P3);
+ * the load-test harness already measures TTFT under a non-`runtime` scenario.
+ *
+ * @param {object} ws - The client WebSocket (provides cookie)
+ * @param {object} event - The SDK `result` event
+ * @param {string|null} sessionId - This run's output session id
+ */
+async function recordPerf(ws, event, sessionId) {
+  try {
+    const samples = [];
+    const route = 'ws.generate';
+    const primaryModel = event.modelUsage ? Object.keys(event.modelUsage)[0] ?? null : null;
+    const totalMs = Number(event.duration_ms);
+    const apiMs = Number(event.duration_api_ms);
+    const outputTokens = Number(event?.usage?.output_tokens);
+    const base = {
+      route,
+      sessionId: sessionId ?? null,
+      model: primaryModel,
+      scenario: 'runtime',
+    };
+
+    if (Number.isFinite(totalMs) && totalMs > 0) {
+      samples.push({ ...base, metric: 'generation.total_ms', value: totalMs, unit: 'ms' });
+      if (Number.isFinite(outputTokens) && outputTokens > 0) {
+        samples.push({
+          ...base,
+          metric: 'generation.tokens_per_s',
+          value: outputTokens / (totalMs / 1000),
+          unit: 'tokens_per_s',
+        });
+      }
+    }
+    if (Number.isFinite(apiMs) && apiMs > 0) {
+      samples.push({ ...base, metric: 'generation.api_ms', value: apiMs, unit: 'ms' });
+    }
+    if (samples.length === 0) return;
+
+    const response = await fetch(`${APP_URL}/api/perf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: ws.cookie },
+      body: JSON.stringify({ samples }),
+    });
+    if (!response.ok) {
+      console.error('[WS Server] Failed to record perf:', response.status);
+    }
+  } catch (error) {
+    console.error('[WS Server] Error recording perf:', error);
+  }
+}
+
+/**
  * P2-2: Append a security-relevant audit event via /api/audit.
  *
  * Fire-and-forget — audit logging must never block or break the action it
@@ -1707,6 +1764,8 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           // forget; applies to silent runs too (they still consume tokens).
           if (event.type === 'result') {
             recordUsage(ws, event, outputSessionId);
+            // P2 observability: record generation latency/throughput (fire-and-forget).
+            recordPerf(ws, event, outputSessionId);
             // Conversation search increment (FR2): the turn's transcript is written by now —
             // re-index this session so the new messages become searchable within seconds.
             void enqueueMessageIndex(ws.userId, outputSessionId);

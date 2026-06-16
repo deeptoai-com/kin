@@ -9,6 +9,7 @@ import { probeModels } from './processors/probeModels.ts'
 import { reindexMessages } from './processors/reindexMessages.ts'
 import { indexSessionMessages } from './processors/indexSessionMessages.ts'
 import { runUpdateCheck } from './processors/updateCheck.ts'
+import { runPerfMaintenance } from './processors/perfMaintenance.ts'
 import { ingestDocument } from '~/server/rag/ingest'
 import { RAG_QUEUE, RAG_INGEST_JOB } from '~/server/rag/queue'
 
@@ -45,6 +46,9 @@ const worker = new Worker(
       case 'update-check':
         logger.info('[worker] running update-check job')
         return runUpdateCheck()
+      case 'perf-maintenance':
+        logger.info('[worker] running perf-maintenance job')
+        return runPerfMaintenance()
       default:
         logger.warn(`[worker] Unknown job "${job.name}" - ignoring`)
     }
@@ -121,6 +125,15 @@ events.on('failed', ({ jobId, failedReason }) =>
   if (!hasUpdateCheck) {
     await queue.add('update-check', {}, { repeat: { pattern: updateCheckCron }, jobId: 'update-check' })
     logger.info('[worker] scheduled update-check', { cron: updateCheckCron })
+  }
+
+  // Observability底座: roll raw perf samples into hourly aggregates and prune data
+  // past its retention window (raw 7d / hourly 30d / audit 180d, all configurable).
+  const perfCron = process.env.PERF_MAINTENANCE_CRON ?? '5 * * * *' // hourly at :05
+  const hasPerf = existing.some((j) => j.name === 'perf-maintenance' && j.cron === perfCron)
+  if (!hasPerf) {
+    await queue.add('perf-maintenance', {}, { repeat: { pattern: perfCron }, jobId: 'perf-maintenance' })
+    logger.info('[worker] scheduled perf-maintenance', { cron: perfCron })
   }
 
   if (process.env.SEARCH_REINDEX_ON_BOOT === 'true') {
