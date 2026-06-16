@@ -26,9 +26,12 @@ export function AdminLayout() {
 
     if (pathname === '/admin' || pathname === '/admin/') return 'overview';
     if (pathname.startsWith('/admin/users')) return 'users';
+    if (pathname.startsWith('/admin/usage')) return 'usage';
     if (pathname.startsWith('/admin/models')) return 'models';
     if (pathname.startsWith('/admin/a2composer')) return 'a2composer';
     if (pathname.startsWith('/admin/skills')) return 'skills';
+    if (pathname.startsWith('/admin/updates')) return 'updates';
+    if (pathname.startsWith('/admin/audit')) return 'audit';
 
     return 'overview';
   };
@@ -90,7 +93,7 @@ export function AdminLayout() {
                             <Icon className="h-4 w-4 shrink-0" />
                             <span className="truncate">{item.label}</span>
                             <Badge variant="outline" className="ml-auto text-[10px]">
-                              P1
+                              Soon
                             </Badge>
                           </div>
                         )}

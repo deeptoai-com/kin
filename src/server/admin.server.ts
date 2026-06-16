@@ -14,13 +14,14 @@ import {
   organization,
   member,
   usageRecord,
+  auditLog,
   updateStatus,
   creditBalances,
   creditLedger,
   subscriptions,
   plans,
 } from '~/db/schema';
-import { eq, sql, desc, inArray, gte } from 'drizzle-orm';
+import { eq, sql, desc, inArray, gte, and, like } from 'drizzle-orm';
 
 function parseOrganizationMetadata(raw: string | null) {
   if (!raw) return null;
@@ -254,6 +255,182 @@ export const getAdminOverview = createServerFn({ method: 'GET' })
         meili: 'unknown' as const,
         parser: 'unknown' as const,
       },
+    };
+  });
+
+/**
+ * Usage aggregates over a trailing window (P1).
+ *
+ * Reads only `usage_record` (already populated by the result-event recorder).
+ * Returns totals plus by-model, by-day and by-user breakdowns so the admin
+ * Usage view can render without any new schema. No conversation content is read.
+ */
+export const getUsageAggregate = createServerFn({ method: 'GET' })
+  .inputValidator((val) => {
+    const days = Number((val as { days?: unknown } | undefined)?.days ?? 30);
+    // Bound to a sane window; default 30d.
+    return { days: Number.isFinite(days) ? Math.min(180, Math.max(1, Math.trunc(days))) : 30 };
+  })
+  .handler(async ({ data }) => {
+    await requireSystemAdmin();
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (data.days - 1));
+
+    const inWindow = gte(usageRecord.createdAt, since);
+
+    const [totals, byModel, byDay, byUserRows] = await Promise.all([
+      db
+        .select({
+          runs: sql<number>`count(distinct ${usageRecord.runId})::int`,
+          rows: sql<number>`count(*)::int`,
+          inputTokens: sql<number>`coalesce(sum(${usageRecord.inputTokens}), 0)::bigint`,
+          outputTokens: sql<number>`coalesce(sum(${usageRecord.outputTokens}), 0)::bigint`,
+          costUsd: sql<string>`coalesce(sum(${usageRecord.costUsd}), 0)::text`,
+          errors: sql<number>`count(*) filter (where ${usageRecord.isError})::int`,
+        })
+        .from(usageRecord)
+        .where(inWindow),
+      db
+        .select({
+          model: usageRecord.model,
+          runs: sql<number>`count(distinct ${usageRecord.runId})::int`,
+          inputTokens: sql<number>`coalesce(sum(${usageRecord.inputTokens}), 0)::bigint`,
+          outputTokens: sql<number>`coalesce(sum(${usageRecord.outputTokens}), 0)::bigint`,
+          costUsd: sql<string>`coalesce(sum(${usageRecord.costUsd}), 0)::text`,
+        })
+        .from(usageRecord)
+        .where(inWindow)
+        .groupBy(usageRecord.model)
+        .orderBy(desc(sql`coalesce(sum(${usageRecord.outputTokens}), 0)`)),
+      db
+        .select({
+          day: sql<string>`to_char(date_trunc('day', ${usageRecord.createdAt}), 'YYYY-MM-DD')`,
+          inputTokens: sql<number>`coalesce(sum(${usageRecord.inputTokens}), 0)::bigint`,
+          outputTokens: sql<number>`coalesce(sum(${usageRecord.outputTokens}), 0)::bigint`,
+          costUsd: sql<string>`coalesce(sum(${usageRecord.costUsd}), 0)::text`,
+        })
+        .from(usageRecord)
+        .where(inWindow)
+        .groupBy(sql`date_trunc('day', ${usageRecord.createdAt})`)
+        .orderBy(sql`date_trunc('day', ${usageRecord.createdAt})`),
+      db
+        .select({
+          userId: usageRecord.userId,
+          userName: user.name,
+          userEmail: user.email,
+          runs: sql<number>`count(distinct ${usageRecord.runId})::int`,
+          inputTokens: sql<number>`coalesce(sum(${usageRecord.inputTokens}), 0)::bigint`,
+          outputTokens: sql<number>`coalesce(sum(${usageRecord.outputTokens}), 0)::bigint`,
+          costUsd: sql<string>`coalesce(sum(${usageRecord.costUsd}), 0)::text`,
+        })
+        .from(usageRecord)
+        .leftJoin(user, eq(usageRecord.userId, user.id))
+        .where(inWindow)
+        .groupBy(usageRecord.userId, user.name, user.email)
+        .orderBy(desc(sql`coalesce(sum(${usageRecord.outputTokens}), 0)`))
+        .limit(50),
+    ]);
+
+    const num = (v: number | string | null | undefined) => Number(v ?? 0);
+    const t = totals[0];
+    return {
+      days: data.days,
+      since: since.toISOString(),
+      totals: {
+        runs: t?.runs ?? 0,
+        rows: t?.rows ?? 0,
+        inputTokens: num(t?.inputTokens),
+        outputTokens: num(t?.outputTokens),
+        totalTokens: num(t?.inputTokens) + num(t?.outputTokens),
+        costUsd: num(t?.costUsd),
+        errors: t?.errors ?? 0,
+      },
+      byModel: byModel.map((r) => ({
+        model: r.model,
+        runs: r.runs,
+        inputTokens: num(r.inputTokens),
+        outputTokens: num(r.outputTokens),
+        costUsd: num(r.costUsd),
+      })),
+      byDay: byDay.map((r) => ({
+        day: r.day,
+        inputTokens: num(r.inputTokens),
+        outputTokens: num(r.outputTokens),
+        totalTokens: num(r.inputTokens) + num(r.outputTokens),
+        costUsd: num(r.costUsd),
+      })),
+      byUser: byUserRows.map((r) => ({
+        userId: r.userId,
+        name: r.userName ?? null,
+        email: r.userEmail ?? null,
+        runs: r.runs,
+        inputTokens: num(r.inputTokens),
+        outputTokens: num(r.outputTokens),
+        totalTokens: num(r.inputTokens) + num(r.outputTokens),
+        costUsd: num(r.costUsd),
+      })),
+    };
+  });
+
+/**
+ * Paginated audit-log listing with optional action / user filters (P1).
+ *
+ * Read-only over `audit_log`. `meta` may contain structured context but never
+ * conversation content (audit rows are written by recordAudit at action sites).
+ */
+export const listAuditLog = createServerFn({ method: 'GET' })
+  .inputValidator((val) => {
+    const v = (val ?? {}) as Record<string, unknown>;
+    const limitRaw = Number(v.limit ?? 50);
+    const offsetRaw = Number(v.offset ?? 0);
+    return {
+      action: typeof v.action === 'string' && v.action.trim() ? v.action.trim() : undefined,
+      userId: typeof v.userId === 'string' && v.userId.trim() ? v.userId.trim() : undefined,
+      limit: Number.isFinite(limitRaw) ? Math.min(200, Math.max(1, Math.trunc(limitRaw))) : 50,
+      offset: Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0,
+    };
+  })
+  .handler(async ({ data }) => {
+    await requireSystemAdmin();
+
+    const conditions = [];
+    if (data.action) conditions.push(like(auditLog.action, `${data.action}%`));
+    if (data.userId) conditions.push(eq(auditLog.userId, data.userId));
+    const where = conditions.length ? and(...conditions) : undefined;
+
+    const [rows, countRows, actionRows] = await Promise.all([
+      db
+        .select({
+          id: auditLog.id,
+          userId: auditLog.userId,
+          action: auditLog.action,
+          target: auditLog.target,
+          meta: auditLog.meta,
+          ip: auditLog.ip,
+          createdAt: auditLog.createdAt,
+        })
+        .from(auditLog)
+        .where(where)
+        .orderBy(desc(auditLog.createdAt))
+        .limit(data.limit)
+        .offset(data.offset),
+      db.select({ total: sql<number>`count(*)::int` }).from(auditLog).where(where),
+      // Distinct action keys for the filter dropdown (bounded list).
+      db
+        .selectDistinct({ action: auditLog.action })
+        .from(auditLog)
+        .orderBy(auditLog.action)
+        .limit(100),
+    ]);
+
+    return {
+      rows,
+      total: countRows[0]?.total ?? 0,
+      limit: data.limit,
+      offset: data.offset,
+      actions: actionRows.map((r) => r.action),
     };
   });
 
