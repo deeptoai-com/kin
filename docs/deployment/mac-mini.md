@@ -60,7 +60,7 @@ brew install orbstack            # then launch OrbStack once so the docker engin
 xcode-select --install 2>/dev/null || true
 
 # 1c. clone
-git clone https://github.com/Deeptoai-com/kin.git
+git clone https://github.com/deeptoai-com/kin.git
 cd kin
 ```
 

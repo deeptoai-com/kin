@@ -22,7 +22,7 @@ prebuilt multi-arch GHCR images. See the [README Quick Start](README.md#quick-st
 full set of paths (VPS installer, Cloudflare Tunnel, local development).
 
 ```bash
-git clone https://github.com/Deeptoai-com/kin.git
+git clone https://github.com/deeptoai-com/kin.git
 cd kin
 sudo bash scripts/install-vps.sh            # interactive; generates secrets, pulls images
 ```
@@ -35,7 +35,7 @@ workstation behind NAT, use the Cloudflare Tunnel path (`docker-compose.tunnel.y
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Deeptoai-com/kin.git
+   git clone https://github.com/deeptoai-com/kin.git
    cd kin
    ```
 

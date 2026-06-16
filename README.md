@@ -1,13 +1,15 @@
 # Kin
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/Deeptoai-com/kin/pkgs/container/kin%2Fapp)
+[![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp)
 
 **Kin is a self-hosted, single-org, multi-user agent workspace for small teams.** Run a
 full desktop-grade AI agent — Skills, MCP, Artifacts, sandboxed code execution, a
 document knowledge base (RAG) — on **your own infrastructure**, on the model gateway and
-budget you choose. No vendor lock-in, your data never leaves your servers.
+budget you choose. No vendor lock-in. Your **documents, conversations, and audit logs stay
+on your servers**; model calls go only to the endpoint **you** choose (which can be your
+own / a zero-retention gateway). Kin is API-based and provider-neutral — not air-gapped.
 
 Kin is built for the realistic team case: a trusted circle of colleagues self-hosting one
 shared workspace. It is **not** an anonymous public multi-tenant SaaS — security is
@@ -31,9 +33,10 @@ against the open internet.
   jump straight to the matching message.
 - ⬆️ **One-click online auto-update** — admins upgrade the running stack from the UI
   (pull → migrate → recreate → health-gate → auto-rollback on failure).
-- 🌐 **Bring any model** — Anthropic-compatible gateway (default: ARK / Volcengine). GLM,
-  DeepSeek, doubao, GPT, Qwen… whatever your account or gateway exposes; the menu only
-  lists models that probe healthy.
+- 🌐 **Bring any model (provider-neutral)** — point Kin at **any Anthropic-compatible
+  gateway or your own endpoint**; ARK / Volcengine is just the default. GLM, DeepSeek,
+  doubao, GPT, Qwen… whatever your account or gateway exposes; the menu only lists models
+  that probe healthy. No lock-in to any single provider.
 - 📦 **One-command install** — prebuilt **multi-arch (amd64 + arm64)** images on GHCR; a
   fresh VPS goes from zero to a running, TLS-terminated stack with one script.
 
@@ -51,7 +54,7 @@ auto-generated (model-gateway key, domain, Cloudflare DNS token), pulls the imag
 up the stack behind Traefik + Let's Encrypt, and waits until it serves.
 
 ```bash
-git clone https://github.com/Deeptoai-com/kin.git
+git clone https://github.com/deeptoai-com/kin.git
 cd kin
 sudo bash scripts/install-vps.sh            # interactive
 # or, fully non-interactive:
@@ -69,7 +72,7 @@ the same images run on your Mac (OrbStack/Docker Desktop) or home server and are
 on your domain. See **[docs/deployment/tunnel.md](docs/deployment/tunnel.md)**.
 
 ```bash
-git clone https://github.com/Deeptoai-com/kin.git && cd kin
+git clone https://github.com/deeptoai-com/kin.git && cd kin
 cp .env.example .env                         # fill in secrets + APP_HOSTNAME + model gateway
 # put your tunnel credentials in infra/tunnel/ (see docs/deployment/tunnel.md)
 docker compose -f docker-compose.tunnel.yml -p kin up -d
@@ -84,7 +87,7 @@ Runs the dependency services (Postgres, Redis, MinIO, Meilisearch) in Docker and
 a local Node process. See **[Development](#development)** and `CLAUDE.md`.
 
 ```bash
-git clone https://github.com/Deeptoai-com/kin.git && cd kin
+git clone https://github.com/deeptoai-com/kin.git && cd kin
 pnpm install
 scripts/local-prod.sh --build                # builds + serves on http://127.0.0.1:3100
 ```
@@ -204,13 +207,22 @@ pnpm test
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Kin is built on the
+Kin is **dual-licensed**:
+
+- **Open source: [GNU AGPLv3](LICENSE)** — free to use, modify, and self-host, provided you
+  comply with the AGPL (including making source available to network users of modified
+  versions). See [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md).
+- **Commercial license** — for organizations that want to use Kin **without** the AGPL's
+  copyleft/network-source obligations. Contact us (see [LICENSING.md](LICENSING.md)).
+
+Contributions are accepted under a Contributor License Agreement (CLA) so the dual-licensing
+can be maintained. Kin is built on the
 [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), subject to
-[Anthropic's Commercial Terms](https://www.anthropic.com/legal/commercial-terms). See
+[Anthropic's Commercial Terms](https://www.anthropic.com/legal/commercial-terms); see
 [NOTICE](NOTICE) for full third-party attribution.
 
 ## Links
 
-- **Repository**: https://github.com/Deeptoai-com/kin
-- **Container images**: https://github.com/Deeptoai-com/kin/pkgs/container/kin%2Fapp
+- **Repository**: https://github.com/deeptoai-com/kin
+- **Container images**: https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) · **Security**: [SECURITY.md](SECURITY.md)

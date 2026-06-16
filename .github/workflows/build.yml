@@ -19,6 +19,7 @@ name: build-image
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']   # semver tags (e.g. v0.1.0) → versioned image tags (see merge job)
   workflow_dispatch: {}
 
 permissions:
@@ -128,6 +129,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ github.sha }}
+            type=semver,pattern=v{{version}}     # on a vX.Y.Z tag push → :vX.Y.Z (reproducible / pinnable)
+            type=semver,pattern={{version}}      # → :X.Y.Z
 
       - name: Create multi-arch manifest list
         working-directory: ${{ runner.temp }}/digests

@@ -67,7 +67,7 @@ The compose **defaults to option A**. Both are wired; see the comments in the `t
 
 ### 2. Get the code + secrets
 ```bash
-git clone https://github.com/Deeptoai-com/kin.git && cd kin
+git clone https://github.com/deeptoai-com/kin.git && cd kin
 mkdir -p ~/kin-deploy && chmod 700 ~/kin-deploy
 cat > ~/kin-deploy/secrets.env <<'EOF'
 APP_HOSTNAME=kin.example.com
