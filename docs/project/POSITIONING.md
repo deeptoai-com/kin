@@ -18,9 +18,10 @@
 **中文：** OxyGenie 是**能私有化部署的团队版 Cowork**——把"让 AI 真正动手干活"的体验，
 做成团队可自部署、数据不外流、还能跑性价比模型的 Web 工作台。
 
-**English:** **OxyGenie is the self-hostable, team-grade alternative to Claude Cowork** —
+**English:** **Kin is the self-hostable, team-grade alternative to Claude Cowork** —
 an autonomous agent workspace your whole team runs on its own infrastructure, with
-multi-model support and your data never leaving your servers.
+multi-model support and your documents/conversations/audit logs staying on your servers
+(model calls go only to the endpoint you choose; provider-neutral, not air-gapped — see §4.5).
 
 > 记忆锚点：**"Cowork，但能私有化、给整个团队用。"**
 
