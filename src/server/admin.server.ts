@@ -13,12 +13,14 @@ import {
   user,
   organization,
   member,
+  usageRecord,
+  updateStatus,
   creditBalances,
   creditLedger,
   subscriptions,
   plans,
 } from '~/db/schema';
-import { eq, sql, and, desc, inArray } from 'drizzle-orm';
+import { eq, sql, desc, inArray, gte } from 'drizzle-orm';
 
 function parseOrganizationMetadata(raw: string | null) {
   if (!raw) return null;
@@ -151,6 +153,108 @@ export const getAllUsers = createServerFn({ method: 'GET' })
       creditBalances: balancesByUser.get(entry.id) ?? [],
       subscriptions: subscriptionsByUser.get(entry.id) ?? [],
     }));
+  });
+
+/**
+ * Admin overview snapshot.
+ *
+ * P0 intentionally only uses already-available sources: users, usage_record,
+ * update_status, model health and the in-process session registry. System
+ * health and long-term performance metrics are P2.
+ */
+export const getAdminOverview = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    await requireSystemAdmin();
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [
+      userStats,
+      usageStats,
+      updateRows,
+      { sessionRegistry },
+      { listModelsAdmin },
+    ] = await Promise.all([
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          admins: sql<number>`count(*) filter (where ${user.systemRole} = 'admin')::int`,
+        })
+        .from(user),
+      db
+        .select({
+          runs: sql<number>`count(distinct ${usageRecord.runId})::int`,
+          inputTokens: sql<number>`coalesce(sum(${usageRecord.inputTokens}), 0)::int`,
+          outputTokens: sql<number>`coalesce(sum(${usageRecord.outputTokens}), 0)::int`,
+          costUsd: sql<string>`coalesce(sum(${usageRecord.costUsd}), 0)::text`,
+        })
+        .from(usageRecord)
+        .where(gte(usageRecord.createdAt, startOfToday)),
+      db.select().from(updateStatus).limit(1),
+      import('~/server/concurrency/session-registry.js'),
+      import('~/server/models/registry'),
+    ]);
+
+    const modelRows = await listModelsAdmin();
+    const registrySnapshot = typeof sessionRegistry.snapshot === 'function'
+      ? sessionRegistry.snapshot()
+      : { totalWorkers: 0, activeWorkers: 0, silentWorkers: 0, byUser: [] };
+
+    const modelSummary = modelRows.reduce(
+      (acc, model) => {
+        acc.total += 1;
+        if (model.enabled) acc.enabled += 1;
+        acc[model.health] += 1;
+        return acc;
+      },
+      { total: 0, enabled: 0, healthy: 0, unhealthy: 0, unknown: 0 }
+    );
+
+    const update = updateRows[0] ?? null;
+    const maxWorkers = Math.max(1, parseInt(process.env.MAX_CONCURRENT_WORKERS || '8', 10) || 8);
+    const perUserMaxWorkers = Math.max(1, parseInt(process.env.PER_USER_MAX_WORKERS || '3', 10) || 3);
+
+    return {
+      users: {
+        total: userStats[0]?.total ?? 0,
+        admins: userStats[0]?.admins ?? 0,
+      },
+      usageToday: {
+        runs: usageStats[0]?.runs ?? 0,
+        inputTokens: usageStats[0]?.inputTokens ?? 0,
+        outputTokens: usageStats[0]?.outputTokens ?? 0,
+        totalTokens: (usageStats[0]?.inputTokens ?? 0) + (usageStats[0]?.outputTokens ?? 0),
+        costUsd: Number(usageStats[0]?.costUsd ?? 0),
+      },
+      concurrency: {
+        activeWorkers: registrySnapshot.activeWorkers,
+        totalWorkers: registrySnapshot.totalWorkers,
+        silentWorkers: registrySnapshot.silentWorkers,
+        maxWorkers,
+        perUserMaxWorkers,
+        byUser: registrySnapshot.byUser,
+      },
+      models: modelSummary,
+      update: {
+        currentSha: update?.currentSha ?? process.env.BUILD_SHA ?? 'dev',
+        latestSha: update?.latestSha ?? null,
+        latestDigest: update?.latestDigest ?? null,
+        updateAvailable: update?.updateAvailable ?? false,
+        checkedAt: update?.checkedAt ?? null,
+        image: update?.image ?? null,
+        error: update?.error ?? null,
+      },
+      health: {
+        app: 'healthy' as const,
+        db: 'healthy' as const,
+        worker: 'unknown' as const,
+        redis: 'unknown' as const,
+        minio: 'unknown' as const,
+        meili: 'unknown' as const,
+        parser: 'unknown' as const,
+      },
+    };
   });
 
 /**

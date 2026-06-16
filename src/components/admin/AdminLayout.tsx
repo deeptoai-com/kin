@@ -9,16 +9,13 @@ import { Outlet, useNavigate, Link, useLocation } from '@tanstack/react-router';
 import RiLogoutBoxLine from '~icons/ri/logout-box-line';
 import RiArrowLeftLine from '~icons/ri/arrow-left-line';
 import { usePostHog } from '@posthog/react';
-import { adminNavItems, type AdminSection } from './admin-nav';
+import { adminNavGroups, type AdminSection } from './admin-nav';
 import { authClient } from '~/lib/auth-client';
 import { Button } from '~/components/ui/button';
+import { Badge } from '~/components/ui/badge';
 import { cn } from '~/lib/utils';
 
-interface AdminLayoutProps {
-  readonly activeSection: AdminSection;
-}
-
-export function AdminLayout({ activeSection }: AdminLayoutProps) {
+export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const posthog = usePostHog();
@@ -27,13 +24,13 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
   const getActiveSectionFromPath = (): AdminSection => {
     const pathname = location.pathname;
 
-    if (pathname === '/admin' || pathname === '/admin/') return 'dashboard';
+    if (pathname === '/admin' || pathname === '/admin/') return 'overview';
     if (pathname.startsWith('/admin/users')) return 'users';
-    if (pathname.startsWith('/admin/organizations')) return 'organizations';
+    if (pathname.startsWith('/admin/models')) return 'models';
     if (pathname.startsWith('/admin/a2composer')) return 'a2composer';
     if (pathname.startsWith('/admin/skills')) return 'skills';
 
-    return 'dashboard';
+    return 'overview';
   };
 
   const currentActiveSection = getActiveSectionFromPath();
@@ -49,45 +46,65 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-screen bg-background text-foreground">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <aside className="flex w-72 flex-col border-r bg-card">
         {/* Logo */}
-        <div className="h-16 flex items-center px-6 border-b border-gray-200 dark:border-gray-700">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Admin Panel
-          </h1>
+        <div className="flex h-16 items-center border-b px-6">
+          <div>
+            <h1 className="text-base font-semibold leading-none">Admin</h1>
+            <p className="mt-1 text-xs text-muted-foreground">Operations & governance</p>
+          </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-1 px-3">
-            {adminNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.section === currentActiveSection;
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <div className="space-y-5">
+            {adminNavGroups.map((group) => (
+              <div key={group.label}>
+                <div className="mb-2 px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {group.label}
+                </div>
+                <ul className="space-y-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = item.section === currentActiveSection;
+                    const className = cn(
+                      'flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      item.disabled
+                        ? 'cursor-not-allowed text-muted-foreground/70'
+                        : isActive
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-foreground hover:bg-muted'
+                    );
 
-              return (
-                <li key={item.section}>
-                  <Link
-                    to={item.path}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                    return (
+                      <li key={item.section}>
+                        {item.path && !item.disabled ? (
+                          <Link to={item.path} className={className}>
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        ) : (
+                          <div className={className} aria-disabled="true">
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                            <Badge variant="outline" className="ml-auto text-[10px]">
+                              P1
+                            </Badge>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        <div className="space-y-2 border-t p-4">
           <Button
             variant="outline"
             className="w-full justify-start"
@@ -98,7 +115,7 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
             onClick={handleLogout}
           >
             <RiLogoutBoxLine className="h-4 w-4 mr-2" />

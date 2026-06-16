@@ -200,6 +200,24 @@ export class SessionRegistry {
   get size() {
     return this._runtimes.size;
   }
+
+  /**
+   * Read-only aggregate snapshot for admin/diagnostic surfaces. It deliberately
+   * exposes counts and session ids only; worker handles and socket references
+   * stay private to the registry.
+   */
+  snapshot() {
+    const byUser = [];
+    for (const [userId, sessions] of this._byUser.entries()) {
+      byUser.push({ userId, sessionIds: [...sessions], count: sessions.size });
+    }
+    return {
+      totalWorkers: this._runtimes.size,
+      activeWorkers: [...this._runtimes.values()].filter((runtime) => !runtime.silent).length,
+      silentWorkers: [...this._runtimes.values()].filter((runtime) => runtime.silent).length,
+      byUser,
+    };
+  }
 }
 
 /**
