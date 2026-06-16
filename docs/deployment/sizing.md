@@ -18,7 +18,7 @@
 |---|---|---|
 | Linux 宿主 OS | ~0.5–1 GB | 同样 RAM 的 Linux VM 比 Mac（OS 占 3–4 GB）更宽裕 |
 | 空载栈 | ~2–3 GB | pg(pgvector)+redis+minio+meili+app+worker+preview-controller+traefik+cloudflared+parser |
-| 每个活跃 Agent 会话 | ~0.3–0.5 GB | 每会话起 `ws-query-worker` 子进程 + SDK CLI + bubblewrap 代码沙盒 |
+| 每个活跃 Agent 会话 | **~0.5–0.6 GB（实测峰值）**，堆上限 1.5 GB | 每会话起 `ws-query-worker` 子进程 + SDK CLI + bubblewrap 代码沙盒。实测：8 并发活跃 worker 峰值 ~5 GB，跑完干净回落、无泄漏（并发压测 2026-06-16） |
 | 每个预览沙盒 | ≤768 MB | 硬上限 `PREVIEW_MEMORY=768m`、1 CPU、256 PID（`docker-compose.tunnel.yml`） |
 
 > ⚠️ **核心服务目前没有内存上限**（`mem_limit` 未设）。并发本身受**全局 worker 信号量 + 按用户上限**（`PER_USER_MAX_WORKERS`，默认 3）约束、超额排队；但单个 worker 的内存没有硬限，重负载下仍有 OOM 风险。所以"最小"配置成立的前提是**轻并发**。

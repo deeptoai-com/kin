@@ -11,8 +11,27 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { readFile } from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Container-total memory from the cgroup (KB), used as a fallback when per-process
+ * detection (lsof/pgrep/ps) is unavailable — e.g. running the harness inside a slim
+ * app image that ships none of those tools. cgroup v2 first, then v1. Returns null
+ * on a bare-metal host (no cgroup memory file).
+ */
+async function readCgroupMemoryKb() {
+  for (const p of ['/sys/fs/cgroup/memory.current', '/sys/fs/cgroup/memory/memory.usage_in_bytes']) {
+    try {
+      const bytes = parseInt((await readFile(p, 'utf8')).trim(), 10);
+      if (Number.isFinite(bytes) && bytes > 0) return Math.round(bytes / 1024);
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
 
 /**
  * Find the server PID(s) that actually handle the WS traffic. We detect by
@@ -91,11 +110,22 @@ export async function sampleMemory(mainPids) {
   for (const pid of mainPids) allChildren.push(...(await childPids(pid)));
   const main = await rssForPids(mainPids);
   const workers = await rssForPids(allChildren);
+  const procTotal = main.totalKb + workers.totalKb;
+  // Per-process detection failed (no lsof/pgrep/ps, or no listener found, e.g. inside a
+  // slim container) → fall back to the container-total cgroup reading so the run still
+  // produces a memory series instead of an empty header-only CSV.
+  if (procTotal === 0) {
+    const cgroupKb = await readCgroupMemoryKb();
+    if (cgroupKb != null) {
+      return { mainKb: cgroupKb, workerKb: 0, totalKb: cgroupKb, workerCount: 0, source: 'cgroup' };
+    }
+  }
   return {
     mainKb: main.totalKb,
     workerKb: workers.totalKb,
-    totalKb: main.totalKb + workers.totalKb,
+    totalKb: procTotal,
     workerCount: Object.keys(workers.perPid).length,
+    source: 'ps',
   };
 }
 

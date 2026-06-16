@@ -176,11 +176,13 @@ PER_USER_MAX_WORKERS=3      # concurrent running sessions per user
 
 ## Sizing & concurrency
 
-Each chat turn runs in an isolated worker (~150–300 MB while active). What consumes
-resources is the number of **simultaneously executing** workers, not open sessions. Kin
-bounds this with a **global worker semaphore** and a **per-user cap** (`PER_USER_MAX_WORKERS`,
-default 3); excess runs queue. A **16 GB / 8-core** host comfortably serves a small team.
-See **[docs/deployment/sizing.md](docs/deployment/sizing.md)**.
+Each chat turn runs in an isolated worker (**~0.5–0.6 GB while active**, measured; the Node
+heap can grow toward its 1.5 GB cap for large generations). What consumes resources is the
+number of **simultaneously executing** workers, not open sessions. Kin bounds this with a
+**global worker semaphore** (default 8) and a **per-user cap** (`PER_USER_MAX_WORKERS`,
+default 3); excess runs queue. A load test of **8 concurrent workers peaked at ~5 GB** and
+returned to idle cleanly (no leak), so a **16 GB / 8-core** host comfortably serves a small
+team with headroom. See **[docs/deployment/sizing.md](docs/deployment/sizing.md)**.
 
 ## Development
 

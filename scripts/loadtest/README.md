@@ -18,6 +18,9 @@ and (on a real host) calibrate the single-host concurrency knobs.
 - `metrics.mjs` — samples ws-server main + worker RSS via `ps`; latency percentiles.
 - `load-client.mjs` — orchestrator: N virtual users, drives create_session → chat →
   await done → think-time; emits a summary + CSVs to `loadtest-results/` (gitignored).
+- `concurrent-sessions.mjs` — PRD 2026-06-15 harness for concurrent sessions /
+  background continue: per-user cap, global cap, socket-close survival,
+  abort/permit cleanup, and optional concurrency sweep.
 
 ## Prerequisites
 1. The app + ws-server running locally with the full stack (DB etc.), e.g. `./scripts/dev-up.sh`.
@@ -35,6 +38,61 @@ USERS=3 DURATION_MS=60000 THINK_MS=2000 PROMPT="say hi in 3 words" \
 node scripts/loadtest/load-client.mjs
 ```
 
+## Run concurrent-session PRD harness
+
+This is the harness to use for the "并发会话 / 后台续跑" capacity baseline.
+
+```bash
+LOADTEST=1 \
+APP_URL=http://localhost:3000 \
+WS_URL=ws://localhost:3001/ws/agent \
+PROMPT="Write numbers 1 to 120, one per line. No prose." \
+pnpm loadtest:concurrent
+```
+
+By default `SCENARIO=all` runs the bounded smoke set:
+
+- `per-user`: one user starts 4 sessions; validates the 4th queues when
+  `PER_USER_MAX_WORKERS=3`, checks `list_running`, and waits for final zero.
+- `global`: 10 users start one session each; validates queueing past
+  `MAX_CONCURRENT_WORKERS=8`.
+- `background`: starts sessions, closes the socket, reconnects, and checks the
+  runs survived as server-authoritative `running_sessions`.
+- `abort`: starts concurrent sessions, aborts repeatedly until
+  `running_sessions` returns to zero, catching permit/registry leaks.
+
+`SCENARIO=idle` is intentionally opt-in because production defaults reap after
+15 minutes and the check runs on the 30s heartbeat. For a fast test, restart the
+WS server with a short value such as `WS_IDLE_TIMEOUT_MS=30000`, then run:
+
+```bash
+LOADTEST=1 SCENARIO=idle IDLE_WAIT_MS=70000 pnpm loadtest:concurrent
+```
+
+For the sizing curve, run the explicit sweep on a representative host:
+
+```bash
+LOADTEST=1 SCENARIO=sweep \
+SWEEP_LEVELS=1,2,4,6,8,10,12 \
+RUN_TIMEOUT_MS=240000 \
+pnpm loadtest:concurrent
+```
+
+Useful knobs:
+
+| Var | Default | Meaning |
+|---|---|---|
+| `SCENARIO` | `all` | `all`, `per-user`, `global`, `background`, `abort`, `idle`, or `sweep` |
+| `PER_USER_SESSIONS` | 4 | sessions started by one user in `per-user` |
+| `GLOBAL_SESSIONS` | 10 | users/runs started in `global` |
+| `BACKGROUND_SESSIONS` | 2 | sessions used for socket-close survival |
+| `ABORT_SESSIONS` | 4 | sessions used for abort/permit cleanup |
+| `IDLE_WAIT_MS` | 70000 | wait window for `SCENARIO=idle` |
+| `SWEEP_LEVELS` | `1,2,4,6,8,10` | concurrency levels for the sizing curve |
+| `EXPECTED_PER_USER_MAX` | 3 | invariant hint for strict checks |
+| `EXPECTED_GLOBAL_MAX` | 8 | invariant hint for strict checks |
+| `STRICT` | 0 | exit non-zero when an invariant fails |
+
 ### Knobs (env)
 | Var | Default | Meaning |
 |---|---|---|
@@ -50,6 +108,12 @@ node scripts/loadtest/load-client.mjs
 - `loadtest-results/summary-<ts>.json` — latency p50/p95/p99, throughput, errors,
   queue depth (S1), idle reaps (S3), **peak RSS** + peak worker count.
 - `loadtest-results/memory-<ts>.csv` — memory/worker-count time series.
+- `loadtest-results/concurrent-summary-<ts>.json` — scenario-level invariant
+  results, TTFT-ish first assistant latency, completion latency, peak RSS, and
+  worker count.
+- `loadtest-results/concurrent-runs-<ts>.csv` — one row per session run.
+- `loadtest-results/concurrent-memory-<ts>.csv` — memory/worker-count time series
+  for the concurrent-session harness.
 
 ## What each scenario validates (Phase B, on a real host)
 - Sweep `MAX_CONCURRENT_WORKERS ∈ {4,6,8,10,12}` → peak RSS vs p95 latency curve.
