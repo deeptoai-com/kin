@@ -1,43 +1,22 @@
 # Licensing
 
-Kin is **dual-licensed**. You may use it under **either**:
+**Kin is open source under the [Apache License 2.0](LICENSE)** — free to use, modify,
+self-host, and build on, including commercially. Apache-2.0 includes an explicit patent
+grant. That covers **everything in this repository**.
 
-## 1. Open source — GNU AGPLv3
+## Open core
 
-The default. Kin's source is licensed under the
-[GNU Affero General Public License v3.0](LICENSE). You are free to use, study, modify, and
-self-host Kin, **provided you comply with the AGPLv3** — most notably:
+Everything here today is **free**. Our commercial offering is **separate, optional add-ons** —
+bespoke **enterprise plugin modules** built for specific customers — which are **not** part of
+this open-source repository. The open core stays Apache-2.0; you never need a paid module to
+run Kin.
 
-- If you run a **modified** version of Kin and let other people interact with it over a
-  network, you must offer those users the **complete corresponding source** of your
-  modified version under the AGPLv3.
-- Derivative works must also be licensed under the AGPLv3.
+**Enterprise modules / custom work:** <!-- TODO(owner): set contact, e.g. enterprise@kin.deeptoai.com --> contact us.
 
-This is the right choice for internal team self-hosting and for open-source projects.
+## Contributing
 
-## 2. Commercial license
-
-For organizations that want to:
-
-- embed or redistribute Kin **without** the AGPLv3's copyleft / network-source obligations,
-- ship a modified/closed version to customers, or
-- get commercial terms (support, warranty, indemnity) —
-
-a **commercial license** is available. It removes the AGPL obligations in exchange for
-commercial terms.
-
-**Contact:** <!-- TODO(owner): set the real contact, e.g. licensing@<kin-domain> --> `licensing@<your-domain>`
-
-## Contributing (CLA)
-
-To keep dual-licensing possible, contributions are accepted under a **Contributor License
-Agreement (CLA)**: contributors grant the project the rights needed to offer their
-contribution under both the AGPLv3 and the commercial license. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-> Note for maintainers: the commercial-license text, pricing, and the CLA mechanism
-> (e.g. a CLA bot) should be **finalized with legal counsel** before commercial sales.
-> This document states the model; it is not the commercial contract.
+Contributions are accepted under the Apache-2.0 inbound = outbound model (your contribution
+is licensed under the same Apache-2.0 as the project). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Third-party
 

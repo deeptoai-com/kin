@@ -1,6 +1,6 @@
 # Kin
 
-[![License](https://img.shields.io/badge/License-AGPLv3%20%2B%20%E5%95%86%E4%B8%9A-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp)
 
@@ -192,14 +192,13 @@ pnpm test
 
 ## 许可证
 
-Kin 采用**双授权**：
+**[Apache License 2.0](LICENSE)**——可自由使用、修改、自托管、二次开发，**含商业用途**（带显式
+专利授权）。本仓库的全部内容都在此协议下。
 
-- **开源：[GNU AGPLv3](LICENSE)**——可自由使用、修改、自托管，前提是遵守 AGPL（包括：对外提供
-  网络服务的修改版，须向使用者提供对应源码）。见 [LICENSE](LICENSE) 与 [LICENSING.md](LICENSING.md)。
-- **商业授权**——面向不想承担 AGPL 的 copyleft（著佐权）/网络源码义务的组织。联系方式见 [LICENSING.md](LICENSING.md)。
+Kin 采用**开核（open-core）**模式：核心永久 Apache-2.0、免费开放；面向企业的**定制插件模块**作为
+可选的付费增值单独提供（不在本仓库内），你无需任何付费模块即可运行 Kin。见 [LICENSING.md](LICENSING.md)。
 
-为维持双授权，贡献以**贡献者许可协议（CLA）**接收。Kin 构建于
-[Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) 之上，受
+Kin 构建于 [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) 之上，受
 [Anthropic 商业条款](https://www.anthropic.com/legal/commercial-terms)约束；完整第三方归属见
 [NOTICE](NOTICE)。
 

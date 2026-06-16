@@ -1,6 +1,6 @@
 # Kin
 
-[![License](https://img.shields.io/badge/License-AGPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp)
 
@@ -207,16 +207,14 @@ pnpm test
 
 ## License
 
-Kin is **dual-licensed**:
+**[Apache License 2.0](LICENSE)** — free to use, modify, self-host, and build on, including
+commercially (with an explicit patent grant). That covers everything in this repository.
 
-- **Open source: [GNU AGPLv3](LICENSE)** — free to use, modify, and self-host, provided you
-  comply with the AGPL (including making source available to network users of modified
-  versions). See [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md).
-- **Commercial license** — for organizations that want to use Kin **without** the AGPL's
-  copyleft/network-source obligations. Contact us (see [LICENSING.md](LICENSING.md)).
+Kin follows an **open-core** model: the core is, and stays, Apache-2.0. Bespoke **enterprise
+plugin modules** are offered separately as optional paid add-ons (not part of this repo) —
+you never need them to run Kin. See [LICENSING.md](LICENSING.md).
 
-Contributions are accepted under a Contributor License Agreement (CLA) so the dual-licensing
-can be maintained. Kin is built on the
+Kin is built on the
 [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), subject to
 [Anthropic's Commercial Terms](https://www.anthropic.com/legal/commercial-terms); see
 [NOTICE](NOTICE) for full third-party attribution.
