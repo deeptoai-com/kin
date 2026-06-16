@@ -3,7 +3,7 @@ import { useRouterState } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { accountViewClassNames } from '~/components/auth/auth-styles';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~/components/ui/dialog';
-import { PreferencesSettings, SettingsLayout, PlanSettingsSection, OrganizationSettings } from './index';
+import { PreferencesSettings, SettingsLayout, PlanSettingsSection } from './index';
 import { BillingSettingsSection } from './sections/BillingSettings';
 import { type SettingsSection, defaultSettingsSection, isSettingsSection } from './settings-nav';
 
@@ -25,8 +25,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     switch (activeSection) {
       case 'account':
         return <AccountView hideNav classNames={accountViewClassNames} />;
-      case 'organization':
-        return <OrganizationSettings />;
       case 'preferences':
         return <PreferencesSettings />;
       case 'plans':

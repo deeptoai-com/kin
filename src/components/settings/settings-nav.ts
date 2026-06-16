@@ -1,11 +1,10 @@
 import type { ComponentType, SVGProps } from 'react';
 import RiBankCard2Line from '~icons/ri/bank-card-2-line';
 import RiBillLine from '~icons/ri/bill-line';
-import RiBuilding4Line from '~icons/ri/building-4-line';
 import RiListSettingsLine from '~icons/ri/list-settings-line';
 import RiUserSettingsLine from '~icons/ri/user-settings-line';
 
-export type SettingsSection = 'account' | 'preferences' | 'plans' | 'billing' | 'organization';
+export type SettingsSection = 'account' | 'preferences' | 'plans' | 'billing';
 
 export interface SettingsNavItem {
   section: SettingsSection;
@@ -21,12 +20,6 @@ export const settingsNavItems: SettingsNavItem[] = [
     label: 'Account',
     description: 'Manage profile details and security credentials.',
     icon: RiUserSettingsLine,
-  },
-  {
-    section: 'organization',
-    label: 'Organization',
-    description: 'Create and manage your organization.',
-    icon: RiBuilding4Line,
   },
   {
     section: 'preferences',

@@ -2,7 +2,6 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { reactStartCookies } from 'better-auth/react-start';
 import { magicLink } from 'better-auth/plugins';
-import { organization } from 'better-auth/plugins';
 import { Polar } from '@polar-sh/sdk';
 import { polar, checkout, portal, webhooks } from '@polar-sh/better-auth';
 import { sql, eq } from 'drizzle-orm';
@@ -211,15 +210,8 @@ export const auth = betterAuth({
         });
       },
     }),
-    // Organization plugin for multi-tenant permissions
-    organization({
-      // Allow any user to create an organization (can be restricted later)
-      allowUserToCreateOrganization: true,
-      // Role of the organization creator
-      creatorRole: 'owner',
-      // Maximum members per organization (100 by default)
-      membershipLimit: 100,
-    }),
+    // Multi-tenant organization plugin removed — Kin serves a single organization;
+    // permissions resolve from env + system role (see permissions.server.ts).
     // Only include Polar plugin if Polar is configured
     ...(isPolarEnabled && polarClient
       ? [
