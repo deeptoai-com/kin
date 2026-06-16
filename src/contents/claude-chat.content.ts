@@ -2,19 +2,19 @@ import type { Dictionary } from 'intlayer';
 import { t } from 'intlayer';
 
 /**
- * OxyGenie interface content dictionary
- * Contains all text labels for the OxyGenie Agent Chat interface
+ * Kin interface content dictionary
+ * Contains all text labels for the Kin Agent Chat interface
  */
 const claudeChatContent = {
   content: {
     header: {
       title: t({
-        en: 'OxyGenie',
-        'zh-Hans': 'OxyGenie',
-        fr: 'OxyGenie',
-        ja: 'OxyGenie',
-        ko: 'OxyGenie',
-        'zh-Hant': 'OxyGenie',
+        en: 'Kin',
+        'zh-Hans': 'Kin',
+        fr: 'Kin',
+        ja: 'Kin',
+        ko: 'Kin',
+        'zh-Hant': 'Kin',
       }),
       newChat: t({
         en: 'New Chat',
@@ -101,12 +101,12 @@ const claudeChatContent = {
     },
     chatInput: {
       placeholder: t({
-        en: 'Send a message to OxyGenie...',
-        'zh-Hans': '向 OxyGenie 发送消息...',
-        fr: 'Envoyer un message à OxyGenie...',
-        ja: 'OxyGenie にメッセージを送信...',
-        ko: 'OxyGenie에게 메시지 보내기...',
-        'zh-Hant': '向 OxyGenie 傳送訊息...',
+        en: 'Send a message to Kin...',
+        'zh-Hans': '向 Kin 发送消息...',
+        fr: 'Envoyer un message à Kin...',
+        ja: 'Kin にメッセージを送信...',
+        ko: 'Kin에게 메시지 보내기...',
+        'zh-Hant': '向 Kin 傳送訊息...',
       }),
       placeholderGreeting: t({
         en: 'How can I help you today?',
@@ -151,12 +151,12 @@ const claudeChatContent = {
         'zh-Hant': '您',
       }),
       assistant: t({
-        en: 'OxyGenie',
-        'zh-Hans': 'OxyGenie',
-        fr: 'OxyGenie',
-        ja: 'OxyGenie',
-        ko: 'OxyGenie',
-        'zh-Hant': 'OxyGenie',
+        en: 'Kin',
+        'zh-Hans': 'Kin',
+        fr: 'Kin',
+        ja: 'Kin',
+        ko: 'Kin',
+        'zh-Hant': 'Kin',
       }),
       copy: t({
         en: 'Copy',
@@ -653,12 +653,12 @@ const claudeChatContent = {
     },
     status: {
       connecting: t({
-        en: 'Connecting to OxyGenie...',
-        'zh-Hans': '正在连接 OxyGenie...',
-        fr: 'Connexion à OxyGenie...',
-        ja: 'OxyGenie に接続中...',
-        ko: 'OxyGenie 연결 중...',
-        'zh-Hant': '正在連線 OxyGenie...',
+        en: 'Connecting to Kin...',
+        'zh-Hans': '正在连接 Kin...',
+        fr: 'Connexion à Kin...',
+        ja: 'Kin に接続中...',
+        ko: 'Kin 연결 중...',
+        'zh-Hant': '正在連線 Kin...',
       }),
       connected: t({
         en: 'Connected',
@@ -701,20 +701,20 @@ const claudeChatContent = {
         'zh-Hant': '正在初始化會話',
       }),
       pleaseWait: t({
-        en: 'Setting up your OxyGenie environment...',
-        'zh-Hans': '正在配置 OxyGenie 环境...',
-        fr: 'Configuration de l\'environnement OxyGenie...',
-        ja: 'OxyGenie 環境を設定中...',
-        ko: 'OxyGenie 환경 설정 중...',
-        'zh-Hant': '正在設定 OxyGenie 環境...',
+        en: 'Setting up your Kin environment...',
+        'zh-Hans': '正在配置 Kin 环境...',
+        fr: 'Configuration de l\'environnement Kin...',
+        ja: 'Kin 環境を設定中...',
+        ko: 'Kin 환경 설정 중...',
+        'zh-Hant': '正在設定 Kin 環境...',
       }),
       escInterrupt: t({
-        en: 'Press Esc again to interrupt OxyGenie',
-        'zh-Hans': '再次按 Esc 键中断 OxyGenie',
+        en: 'Press Esc again to interrupt Kin',
+        'zh-Hans': '再次按 Esc 键中断 Kin',
         fr: 'Appuyez à nouveau sur Échap pour interrompre',
-        ja: 'Esc をもう一度押して OxyGenie を中断',
-        ko: 'Esc를 다시 눌러 OxyGenie 중단',
-        'zh-Hant': '再次按 Esc 鍵中斷 OxyGenie',
+        ja: 'Esc をもう一度押して Kin を中断',
+        ko: 'Esc를 다시 눌러 Kin 중단',
+        'zh-Hant': '再次按 Esc 鍵中斷 Kin',
       }),
       stopEsc: t({
         en: 'Stop (Esc)',
@@ -735,12 +735,12 @@ const claudeChatContent = {
     },
     errors: {
       notConnected: t({
-        en: 'Not connected to OxyGenie. Please wait or refresh.',
-        'zh-Hans': '未连接到 OxyGenie。请等待或刷新页面。',
-        fr: 'Non connecté à OxyGenie. Veuillez patienter ou actualiser.',
-        ja: 'OxyGenie に接続されていません。待つかページを更新してください。',
-        ko: 'OxyGenie에 연결되지 않았습니다. 잠시 기다리거나 새로고침하세요.',
-        'zh-Hant': '未連線至 OxyGenie。請等待或重新整理頁面。',
+        en: 'Not connected to Kin. Please wait or refresh.',
+        'zh-Hans': '未连接到 Kin。请等待或刷新页面。',
+        fr: 'Non connecté à Kin. Veuillez patienter ou actualiser.',
+        ja: 'Kin に接続されていません。待つかページを更新してください。',
+        ko: 'Kin에 연결되지 않았습니다. 잠시 기다리거나 새로고침하세요.',
+        'zh-Hant': '未連線至 Kin。請等待或重新整理頁面。',
       }),
       messageFailed: t({
         en: 'Failed to send message. Please try again.',
@@ -802,29 +802,29 @@ const claudeChatContent = {
       }),
     },
     disclaimer: t({
-      en: 'OxyGenie can make mistakes. Please double-check responses.',
-      'zh-Hans': 'OxyGenie 可能会出错，请仔细核对回复内容。',
-      fr: 'OxyGenie peut se tromper. Vérifiez les réponses.',
-      ja: 'OxyGenie は誤りを犯すことがあります。回答はご確認ください。',
-      ko: 'OxyGenie가 실수할 수 있습니다. 응답을 꼭 확인하세요.',
-      'zh-Hant': 'OxyGenie 可能會出錯，請仔細核對回覆內容。',
+      en: 'Kin can make mistakes. Please double-check responses.',
+      'zh-Hans': 'Kin 可能会出错，请仔细核对回复内容。',
+      fr: 'Kin peut se tromper. Vérifiez les réponses.',
+      ja: 'Kin は誤りを犯すことがあります。回答はご確認ください。',
+      ko: 'Kin가 실수할 수 있습니다. 응답을 꼭 확인하세요.',
+      'zh-Hant': 'Kin 可能會出錯，請仔細核對回覆內容。',
     }),
     emptyState: {
       title: t({
-        en: 'Start a conversation with OxyGenie',
-        'zh-Hans': '开始与 OxyGenie 对话',
-        fr: 'Commencez une conversation avec OxyGenie',
-        ja: 'OxyGenie と会話を始めましょう',
-        ko: 'OxyGenie와 대화를 시작하세요',
-        'zh-Hant': '開始與 OxyGenie 對話',
+        en: 'Start a conversation with Kin',
+        'zh-Hans': '开始与 Kin 对话',
+        fr: 'Commencez une conversation avec Kin',
+        ja: 'Kin と会話を始めましょう',
+        ko: 'Kin와 대화를 시작하세요',
+        'zh-Hant': '開始與 Kin 對話',
       }),
       subtitle: t({
-        en: 'OxyGenie can help you with coding, writing, analysis, and more.',
-        'zh-Hans': 'OxyGenie 可以帮助您进行编码、写作、分析等。',
-        fr: 'OxyGenie vous aide pour le code, l\'écriture, l\'analyse et plus.',
-        ja: 'OxyGenie はコーディング、執筆、分析などでお手伝いします。',
-        ko: 'OxyGenie가 코딩, 글쓰기, 분석 등으로 도와드립니다.',
-        'zh-Hant': 'OxyGenie 可以協助您編碼、寫作、分析等。',
+        en: 'Kin can help you with coding, writing, analysis, and more.',
+        'zh-Hans': 'Kin 可以帮助您进行编码、写作、分析等。',
+        fr: 'Kin vous aide pour le code, l\'écriture, l\'analyse et plus.',
+        ja: 'Kin はコーディング、執筆、分析などでお手伝いします。',
+        ko: 'Kin가 코딩, 글쓰기, 분석 등으로 도와드립니다.',
+        'zh-Hant': 'Kin 可以協助您編碼、寫作、分析等。',
       }),
       startChat: t({
         en: 'Start New Session',
@@ -1282,12 +1282,12 @@ const claudeChatContent = {
     // Knowledge Base Panel Component
     knowledgeBase: {
       description: t({
-        en: 'Select documents from the library to add to the current session. OxyGenie can use grep/read tools to search and reference these documents.',
-        'zh-Hans': '从文档库中选择文档添加到当前会话，OxyGenie 可以使用 grep/read 工具搜索和引用这些文档。',
-        fr: 'Sélectionnez des documents de la bibliothèque pour les ajouter à la session. OxyGenie peut les rechercher et les référencer via grep/read.',
-        ja: 'ライブラリからドキュメントを選んで現在のセッションに追加。OxyGenie は grep/read で検索・参照できます。',
-        ko: '라이브러리에서 문서를 선택해 현재 세션에 추가하세요. OxyGenie가 grep/read로 검색·참조할 수 있습니다.',
-        'zh-Hant': '從文件庫選擇文件加入目前會話，OxyGenie 可使用 grep/read 工具搜尋與引用這些文件。',
+        en: 'Select documents from the library to add to the current session. Kin can use grep/read tools to search and reference these documents.',
+        'zh-Hans': '从文档库中选择文档添加到当前会话，Kin 可以使用 grep/read 工具搜索和引用这些文档。',
+        fr: 'Sélectionnez des documents de la bibliothèque pour les ajouter à la session. Kin peut les rechercher et les référencer via grep/read.',
+        ja: 'ライブラリからドキュメントを選んで現在のセッションに追加。Kin は grep/read で検索・参照できます。',
+        ko: '라이브러리에서 문서를 선택해 현재 세션에 추가하세요. Kin가 grep/read로 검색·참조할 수 있습니다.',
+        'zh-Hant': '從文件庫選擇文件加入目前會話，Kin 可使用 grep/read 工具搜尋與引用這些文件。',
       }),
       addDocuments: t({
         en: 'Add Documents',

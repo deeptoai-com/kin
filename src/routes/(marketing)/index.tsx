@@ -50,7 +50,7 @@ function RouteComponent() {
                 <b>agents/c</b>
               </div>
               <div className="st">
-                <i /> model: claude · any provider · live
+                <i /> model: glm · any provider · live
               </div>
             </div>
             <div className="app-body">
@@ -79,7 +79,7 @@ function RouteComponent() {
                   <div className="tx">Reskin the landing, then build.</div>
                 </div>
                 <div className="bubble ai">
-                  <div className="who">kin · claude</div>
+                  <div className="who">kin · glm</div>
                   <div className="tx">On it — updating design tokens and verifying the build —</div>
                 </div>
                 <div className="term">
@@ -125,9 +125,9 @@ function RouteComponent() {
         <div className="wrap">
           <div className="cap">// works with any model · built on open standards</div>
           <div className="row">
-            <b>Claude</b> <span className="dot">·</span> <b>GPT</b> <span className="dot">·</span>{' '}
-            <b>GLM</b> <span className="dot">·</span> <b>DeepSeek</b> <span className="dot">·</span> MCP{' '}
-            <span className="dot">·</span> Skills <span className="dot">·</span> Claude Agent SDK
+            <b>GLM</b> <span className="dot">·</span> <b>DeepSeek</b> <span className="dot">·</span>{' '}
+            <b>GPT</b> <span className="dot">·</span> <b>Qwen</b> <span className="dot">·</span> MCP{' '}
+            <span className="dot">·</span> Skills <span className="dot">·</span> Kin Agent
           </div>
         </div>
       </section>
@@ -154,14 +154,14 @@ function RouteComponent() {
         <div className="wrap">
           <div className="frow rev">
             <div className="shot">
-              <span className="ph">screenshot · 模型选择 / 健康看板</span>
+              <span className="ph">screenshot · 共享 Project · 团队协作</span>
             </div>
             <div className="ftext">
               <span className="eyebrow">
-                <b>[02]</b> any model
+                <b>[02]</b> co-work
               </span>
-              <h2>{c.concept.p2Title}</h2>
-              <p>{c.concept.p2Desc}</p>
+              <h2>{c.feat.coworkTitle}</h2>
+              <p>{c.feat.coworkDesc}</p>
             </div>
           </div>
         </div>
@@ -172,13 +172,13 @@ function RouteComponent() {
           <div className="frow">
             <div className="ftext">
               <span className="eyebrow">
-                <b>[03]</b> does real work
+                <b>[03]</b> rag
               </span>
-              <h2>{c.features.f3Title}</h2>
-              <p>{c.features.f3Desc}</p>
+              <h2>{c.feat.ragTitle}</h2>
+              <p>{c.feat.ragDesc}</p>
             </div>
             <div className="shot">
-              <span className="ph">screenshot · Artifact 真预览</span>
+              <span className="ph">screenshot · 知识库 · 向量检索</span>
             </div>
           </div>
         </div>
@@ -188,14 +188,48 @@ function RouteComponent() {
         <div className="wrap">
           <div className="frow rev">
             <div className="shot">
-              <span className="ph">screenshot · 每会话独立沙盒</span>
+              <span className="ph">screenshot · OCR · 复杂 PDF / 表格识别</span>
             </div>
             <div className="ftext">
               <span className="eyebrow">
-                <b>[04]</b> sandbox
+                <b>[04]</b> plugins
               </span>
-              <h2>{c.concept.p3Title}</h2>
-              <p>{c.concept.p3Desc}</p>
+              <h2>{c.feat.pluginTitle}</h2>
+              <p>{c.feat.pluginDesc}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="fsec">
+        <div className="wrap">
+          <div className="frow">
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[05]</b> live preview
+              </span>
+              <h2>{c.feat.previewTitle}</h2>
+              <p>{c.feat.previewDesc}</p>
+            </div>
+            <div className="shot">
+              <span className="ph">screenshot · React+Vite 沙盒 · 公网分享</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="fsec dark">
+        <div className="wrap">
+          <div className="frow rev">
+            <div className="shot">
+              <span className="ph">screenshot · 模型选择 / 健康看板</span>
+            </div>
+            <div className="ftext">
+              <span className="eyebrow">
+                <b>[06]</b> any model
+              </span>
+              <h2>{c.concept.p2Title}</h2>
+              <p>{c.concept.p2Desc}</p>
             </div>
           </div>
         </div>
@@ -205,7 +239,7 @@ function RouteComponent() {
       <section className="icp" id="who">
         <div className="wrap">
           <span className="eyebrow">
-            <b>[05]</b> who it's for
+            <b>[07]</b> who it's for
           </span>
           <h2>
             {c.icp.heading}
@@ -243,7 +277,7 @@ function RouteComponent() {
           <div className="lead">
             <div>
               <span className="eyebrow">
-                <b>[06]</b> deploy
+                <b>[08]</b> deploy
               </span>
               <h2>
                 {c.deploy.heading}
@@ -302,7 +336,7 @@ function RouteComponent() {
           </div>
           <div className="frow">
             <div className="fmeta">
-              <b>Kin</b> · self-hosted Claude-Agent workspace
+              <b>Kin</b> · self-hosted AI-Agent workspace
               <br />
               single-org · multi-user · fully-sandboxed · provider-agnostic
               <br />

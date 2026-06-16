@@ -94,12 +94,12 @@ const projectsContent = {
         'zh-Hant': '專案名稱',
       }),
       namePlaceholder: t({
-        en: 'e.g. Oxygenie',
-        'zh-Hans': '例如：Oxygenie',
-        fr: 'ex. Oxygenie',
-        ja: '例：Oxygenie',
-        ko: '예: Oxygenie',
-        'zh-Hant': '例如：Oxygenie',
+        en: 'e.g. Kin',
+        'zh-Hans': '例如：Kin',
+        fr: 'ex. Kin',
+        ja: '例：Kin',
+        ko: '예: Kin',
+        'zh-Hant': '例如：Kin',
       }),
       hint: t({
         en: 'Projects keep your chats, files, and custom instructions together — for ongoing work, or simply to stay organized.',
