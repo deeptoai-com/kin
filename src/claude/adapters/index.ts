@@ -7,6 +7,10 @@
 export {
   runChat,
   cancelActiveRun,
+  // Concurrent sessions (P2): detach the local run without killing the backend
+  // worker (session switch / new chat); unsubscribe a left-behind session's stream.
+  detachActiveRun,
+  unsubscribeSession,
   startPreview,
   stopPreview,
   sharePreview,

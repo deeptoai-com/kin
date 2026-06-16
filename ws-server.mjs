@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Semaphore } from './src/server/concurrency/semaphore.js';
 import { shouldReapIdle } from './src/server/concurrency/idle-reaper.js';
+import { sessionRegistry } from './src/server/concurrency/session-registry.js';
 import { resolveEffectivePermission } from './src/lib/permission-tier.js';
 import { PreviewAuth } from './src/preview/auth.js';
 import { PreviewRuntime } from './src/preview/runtime.js';
@@ -84,6 +85,30 @@ const MAX_CONCURRENT_WORKERS = Math.max(
 );
 const workerSemaphore = new Semaphore(MAX_CONCURRENT_WORKERS);
 console.log(`[WS Server] Max concurrent workers: ${MAX_CONCURRENT_WORKERS}`);
+
+// FR3 (concurrent sessions PRD 2026-06-15) — per-user concurrency cap. The
+// global semaphore above is the HOST ceiling (shared by everyone); this is a
+// fairness cap so a single user can't occupy all 8 slots. A user already running
+// `PER_USER_MAX_WORKERS` sessions queues their next one (FIFO) behind their own
+// running ones. Counted PER USER across all their connections (tabs) via one
+// Semaphore per userId — the registry is the cross-connection truth. Silent init
+// runs (quick metadata loads) are exempt. Acquire order is always user-then-global
+// (no circular wait). userSemaphores grows by at most one small object per distinct
+// user seen this process lifetime (negligible for a self-hosted single-org app).
+const PER_USER_MAX_WORKERS = Math.max(
+  1,
+  parseInt(process.env.PER_USER_MAX_WORKERS || '3', 10) || 3,
+);
+const userSemaphores = new Map(); // userId → Semaphore(PER_USER_MAX_WORKERS)
+function getUserSemaphore(userId) {
+  let sem = userSemaphores.get(userId);
+  if (!sem) {
+    sem = new Semaphore(PER_USER_MAX_WORKERS);
+    userSemaphores.set(userId, sem);
+  }
+  return sem;
+}
+console.log(`[WS Server] Max concurrent workers per user: ${PER_USER_MAX_WORKERS}`);
 
 // S2 — per-worker V8 heap cap. S1 bounds *how many* workers run; S2 bounds *how
 // much* each can grow, so one runaway worker (infinite loop / leak) can't eat the
@@ -388,7 +413,7 @@ async function persistSession(cookie, workspaceSessionId, realSdkSessionId, clau
  * @param {object} ws - The client WebSocket (provides cookie + workspaceSessionId)
  * @param {object} event - The SDK `result` event
  */
-async function recordUsage(ws, event) {
+async function recordUsage(ws, event, sessionId = ws.workspaceSessionId) {
   try {
     const response = await fetch(`${APP_URL}/api/usage`, {
       method: 'POST',
@@ -397,7 +422,10 @@ async function recordUsage(ws, event) {
         cookie: ws.cookie,
       },
       body: JSON.stringify({
-        sessionId: ws.workspaceSessionId ?? null,
+        // Explicit session id (concurrent sessions): the caller passes THIS run's
+        // output session, since ws.workspaceSessionId is connection-level and can
+        // be clobbered by an interleaved run.
+        sessionId: sessionId ?? null,
         usage: event.usage ?? null,
         numTurns: event.num_turns ?? 0,
         totalCostUsd: event.total_cost_usd ?? 0,
@@ -822,6 +850,27 @@ function sendMessage(ws, msg) {
   return 0;
 }
 
+/**
+ * Fan a frame out to every connection currently SUBSCRIBED to a session, and tag
+ * it with the session id so the client can route it to the right conversation
+ * (concurrent sessions / background-continue). The tag is the workspace/output
+ * session id — the same id the client adopts as `currentSessionId` from
+ * session_init — so the adapter matches on it directly. A session's subscribers
+ * are normally just the originating connection (identical to the old single-send
+ * behaviour); after a switch-away/refresh it's whoever is viewing it now (or
+ * nobody, if it's running purely in the background).
+ * @returns {number} the max WS bufferedAmount across subscribers (for backpressure).
+ */
+function fanoutToSession(sessionId, msg) {
+  const tagged = msg.sessionId === undefined ? { ...msg, sessionId } : msg;
+  let buffered = 0;
+  for (const sub of sessionRegistry.subscribers(sessionId)) {
+    const b = sendMessage(sub, tagged);
+    if (b > buffered) buffered = b;
+  }
+  return buffered;
+}
+
 function nextPreviewSeq(ws) {
   ws.__previewSeq = (ws.__previewSeq || 0) + 1;
   return ws.__previewSeq;
@@ -1133,18 +1182,21 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // Session KB scope (面板勾选): forwarded to the worker so kb_search restricts to it.
     kbIds = [],
   } = options;
-  // Kill any existing worker for this connection
-  if (ws.workerProcess) {
-    console.log('[WS Server] Killing existing worker process');
-    // Intentional replace: suppress the close-handler recovery error.
-    ws.workerProcess.__intentionalAbort = true;
-    ws.workerProcess.__terminalSent = true;
-    ws.workerProcess.kill();
-    ws.workerProcess = null;
-  }
+  // Concurrent sessions (PRD 2026-06-15, FR1): we NO LONGER kill a running worker
+  // when a new chat starts. Other sessions keep running in the background and
+  // write their results to the transcript. The only worker we may replace is one
+  // for the SAME output session (a sequential re-run of one conversation) —
+  // handled defensively right before spawn, once outputSessionId is known.
 
   console.log('[WS Server] handleChat called with prompt length:', prompt.length);
   console.log('[WS Server] resumeSessionId:', resumeSessionId || 'none');
+
+  // S1 — permit-leak net. Armed once the concurrency permits are acquired and the
+  // worker is registered, disarmed once the worker's close/error handlers take over
+  // releasing them. If anything throws in between, the outer catch fires this to
+  // free BOTH permits + kill/unregister the orphan (it closes over worker +
+  // outputSessionId, which live inside the try).
+  let releasePermitsOnError = null;
 
   try {
     // Get or generate workspace session ID
@@ -1168,6 +1220,17 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // turn. silentInit (init_session) is exempt — it loads, it doesn't add a user turn.
     const isBranch =
       !silentInit && existingSession && existingSession.userId && existingSession.userId !== ws.userId;
+    // Cross-user isolation: a real chat turn on a session you don't own is redirected
+    // to a fork with a FRESH id (isBranch), so it never touches the owner's session.
+    // But init_session (silentInit) is NOT forked — it would operate on the requested
+    // id directly. Legit viewing of someone else's (shared) session goes through
+    // `resume`, never here, so a silent init on a non-owned session is illegitimate:
+    // refuse it. Without this, a crafted init_session(victimId) would, via the
+    // stale-replace + register below, SIGKILL/hijack the victim's running worker.
+    if (silentInit && existingSession && existingSession.userId && existingSession.userId !== ws.userId) {
+      console.warn(`[WS Server] Rejecting silent init on non-owned session ${resumeSessionId} (owner ${existingSession.userId})`);
+      return;
+    }
     // The OUTPUT session: a fresh id (D2) for a branch, else the resumed/new session itself.
     const outputSessionId = isBranch ? generateSessionId() : workspaceSessionId;
     // What the SDK resumes: for a branch, the SOURCE's real SDK session id (its transcript),
@@ -1367,44 +1430,133 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // P2-2: audit runs that start with elevated (bypass) permissions — these
     // skip per-tool permission prompts, so they are security-relevant.
     if (permissionMode === 'bypassPermissions') {
-      recordAuditEvent(ws.cookie, 'run.bypass_mode', ws.workspaceSessionId, {
+      recordAuditEvent(ws.cookie, 'run.bypass_mode', outputSessionId, {
         allowBash,
         source: organizationId ? 'organization' : 'environment',
       });
     }
 
-    // S1 — acquire a worker permit before spawning. If all slots are busy, this
-    // awaits a free one (FIFO) instead of spawning unboundedly; tell the client
-    // it's queued so the UI can show a waiting state. The window between acquire()
-    // and spawn() below is synchronous (no await), so a held permit always maps to
-    // a spawned worker; the permit is released exactly once in worker 'close'.
+    // Track which session THIS connection is currently driving, so an abort /
+    // approval_response that arrives WITHOUT an explicit sessionId (a pre-P2
+    // client) still targets the right run. (A P2 client sends the sessionId.)
+    ws.activeRunSessionId = outputSessionId;
+
+    // Defensive same-session replace: if a worker is STILL alive for this exact
+    // output session (a sequential re-run that raced its predecessor's close — the
+    // UI normally blocks this by disabling the composer while a turn runs), retire
+    // the stale one. This is the ONLY kill left, and it never touches a DIFFERENT
+    // session. Done BEFORE acquiring permits so the stale worker's close frees its
+    // permit (no self-deadlock if the user is exactly at their cap). __replaced makes
+    // its close handler silent (no spurious 'aborted', no unregister of the new run).
+    // Ownership guard (defense-in-depth): only retire a stale worker that is OURS.
+    // outputSessionId is already own-or-fresh by construction (non-owned turns fork;
+    // non-owned silent inits were rejected above), so this should always hold — but
+    // never SIGKILL another user's worker even if that ever regresses.
+    const staleWorker = sessionRegistry.getWorker(outputSessionId);
+    if (staleWorker && sessionRegistry.ownerOf(outputSessionId) === ws.userId) {
+      console.log(`[WS Server] Replacing stale same-session worker for ${outputSessionId}`);
+      staleWorker.__replaced = true;
+      staleWorker.__intentionalAbort = true;
+      staleWorker.__terminalSent = true;
+      try { staleWorker.kill(); } catch { /* ignore */ }
+    }
+
+    // FR3 — per-user concurrency cap, acquired BEFORE the global permit (always
+    // user-then-global, so no circular wait). A user already at their cap queues
+    // (FIFO) behind their own running sessions. Silent init runs are exempt (quick
+    // metadata loads — blocking them behind 3 chats would make opening a session
+    // hang). Released exactly once in worker 'close'/'error'.
+    const userSem = silentInit ? null : getUserSemaphore(ws.userId);
+    let userPermitReleased = false;
+    const releaseUserPermit = () => {
+      if (userSem && !userPermitReleased) {
+        userPermitReleased = true;
+        userSem.release();
+        // S2 — evict an idle per-user semaphore so the map can't grow unboundedly
+        // (one entry per distinct user, forever). Safe: a later request just creates
+        // a fresh one (count 0 = correct, the user has nothing running). Guard on
+        // identity so we never drop a semaphore another in-flight run is using.
+        if (
+          userSem.activeCount === 0 &&
+          userSem.waitingCount === 0 &&
+          userSemaphores.get(ws.userId) === userSem
+        ) {
+          userSemaphores.delete(ws.userId);
+        }
+      }
+    };
+    if (userSem) {
+      if (userSem.activeCount >= userSem.max) {
+        sendMessage(ws, {
+          type: 'queued',
+          position: userSem.waitingCount + 1,
+          message: '你已有多个会话在运行，这个会话会在前面的完成后开始。',
+          sessionId: outputSessionId,
+        });
+      }
+      await userSem.acquire();
+    }
+    // S1 (inter-acquire NIT): the per-user permit is now held but the GLOBAL one
+    // isn't yet, and the full leak net (which also frees the global permit + worker)
+    // isn't armed until after spawn. Arm a partial net NOW so a throw between the two
+    // acquires still frees the user permit. The full net overwrites this below; both
+    // releases are idempotent, so the handoff can't double-release.
+    releasePermitsOnError = releaseUserPermit;
+
+    // S1 — acquire a GLOBAL worker permit before spawning. If all HOST slots are
+    // busy, this awaits a free one (FIFO) instead of spawning unboundedly; tell the
+    // client it's queued so the UI can show a waiting state. The window between
+    // acquire() and spawn() below is synchronous (no await), so a held permit always
+    // maps to a spawned worker; the permit is released exactly once in worker 'close'.
     if (workerSemaphore.activeCount >= workerSemaphore.max && !silentInit) {
       sendMessage(ws, {
         type: 'queued',
         position: workerSemaphore.waitingCount + 1,
         message: 'Server busy — your request is queued and will start shortly.',
+        sessionId: outputSessionId,
       });
     }
     await workerSemaphore.acquire();
+
+    // S1 — both permits are now held. Define their releases (flag-based) and ARM the
+    // leak net BEFORE spawn, so a throw ANYWHERE in setup frees both permits and
+    // cleans up. `worker` is a `let` assigned at spawn, so the net stays valid even
+    // if a throw beats the spawn (it no-ops the worker cleanup while worker is null).
+    // Disarmed once the worker's close/error handlers take over release.
+    let worker = null;
+    let workerPermitReleased = false;
+    const releaseWorkerPermit = () => {
+      if (!workerPermitReleased) {
+        workerPermitReleased = true;
+        workerSemaphore.release();
+      }
+    };
+    releasePermitsOnError = () => {
+      releaseWorkerPermit();
+      releaseUserPermit();
+      if (worker) {
+        try { worker.kill(); } catch { /* already dead */ }
+        sessionRegistry.unregister(outputSessionId);
+      }
+    };
 
     // Spawn worker process with user-specific CLAUDE_HOME.
     // S2 — cap this worker's V8 heap so a runaway one can't OOM the host.
     const nodeArgs = WORKER_MAX_OLD_SPACE_MB
       ? [`--max-old-space-size=${WORKER_MAX_OLD_SPACE_MB}`, WORKER_PATH]
       : [WORKER_PATH];
-    const worker = spawn('node', nodeArgs, {
+    worker = spawn('node', nodeArgs, {
       env: workerEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    ws.workerProcess = worker;
-    // S1: release this worker's concurrency permit exactly once (in 'close').
-    worker.__permitReleased = false;
-    const releaseWorkerPermit = () => {
-      if (!worker.__permitReleased) {
-        worker.__permitReleased = true;
-        workerSemaphore.release();
-      }
-    };
+    // Concurrent sessions: register the worker in the connection-INDEPENDENT
+    // registry (keyed by the OUTPUT session) and subscribe THIS connection so it
+    // receives the stream. This replaces the single `ws.workerProcess` slot — the
+    // "one worker per connection" assumption we're removing. silentInit runs are
+    // registered too (so abort/routing work uniformly) but flagged silent: excluded
+    // from the per-user cap (FR3) and the running-sessions list (FR4).
+    sessionRegistry.register({ sessionId: outputSessionId, userId: ws.userId, worker, silent: silentInit });
+    sessionRegistry.subscribe(outputSessionId, ws, ws.userId);
     // Risk #10: track whether this run already delivered a terminal frame
     // (done/error/aborted). If the worker dies without one (e.g. a crash), the
     // close handler emits a terminal error so the client never hangs "running".
@@ -1481,6 +1633,14 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
 
     rl.on('line', (line) => {
       try {
+        // S4 — drop output from a worker that's no longer the live one for this
+        // session: if a same-session replace happened (__replaced) or kill silently
+        // failed and a new worker took the slot, a still-alive old worker's frames
+        // would otherwise interleave with the new run's output (same outputSessionId
+        // → same subscribers). The new worker's own frames pass (it IS current).
+        if (worker.__replaced || sessionRegistry.getWorker(outputSessionId) !== worker) {
+          return;
+        }
         const msg = JSON.parse(line);
 
         if (msg.type === 'event') {
@@ -1503,22 +1663,24 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
               sendMessage(ws, { type: 'error', code: 'branch_fork_failed', message: '分支创建失败，请重试。', retriable: true });
               return;
             }
-            // Store SDK's session_id for future resume
-            ws.sdkSessionId = event.session_id;
-            // Store mapping: workspaceSessionId -> sdkSessionId
-            sessionMapping.set(ws.workspaceSessionId, event.session_id);
-            console.log(`[WS Server] Session mapping: ${ws.workspaceSessionId} -> ${event.session_id}`);
+            // 发现 A / concurrent sessions: key everything off the LOCAL
+            // outputSessionId, NOT ws.workspaceSessionId. The connection-level field
+            // is shared mutable state that an interleaved run would clobber, which
+            // would persist/map/index THIS run's events under the WRONG session.
+            // Store mapping: outputSessionId -> real SDK session_id (for resume).
+            sessionMapping.set(outputSessionId, event.session_id);
+            console.log(`[WS Server] Session mapping: ${outputSessionId} -> ${event.session_id}`);
 
-            // Persist session to database (use workspaceSessionId as the identifier)
+            // Persist session to database (use outputSessionId as the identifier)
             // Pass sessionTitle only for new sessions (extracted from first user message)
-            persistSession(ws.cookie, ws.workspaceSessionId, event.session_id, claudeHome, sessionTitle);
+            persistSession(ws.cookie, outputSessionId, event.session_id, claudeHome, sessionTitle);
 
             if (silentInit) {
-              sendMessage(ws, {
+              fanoutToSession(outputSessionId, {
                 type: 'session_metadata',
-                sessionId: ws.workspaceSessionId,
+                sessionId: outputSessionId,
                 metadata: {
-                  session_id: event.session_id || ws.workspaceSessionId,
+                  session_id: event.session_id || outputSessionId,
                   user_id: ws.userId || '',
                   model: event.model || 'unknown',
                   skills: event.skills || [],
@@ -1530,10 +1692,12 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
                 },
               });
             } else {
-              // Send our workspace sessionId to client (they'll use this for resume)
-              sendMessage(ws, {
+              // Tell the client our workspace sessionId (it adopts this as
+              // currentSessionId and the routing key). `sdkSessionId` carries the
+              // REAL SDK id (used for resume) — a distinct field, distinct meaning.
+              fanoutToSession(outputSessionId, {
                 type: 'session_init',
-                sessionId: ws.workspaceSessionId,
+                sessionId: outputSessionId,
                 sdkSessionId: event.session_id,
                 userId: ws.userId,  // Include userId for Skills isolation
               });
@@ -1542,20 +1706,21 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           // P2-1: record per-run usage on the terminal `result` event. Fire-and-
           // forget; applies to silent runs too (they still consume tokens).
           if (event.type === 'result') {
-            recordUsage(ws, event);
+            recordUsage(ws, event, outputSessionId);
             // Conversation search increment (FR2): the turn's transcript is written by now —
             // re-index this session so the new messages become searchable within seconds.
-            void enqueueMessageIndex(ws.userId, ws.workspaceSessionId);
+            void enqueueMessageIndex(ws.userId, outputSessionId);
           }
           if (!silentInit) {
             // Forward the worker's monotonic seq so the client store can order/merge
-            // live deltas deterministically (cowork redesign spec §3).
-            applyBackpressure(sendMessage(ws, { type: 'message', event, seq: msg.seq }));
+            // live deltas deterministically (cowork redesign spec §3). Tagged with the
+            // session id and fanned out to current subscribers (concurrent sessions).
+            applyBackpressure(fanoutToSession(outputSessionId, { type: 'message', event, seq: msg.seq }));
           }
         } else if (msg.type === 'approval_request') {
           // Ask-mode HITL: relay the worker's tool-approval request to the client.
           if (!silentInit) {
-            sendMessage(ws, {
+            fanoutToSession(outputSessionId, {
               type: 'approval_request',
               toolUseID: msg.toolUseID,
               toolName: msg.toolName,
@@ -1569,11 +1734,11 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
         } else if (msg.type === 'done') {
           worker.__terminalSent = true;
           if (!silentInit) {
-            sendMessage(ws, { type: 'done', seq: msg.seq });
+            fanoutToSession(outputSessionId, { type: 'done', seq: msg.seq });
           }
         } else if (msg.type === 'error') {
           worker.__terminalSent = true;
-          sendMessage(ws, {
+          fanoutToSession(outputSessionId, {
             type: 'error',
             code: 'worker_error',
             message: msg.message,
@@ -1601,14 +1766,27 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
 
     // Handle worker exit
     worker.on('close', (code, signal) => {
-      // S1: free the concurrency slot so a queued request can start. Idempotent.
+      // S1/FR3: free the GLOBAL + PER-USER concurrency slots so a queued request
+      // can start. Both idempotent.
       releaseWorkerPermit();
+      releaseUserPermit();
+      // A worker explicitly superseded by a same-session re-run (see the stale
+      // replace before spawn). Its permits are freed above; everything else (the
+      // terminal frame, the registry slot) belongs to the new worker. Stay silent —
+      // timing-independent, so it doesn't matter whether the new worker has
+      // registered yet.
+      if (worker.__replaced) return;
+      // Concurrent sessions: only the CURRENT registered worker for this session
+      // owns its terminal frame + registry slot. Computed BEFORE the try so the
+      // finally can rely on it (defence-in-depth alongside __replaced).
+      const runtime = sessionRegistry.get(outputSessionId);
+      const isCurrent = runtime != null && runtime.worker === worker;
       try {
         console.log('[WS Server] ========== WORKER CLOSE EVENT ==========');
         console.log('[WS Server] Worker PID:', worker.pid);
         console.log('[WS Server] Exit code:', code);
         console.log('[WS Server] Signal:', signal);
-        console.log('[WS Server] User ID:', ws.userId);
+        console.log('[WS Server] User ID:', ws.userId, 'Session:', outputSessionId, 'isCurrent:', isCurrent);
 
         if (signal) {
           // Killed by signal (e.g., abort) - this is expected
@@ -1619,61 +1797,93 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
           console.log('[WS Server] Worker exited normally');
         }
 
-        // Risk #10: if the worker ended WITHOUT delivering a terminal frame and
-        // this was not an intentional abort, the client would otherwise hang
-        // "running" forever. Emit a terminal error so the UI can recover.
-        if (!worker.__terminalSent && !worker.__intentionalAbort && !silentInit) {
-          console.error('[WS Server] Worker closed with no terminal frame; emitting recovery error');
-          sendMessage(ws, {
-            type: 'error',
-            code: 'worker_exited',
-            message: signal
-              ? `The agent process was terminated (signal ${signal}) before completing.`
-              : `The agent process exited unexpectedly (code ${code}) before completing.`,
-            retriable: true,
-          });
-          worker.__terminalSent = true;
+        if (isCurrent) {
+          if (worker.__intentionalAbort && !silentInit) {
+            // User abort: tell whoever is viewing this session that the run stopped
+            // (fanned out → works across the originating tab AND any other viewer).
+            // Mark acked so the abort handler's own close fallback (S3) doesn't
+            // double-send.
+            worker.__abortAcked = true;
+            fanoutToSession(outputSessionId, { type: 'aborted', sessionId: outputSessionId });
+          } else if (!worker.__terminalSent && !silentInit) {
+            // Risk #10: ended WITHOUT a terminal frame and not an intentional abort →
+            // the client would hang "running" forever. Emit a recovery error.
+            console.error('[WS Server] Worker closed with no terminal frame; emitting recovery error');
+            fanoutToSession(outputSessionId, {
+              type: 'error',
+              code: 'worker_exited',
+              message: signal
+                ? `The agent process was terminated (signal ${signal}) before completing.`
+                : `The agent process exited unexpectedly (code ${code}) before completing.`,
+              retriable: true,
+              sessionId: outputSessionId,
+            });
+            worker.__terminalSent = true;
+          }
         }
-
-        ws.workerProcess = null;
-        console.log('[WS Server] Worker process reference cleared');
         console.log('[WS Server] ============================================');
       } catch (closeError) {
         console.error('[WS Server] ========== ERROR IN WORKER CLOSE HANDLER ==========');
         console.error('[WS Server] Close handler error:', closeError);
         console.error('[WS Server] Close handler stack:', closeError.stack);
         console.error('[WS Server] ==================================================');
+      } finally {
+        // Free the session slot (worker is gone — nothing left to stream). Only if
+        // we're still the current worker, so a stale/replaced worker's close can't
+        // unregister the live one. Runs even if the try threw, to avoid a leak.
+        if (isCurrent) sessionRegistry.unregister(outputSessionId);
       }
     });
 
     worker.on('error', (error) => {
-      // S1: on spawn failure 'close' may not fire — release here too (idempotent).
+      // S1/FR3: on spawn failure 'close' may not fire — release both permits here
+      // too (idempotent).
       releaseWorkerPermit();
+      releaseUserPermit();
+      const runtime = sessionRegistry.get(outputSessionId);
+      const isCurrent = runtime != null && runtime.worker === worker;
       try {
         console.error('[WS Server] ========== WORKER ERROR EVENT ==========');
         console.error('[WS Server] Worker PID:', worker.pid);
         console.error('[WS Server] Error:', error);
         console.error('[WS Server] Error stack:', error.stack);
         console.error('[WS Server] Error type:', error.constructor.name);
-        console.error('[WS Server] User ID:', ws.userId);
+        console.error('[WS Server] User ID:', ws.userId, 'Session:', outputSessionId);
         console.error('[WS Server] ===========================================');
 
-        sendMessage(ws, {
-          type: 'error',
-          code: 'worker_spawn_error',
-          message: error.message,
-          retriable: true,
-        });
+        if (isCurrent) {
+          fanoutToSession(outputSessionId, {
+            type: 'error',
+            code: 'worker_spawn_error',
+            message: error.message,
+            retriable: true,
+            sessionId: outputSessionId,
+          });
+        }
       } catch (errorHandlerError) {
         console.error('[WS Server] ========== ERROR IN WORKER ERROR HANDLER ==========');
         console.error('[WS Server] Error handler error:', errorHandlerError);
         console.error('[WS Server] Error handler stack:', errorHandlerError.stack);
         console.error('[WS Server] =========================================================');
+      } finally {
+        // Spawn failed before 'close' could fire: free the slot here (if current).
+        if (isCurrent) sessionRegistry.unregister(outputSessionId);
       }
     });
 
+    // S1: close/error handlers now own permit release — disarm the leak net.
+    releasePermitsOnError = null;
+
   } catch (error) {
     console.error('[WS Server] Chat error:', error);
+    // S1: a throw during setup (after permits were acquired, before the worker's
+    // handlers took over) would otherwise leak both permits + orphan the worker.
+    if (releasePermitsOnError) {
+      try { releasePermitsOnError(); } catch (cleanupErr) {
+        console.error('[WS Server] Permit-net cleanup failed:', cleanupErr);
+      }
+      releasePermitsOnError = null;
+    }
     sendMessage(ws, {
       type: 'error',
       code: 'server_error',
@@ -1751,6 +1961,11 @@ async function handleMessage(ws, msg) {
       }
       // Store the workspace session ID for future chats
       ws.workspaceSessionId = message.sessionId;
+      // Concurrent sessions: viewing a session makes it the pre-P2 abort/approval
+      // fallback target (those actions re-check ownership, so a non-owned id here is
+      // inert). The LIVE-stream subscribe is deferred until AFTER the DB access gate
+      // below (B1 — never attach to a stream before access is confirmed).
+      ws.activeRunSessionId = message.sessionId;
 
       // Load session data from database (includes realSdkSessionId and claudeHomePath)
       let sessionData = null;
@@ -1768,6 +1983,15 @@ async function handleMessage(ws, msg) {
       }
 
       console.log(`[WS Server] Resuming session: ${message.sessionId} -> SDK: ${resumeSdkSessionId || 'not found'}`);
+
+      // B1 (cross-user isolation): only NOW — after loadSessionFromDb confirmed this
+      // user may access the session — attach to its live stream, and only if the
+      // background run is owned by THIS user (the registry enforces ownership too).
+      // A shared session whose run is owned by someone else is loadable but its live
+      // stream stays private. No session row access → no subscribe at all.
+      if (sessionData) {
+        sessionRegistry.subscribe(message.sessionId, ws, ws.userId);
+      }
 
       // Sync user's skills when resuming a session
       if (sessionData?.claudeHomePath) {
@@ -1799,103 +2023,91 @@ async function handleMessage(ws, msg) {
       }
       break;
 
-    case 'abort':
-      console.log('[WS Server] ========== ABORT REQUEST START ==========');
-      console.log('[WS Server] User ID:', ws.userId);
-      console.log('[WS Server] Has worker process:', !!ws.workerProcess);
-      console.log('[WS Server] Worker PID:', ws.workerProcess?.pid);
+    case 'abort': {
+      // Concurrent sessions: abort targets a SPECIFIC session. A P2 client sends
+      // message.sessionId; a pre-P2 client sends none → fall back to the session
+      // this connection is currently driving (ws.activeRunSessionId).
+      const abortSessionId = message.sessionId || ws.activeRunSessionId || null;
+      // B2 (cross-user isolation): only the run's OWNER may abort it. A non-owned
+      // (or absent) session is treated as "nothing to abort for you" below — we ack
+      // so the client clears its own state, but never SIGKILL another user's worker.
+      const abortOwned = !!abortSessionId && sessionRegistry.ownerOf(abortSessionId) === ws.userId;
+      const worker = abortOwned ? sessionRegistry.getWorker(abortSessionId) : null;
+      console.log('[WS Server] ========== ABORT REQUEST ==========', {
+        user: ws.userId,
+        session: abortSessionId,
+        owned: abortOwned,
+        hasWorker: !!worker,
+      });
 
       try {
-        // Cancellation is process-level: the agent loop runs in an isolated child
-        // process, so SIGTERM (then SIGKILL after 2s) is the cancellation mechanism.
-        // The worker handles SIGTERM gracefully (sets isTerminating, exits the loop).
-        // (Removed dead `ws.abortController` branch — it was never assigned.)
-
-        // Gracefully terminate worker process if running
-        if (ws.workerProcess) {
-          const worker = ws.workerProcess;
-          // Intentional abort: we send 'aborted' below; suppress recovery error.
-          worker.__intentionalAbort = true;
-          worker.__terminalSent = true;
-          console.log('[WS Server] Attempting to kill worker process');
-
-          // P2-2: audit the run abort (security-relevant lifecycle action).
-          recordAuditEvent(ws.cookie, 'run.abort', ws.workspaceSessionId, {
-            workerPid: worker.pid ?? null,
-          });
-
-          try {
-            // Send SIGTERM first (graceful shutdown)
-            worker.kill('SIGTERM');
-            console.log('[WS Server] SIGTERM sent successfully');
-          } catch (killError) {
-            console.error('[WS Server] Error sending SIGTERM:', killError);
-            console.error('[WS Server] Kill error stack:', killError.stack);
-          }
-
-          // Set up a timeout to force kill if worker doesn't exit
-          const forceKillTimeout = setTimeout(() => {
-            try {
-              if (ws.workerProcess === worker) {
-                console.log('[WS Server] Worker did not exit, force killing');
-                worker.kill('SIGKILL');
-                console.log('[WS Server] SIGKILL sent successfully');
-              }
-            } catch (forceKillError) {
-              console.error('[WS Server] Error sending SIGKILL:', forceKillError);
-              console.error('[WS Server] Force kill error stack:', forceKillError.stack);
-            }
-          }, 2000);
-
-          // Clear the timeout when worker exits
-          try {
-            worker.once('close', (code, signal) => {
-              try {
-                console.log('[WS Server] Worker closed - code:', code, 'signal:', signal);
-                clearTimeout(forceKillTimeout);
-                console.log('[WS Server] Force kill timeout cleared');
-
-                // Notify client that abort completed
-                console.log('[WS Server] Sending aborted message to client');
-                sendMessage(ws, { type: 'aborted' });
-                console.log('[WS Server] Aborted message sent successfully');
-              } catch (closeHandlerError) {
-                console.error('[WS Server] Error in worker close handler:', closeHandlerError);
-                console.error('[WS Server] Close handler error stack:', closeHandlerError.stack);
-              }
-            });
-            console.log('[WS Server] Worker close listener attached');
-          } catch (listenerError) {
-            console.error('[WS Server] Error attaching close listener:', listenerError);
-            console.error('[WS Server] Listener error stack:', listenerError.stack);
-          }
-        } else {
-          // No worker to abort, just acknowledge
-          console.log('[WS Server] No worker process, sending aborted immediately');
-          sendMessage(ws, { type: 'aborted' });
+        if (!worker) {
+          // Nothing running for that session (or not yours) — ack so the client
+          // clears its state, without touching anyone's worker.
+          sendMessage(ws, { type: 'aborted', sessionId: abortSessionId });
+          break;
         }
 
-        console.log('[WS Server] ========== ABORT REQUEST END ==========');
-      } catch (abortError) {
-        console.error('[WS Server] ========== ABORT ERROR ==========');
-        console.error('[WS Server] Abort handler caught exception:', abortError);
-        console.error('[WS Server] Abort error stack:', abortError.stack);
-        console.error('[WS Server] Abort error type:', abortError.constructor.name);
-        console.error('[WS Server] =====================================');
+        // Cancellation is process-level: the agent loop runs in an isolated child
+        // process, so SIGTERM (then SIGKILL after 2s) is the mechanism. Mark
+        // intentional so the worker's close handler emits 'aborted' (fanned out to
+        // all viewers) and suppresses the recovery error.
+        worker.__intentionalAbort = true;
+        worker.__terminalSent = true;
 
-        // Try to send error message to client
+        // P2-2: audit the run abort (security-relevant lifecycle action).
+        recordAuditEvent(ws.cookie, 'run.abort', abortSessionId, {
+          workerPid: worker.pid ?? null,
+        });
+
+        try {
+          worker.kill('SIGTERM');
+          console.log('[WS Server] SIGTERM sent successfully');
+        } catch (killError) {
+          console.error('[WS Server] Error sending SIGTERM:', killError);
+        }
+
+        // Force-kill if it doesn't exit — but only if it's STILL the registered
+        // worker for that session (never SIGKILL a replacement that took its place).
+        const forceKillTimeout = setTimeout(() => {
+          try {
+            if (sessionRegistry.getWorker(abortSessionId) === worker) {
+              console.log('[WS Server] Worker did not exit, force killing');
+              worker.kill('SIGKILL');
+            }
+          } catch (forceKillError) {
+            console.error('[WS Server] Error sending SIGKILL:', forceKillError);
+          }
+        }, 2000);
+        // S3 — guarantee the requester gets 'aborted'. The shared close handler
+        // emits it for the normal case (and sets __abortAcked). But if this worker
+        // gets superseded by a same-session re-run before it closes (__replaced →
+        // shared handler early-returns), that path is skipped — so ack here as a
+        // fallback. Also clears the force-kill timer.
+        worker.once('close', () => {
+          clearTimeout(forceKillTimeout);
+          if (!worker.__abortAcked) {
+            worker.__abortAcked = true;
+            sendMessage(ws, { type: 'aborted', sessionId: abortSessionId });
+          }
+        });
+        console.log('[WS Server] ========== ABORT REQUEST SCHEDULED ==========');
+      } catch (abortError) {
+        console.error('[WS Server] Abort handler caught exception:', abortError);
         try {
           sendMessage(ws, {
             type: 'error',
             code: 'abort_failed',
             message: `Abort failed: ${abortError.message}`,
             retriable: false,
+            sessionId: abortSessionId,
           });
         } catch (sendError) {
           console.error('[WS Server] Failed to send abort error to client:', sendError);
         }
       }
       break;
+    }
 
     case 'start_preview':
       await handleStartPreview(ws, message);
@@ -1910,9 +2122,16 @@ async function handleMessage(ws, msg) {
       break;
 
     case 'approval_response': {
-      // Ask-mode HITL: forward the user's approve/reject to the active worker's
-      // stdin (newline-delimited). The worker resolves the pending canUseTool.
-      const w = ws.workerProcess;
+      // Ask-mode HITL: forward the user's approve/reject to the worker's stdin
+      // (newline-delimited). The worker resolves the pending canUseTool. Concurrent
+      // sessions: target the worker by session id (explicit, or the connection's
+      // current run) rather than a single per-connection worker.
+      // B2 (cross-user isolation): only the run's OWNER may approve/deny its tools —
+      // otherwise a user could auto-approve a dangerous tool (e.g. Bash) in someone
+      // else's session (privilege escalation). Silently ignore non-owned requests.
+      const approvalSessionId = message.sessionId || ws.activeRunSessionId;
+      const ownsApproval = !!approvalSessionId && sessionRegistry.ownerOf(approvalSessionId) === ws.userId;
+      const w = ownsApproval ? sessionRegistry.getWorker(approvalSessionId) : null;
       if (w && w.stdin && w.stdin.writable && message.toolUseID) {
         w.stdin.write(
           JSON.stringify({
@@ -1924,6 +2143,27 @@ async function handleMessage(ws, msg) {
       }
       break;
     }
+
+    case 'list_running':
+      // FR4: server-authoritative running-state. Returns the user's currently
+      // running (non-silent) session ids so the sidebar can show "running"
+      // spinners that survive a refresh and span tabs. Deliberately NOT a
+      // BUSINESS_MESSAGE_TYPE — a background poll must not reset the idle timer.
+      sendMessage(ws, {
+        type: 'running_sessions',
+        sessionIds: sessionRegistry.listByUser(ws.userId),
+      });
+      break;
+
+    case 'unsubscribe':
+      // Concurrent sessions (P2): the client navigated away from a session — stop
+      // fanning its live frames to this connection (backpressure relief). The worker
+      // keeps running in the background; only this connection's view pointer drops.
+      // No ownership check needed: a connection can only remove ITSELF from a set.
+      if (message.sessionId) {
+        sessionRegistry.unsubscribe(message.sessionId, ws);
+      }
+      break;
 
     case 'ping':
       sendMessage(ws, { type: 'pong' });
@@ -2025,15 +2265,12 @@ wss.on('connection', async (ws, request) => {
 
   ws.on('close', () => {
     console.log(`[WS Server] Client disconnected: ${ws.userId || 'unknown'}`);
-    // Kill worker process if running (socket gone -> nowhere to deliver output).
-    if (ws.workerProcess) {
-      // Intentional teardown: suppress the close-handler recovery frame (the
-      // socket is already closing, so there is no client left to notify).
-      ws.workerProcess.__intentionalAbort = true;
-      ws.workerProcess.__terminalSent = true;
-      ws.workerProcess.kill();
-      ws.workerProcess = null;
-    }
+    // Concurrent sessions (FR1): do NOT kill the user's workers when their socket
+    // closes — they keep running in the BACKGROUND and write to the transcript, so
+    // the user sees the result when they come back (another tab, or a reconnect).
+    // Just drop this connection from every session it was viewing; each worker is
+    // reclaimed on its own completion / abort / idle safeguard.
+    sessionRegistry.unsubscribeConnection(ws);
   });
 
   ws.on('error', (error) => {
@@ -2084,7 +2321,10 @@ const heartbeat = setInterval(() => {
       shouldReapIdle({
         now,
         lastActivityAt: ws.lastActivityAt,
-        hasActiveWorker: !!ws.workerProcess,
+        // Concurrent sessions: "active" = this connection is subscribed to at least
+        // one running session (streaming live output). A run it started but
+        // navigated away from is now owned by the registry, not ws.workerProcess.
+        hasActiveWorker: sessionRegistry.hasActiveForConnection(ws),
         idleTimeoutMs: WS_IDLE_TIMEOUT_MS,
       })
     ) {

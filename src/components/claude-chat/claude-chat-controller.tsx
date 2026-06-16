@@ -55,7 +55,8 @@ import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
 import {
   runChat,
   cancelActiveRun,
-  abort,
+  detachActiveRun,
+  unsubscribeSession,
   getSessionId,
   resumeSession,
   newSession,
@@ -240,11 +241,6 @@ export function ClaudeChatController({
     }
     return false;
   });
-  // Pending session switch confirmation
-  const [pendingSessionSwitch, setPendingSessionSwitch] = useState<{
-    targetSessionId: string | null;
-    isNewSession: boolean;
-  } | null>(null);
   // Track if a session is being created (loading state)
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isInitializingSession, setIsInitializingSession] = useState(false);
@@ -408,6 +404,15 @@ export function ClaudeChatController({
 
   // Perform the actual session switch (after confirmation or if no query running)
   const performSessionSwitch = useCallback(async (sdkSessionId: string | null, isNewSession: boolean) => {
+    // Concurrent sessions (FR1): leaving a running session must NOT kill its backend
+    // worker — it continues in the background and we reconnect on switch-back (FR5).
+    // Detach the local run (stop driving its stream; the worker lives on) and stop
+    // the server fanning its frames to us. Replaces the old abort()-on-switch.
+    const leavingSessionId = getSessionId();
+    detachActiveRun();
+    if (leavingSessionId && leavingSessionId !== sdkSessionId) {
+      unsubscribeSession(leavingSessionId);
+    }
     fireSessionSummaryIfNeeded();
     if (temporarySkills.length > 0) {
       try {
@@ -487,13 +492,9 @@ export function ClaudeChatController({
       return;
     }
 
-    // Check if a query is currently running
-    if (checkIsQueryRunning()) {
-      console.log('[Route] Query running, showing confirmation dialog');
-      setPendingSessionSwitch({ targetSessionId: sdkSessionId, isNewSession: false });
-      return;
-    }
-
+    // Concurrent sessions: switch directly even if a query is running. The old
+    // session keeps running in the background (performSessionSwitch detaches the
+    // local run without killing the worker); no interrupt dialog.
     await performSessionSwitch(sdkSessionId, false);
   }, [currentSessionId, performSessionSwitch]);
 
@@ -504,13 +505,8 @@ export function ClaudeChatController({
       console.log('[Route] Already on a blank new chat, skipping create');
       return;
     }
-    // Check if a query is currently running
-    if (checkIsQueryRunning()) {
-      console.log('[Route] Query running, showing confirmation dialog for new session');
-      setPendingSessionSwitch({ targetSessionId: null, isNewSession: true });
-      return;
-    }
-
+    // Concurrent sessions: open a new chat directly even while a query runs; the
+    // running session continues in the background (no interrupt dialog).
     performSessionSwitch(null, true);
   }, [performSessionSwitch, newChat]);
 
@@ -536,13 +532,12 @@ export function ClaudeChatController({
   useEffect(() => {
     if (!newChat || newChatResetRef.current) return;
     newChatResetRef.current = true;
-    // A previous turn is still streaming (navigated here mid-run): reuse the existing
-    // interrupt/cancel dialog instead of silently clearing it — the same protection the
-    // eager arm path had via handleNewSession's running-query guard.
-    if (checkIsQueryRunning()) {
-      setPendingSessionSwitch({ targetSessionId: null, isNewSession: true });
-      return;
-    }
+    // Concurrent sessions: a previous turn still streaming when we land on a blank
+    // new chat no longer interrupts it — detach the local run (the worker continues
+    // in the background, FR1) and stop its fan-out, then reset to the blank composer.
+    const leavingSessionId = getSessionId();
+    detachActiveRun();
+    if (leavingSessionId) unsubscribeSession(leavingSessionId);
     fireSessionSummaryIfNeeded();
     const { temporarySkills: leftoverTempSkills } = useChatSessionStore.getState();
     if (leftoverTempSkills.length > 0) {
@@ -611,26 +606,8 @@ export function ClaudeChatController({
     };
   }, []);
 
-  const handleCancelSwitch = useCallback(() => {
-    console.log('[Route] User cancelled session switch');
-    setPendingSessionSwitch(null);
-  }, []);
-
-  const handleInterruptSwitch = useCallback(async () => {
-    if (!pendingSessionSwitch) {
-      return;
-    }
-    const { targetSessionId, isNewSession } = pendingSessionSwitch;
-    console.log('[Route] User chose to interrupt and switch', { targetSessionId, isNewSession });
-    setPendingSessionSwitch(null);
-    notifyUserAbort();
-    try {
-      await abort();
-    } catch (error) {
-      console.warn('[Route] Failed to send abort signal:', error);
-    }
-    await performSessionSwitch(targetSessionId, isNewSession);
-  }, [pendingSessionSwitch, performSessionSwitch]);
+  // (Concurrent sessions: the interrupt/cancel session-switch dialog is gone —
+  // switching no longer stops the running session, so there's nothing to confirm.)
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -775,34 +752,6 @@ export function ClaudeChatController({
           </div>
         </div>
 
-        {pendingSessionSwitch && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="mx-4 max-w-md rounded-xl bg-card p-6 shadow-xl">
-              <h3 className="mb-3 text-lg font-semibold text-foreground">
-                {content.sessionSwitch.title}
-              </h3>
-              <p className="mb-6 text-muted-foreground">
-                {content.sessionSwitch.message}
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleInterruptSwitch}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                >
-                  {content.sessionSwitch.interrupt}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelSwitch}
-                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-                >
-                  {content.sessionSwitch.cancel}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -845,9 +794,6 @@ export function ClaudeChatController({
               permissionInfo={permissionInfo}
               isInitializingSession={isInitializingSession}
               isCreatingSession={isCreatingSession}
-              pendingSessionSwitch={pendingSessionSwitch}
-              handleCancelSwitch={handleCancelSwitch}
-              handleInterruptSwitch={handleInterruptSwitch}
               showInternalSessionList={showInternalSessionList}
               newChat={newChat}
               ensureSession={ensureSessionForSend}
@@ -926,12 +872,6 @@ const MainContent: FC<{
   permissionInfo: PermissionInfo;
   isInitializingSession: boolean;
   isCreatingSession: boolean;
-  pendingSessionSwitch: {
-    targetSessionId: string | null;
-    isNewSession: boolean;
-  } | null;
-  handleCancelSwitch: () => void;
-  handleInterruptSwitch: () => void;
   showInternalSessionList: boolean;
   newChat: boolean;
   ensureSession: () => Promise<void>;
@@ -952,9 +892,6 @@ const MainContent: FC<{
   permissionInfo,
   isInitializingSession,
   isCreatingSession,
-  pendingSessionSwitch,
-  handleCancelSwitch,
-  handleInterruptSwitch,
   showInternalSessionList,
   newChat,
   ensureSession,
@@ -1058,35 +995,6 @@ const MainContent: FC<{
           )}
         </div>
       </div>
-
-      {pendingSessionSwitch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 max-w-md rounded-xl bg-card p-6 shadow-xl">
-            <h3 className="mb-3 text-lg font-semibold text-foreground">
-              {content.sessionSwitch.title}
-            </h3>
-            <p className="mb-6 text-muted-foreground">
-              {content.sessionSwitch.message}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleInterruptSwitch}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                {content.sessionSwitch.interrupt}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelSwitch}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {content.sessionSwitch.cancel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };

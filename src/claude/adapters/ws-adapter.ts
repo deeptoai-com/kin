@@ -111,21 +111,30 @@ type InboundMessage =
   | { type: 'init_session'; sessionId: string }
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string; model?: string; kbIds?: string[] }
   | { type: 'resume'; sessionId: string }
-  | { type: 'abort' }
+  // Concurrent sessions: abort targets a specific session; unsubscribe stops the
+  // server fanning a left-behind session's live frames to this connection.
+  | { type: 'abort'; sessionId?: string }
+  | { type: 'unsubscribe'; sessionId: string }
+  | { type: 'list_running' }
   | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live'; force?: boolean }
   | { type: 'stop_preview'; sessionId?: string }
   | { type: 'share_preview'; previewId: string; sessionId?: string }
-  | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny' }
+  | { type: 'approval_response'; toolUseID: string; decision: 'allow' | 'deny'; sessionId?: string }
   | { type: 'ping' };
 
+// Concurrent sessions: stream frames now carry the workspace `sessionId` they
+// belong to, so the adapter routes them to the right conversation (and drops
+// frames for background sessions the user isn't viewing).
 type OutboundMessage =
   | { type: 'session_init'; sessionId: string; sdkSessionId: string | null; userId?: string }
   | { type: 'session_metadata'; sessionId: string; metadata: SessionMetadata }
-  | { type: 'message'; event: SDKMessage; seq?: number }
+  | { type: 'message'; event: SDKMessage; seq?: number; sessionId?: string }
   | { type: 'messages_loaded'; messages: StorageSDKMessage[] }
-  | { type: 'error'; code: string; message: string; retriable: boolean }
-  | { type: 'done'; seq?: number }
-  | { type: 'aborted' }
+  | { type: 'error'; code: string; message: string; retriable: boolean; sessionId?: string }
+  | { type: 'done'; seq?: number; sessionId?: string }
+  | { type: 'aborted'; sessionId?: string }
+  | { type: 'queued'; position?: number; message?: string; sessionId?: string }
+  | { type: 'running_sessions'; sessionIds: string[] }
   | { type: 'preview_state'; state: PreviewState; seq?: number }
   | {
       type: 'approval_request';
@@ -136,6 +145,7 @@ type OutboundMessage =
       description?: string | null;
       input?: Record<string, unknown>;
       seq?: number;
+      sessionId?: string;
     }
   | { type: 'pong' };
 
@@ -361,6 +371,11 @@ function buildAttachmentsBlock(attachments: AttachmentDescriptor[]): string {
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
+// Concurrent sessions (FR4): poll the server's running set so the sidebar stays
+// accurate across tabs (another tab starting a run doesn't push to us) and refresh.
+// Reactive lifecycle frames keep it prompt between polls; this is the safety net.
+let runningSessionsPoll: ReturnType<typeof setInterval> | null = null;
+const RUNNING_SESSIONS_POLL_MS = 8000;
 let currentSessionId: string | undefined;
 let currentUserId: string | undefined;  // Current user ID for Skills isolation
 let reconnectAttempts = 0;
@@ -501,6 +516,12 @@ function getWebSocket(): Promise<WebSocket> {
     ws.onopen = () => {
       console.log('[WS Adapter] Connected');
       reconnectAttempts = 0;
+      // FR4: get the running set immediately (correct right after refresh/reconnect),
+      // then keep a light poll going as the cross-tab safety net.
+      requestRunningSessions();
+      if (!runningSessionsPoll) {
+        runningSessionsPoll = setInterval(requestRunningSessions, RUNNING_SESSIONS_POLL_MS);
+      }
       resolve(ws!);
     };
 
@@ -570,10 +591,19 @@ function getWebSocket(): Promise<WebSocket> {
           return;
         }
 
-        // Ask-mode HITL: a tool-approval request arrives mid-run (outside the
-        // per-run messageHandler queue). Push it to the store so the UI can prompt;
-        // the user's decision goes back via respondApproval().
+        // Concurrent sessions (FR4): server-authoritative running set. Replace the
+        // store's set so the sidebar shows "running" spinners that survive refresh
+        // and span tabs. Persistent socket (outside any run).
+        if (msg.type === 'running_sessions') {
+          useChatSessionStore.getState().setRunningSessionIds(msg.sessionIds);
+          return;
+        }
+
+        // Ask-mode HITL: a tool-approval request arrives mid-run. Only prompt for
+        // the session the user is VIEWING — a background session's approval must not
+        // pop over the foreground conversation (concurrent sessions).
         if (msg.type === 'approval_request') {
+          if (msg.sessionId && msg.sessionId !== currentSessionId) return;
           useChatSessionStore.getState().addPendingApproval({
             toolUseID: msg.toolUseID,
             toolName: msg.toolName,
@@ -585,7 +615,46 @@ function getWebSocket(): Promise<WebSocket> {
           return;
         }
 
-        // Forward to current handler
+        // Concurrent sessions — per-session routing for the streaming lifecycle
+        // frames. Each carries the workspace sessionId it belongs to (P1). We render
+        // only the foreground session; background sessions update the running set but
+        // are not drawn live (MVP / Owner decision). Terminal frames still route so
+        // the foreground refresh (FR5) and the sidebar both react.
+        if (msg.type === 'message' || msg.type === 'done' || msg.type === 'aborted' || msg.type === 'error') {
+          const frameSessionId = msg.sessionId;
+          const isForCurrent = !frameSessionId || frameSessionId === currentSessionId;
+          const store = useChatSessionStore.getState();
+
+          // Running-state reactivity: a live `message` proves the session is running;
+          // a terminal frame ends it. Keeps the sidebar prompt between list_running
+          // polls (which remain the cross-tab/cross-refresh source of truth).
+          if (frameSessionId) {
+            if (msg.type === 'message') store.addRunningSession(frameSessionId);
+            else store.removeRunningSession(frameSessionId); // done / aborted / error
+          }
+
+          // FR5 (Option 2 — snapshot + completion refresh): the session we're VIEWING
+          // finished while we weren't the one locally driving it (we switched back to
+          // a background run, or another tab/agent finished it) → reload its transcript
+          // so the final output shows. An active local run (isQueryRunning) owns its
+          // own completion via the run loop below, so skip then.
+          if (isForCurrent && (msg.type === 'done' || msg.type === 'aborted') && !isQueryRunning && currentSessionId) {
+            console.log('[WS Adapter] Foreground background-run finished → refreshing transcript:', currentSessionId);
+            void resumeSession(currentSessionId);
+            return;
+          }
+
+          // Background session (not viewed): lifecycle recorded above; nothing to draw.
+          if (!isForCurrent) return;
+
+          // Foreground frame → the active run's handler (renders message/done/error).
+          if (messageHandler) messageHandler(msg);
+          return;
+        }
+
+        // Everything else (session_metadata, queued, pong, …) → forward as before.
+        // session_metadata's own consumers (createSession/initSession temp handlers)
+        // self-filter by sessionId, so no routing needed here.
         if (messageHandler) {
           messageHandler(msg);
         }
@@ -649,15 +718,55 @@ export async function respondApproval(toolUseID: string, decision: 'allow' | 'de
 }
 
 /**
- * Abort current operation
+ * Abort the current operation on the SERVER (kills the worker for the session
+ * we're driving). Concurrent sessions: target the current session explicitly so
+ * we never stop someone else's / another session's run (the server also re-checks
+ * ownership). The local stream loop is stopped separately by the AbortController.
  */
 export async function abort(): Promise<void> {
   console.log('[WS Adapter] ⚠️ ABORT CALLED - Stack trace:', new Error().stack);
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log('[WS Adapter] Sending abort message to server');
-    ws.send(JSON.stringify({ type: 'abort' }));
+    console.log('[WS Adapter] Sending abort message to server for', currentSessionId);
+    ws.send(JSON.stringify({ type: 'abort', sessionId: currentSessionId }));
   } else {
     console.log('[WS Adapter] WebSocket not open, cannot send abort');
+  }
+}
+
+/**
+ * Concurrent sessions (FR1): detach the in-flight LOCAL run without stopping the
+ * backend worker. Used when switching away from / opening a new chat over a running
+ * session — the old session keeps running in the background; we just stop driving
+ * its stream locally so a new session can take over the single foreground view.
+ * (Contrast cancelActiveRun(), the Stop button, which DOES kill the worker.)
+ */
+export function detachActiveRun(): void {
+  notifyUserAbort();
+  // Break the local generator loop (abortHandler no longer sends a WS abort), so
+  // the run gate releases and messageHandler clears — but the worker lives on.
+  activeRunAbort?.abort();
+}
+
+/**
+ * Concurrent sessions: tell the server to stop fanning a session's live frames to
+ * this connection (we've navigated away from it). The worker keeps running; we just
+ * unsubscribe. The server reclaims nothing here — it's pure backpressure relief.
+ */
+export function unsubscribeSession(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'unsubscribe', sessionId }));
+  }
+}
+
+/**
+ * Concurrent sessions (FR4): ask the server which of THIS user's sessions are
+ * running, so the sidebar can show "running" indicators that survive refresh and
+ * span tabs. Reply arrives as a `running_sessions` frame (handled on the socket).
+ */
+export function requestRunningSessions(): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'list_running' }));
   }
 }
 
@@ -762,6 +871,10 @@ export function newSession(): void {
  * Close WebSocket connection
  */
 export function disconnect(): void {
+  if (runningSessionsPoll) {
+    clearInterval(runningSessionsPoll);
+    runningSessionsPoll = null;
+  }
   if (ws) {
     ws.close(1000, 'User disconnect');
     ws = null;
@@ -826,10 +939,13 @@ const ClaudeAgentWSAdapter: ChatModelAdapter = {
       let error: Error | null = null;
       let isAborted = false;
 
-      // 3. Set up abort handler
+      // 3. Set up abort handler.
+      // Local-only stop: break THIS run's stream loop. The WS abort (kill the
+      // backend worker) is the explicit caller's job now — cancelActiveRun() (Stop
+      // button) sends it; detachActiveRun() (session switch) does NOT, so the session
+      // keeps running in the background (concurrent sessions, FR1).
       const abortHandler = () => {
         isAborted = true;
-        abort();
         if (resolveNext) {
           resolveNext();
           resolveNext = null;

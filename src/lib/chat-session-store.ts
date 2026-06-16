@@ -182,6 +182,13 @@ interface ChatSessionState {
   // Queue count: number of pending runs waiting to be processed
   queueCount: number;
 
+  // Concurrent sessions (FR4): server-authoritative set of THIS user's sessions
+  // that currently have a running worker. Drives the sidebar "running" indicator.
+  // Sourced from `list_running` (cross-tab/cross-refresh accurate) + kept fresh by
+  // live lifecycle frames. Keyed by workspace sessionId (= a session's sdkSessionId
+  // column / the id in the rail).
+  runningSessionIds: string[];
+
   // Skills auto-enabled for current session (from templates)
   temporarySkills: string[];
 
@@ -232,6 +239,11 @@ interface ChatSessionState {
   setLastStructuredOutput: (data: unknown | null) => void;
   setShowThinking: (show: boolean) => void;
   setQueueCount: (count: number) => void;
+  // Concurrent sessions (FR4): replace the running set (from list_running), or
+  // nudge a single session in/out as live lifecycle frames arrive.
+  setRunningSessionIds: (sessionIds: string[]) => void;
+  addRunningSession: (sessionId: string) => void;
+  removeRunningSession: (sessionId: string) => void;
   clearMessages: () => void;
   addTemporarySkill: (skillSlug: string) => void;
   clearTemporarySkills: () => void;
@@ -485,6 +497,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
+  runningSessionIds: [], // Concurrent sessions (FR4): sessions with a live worker
   temporarySkills: [],
   selectedTier: 'act' as const, // default: 执行(Act) — full capability, sandbox is the guard
   selectedModelId: undefined,
@@ -617,6 +630,28 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setQueueCount: (count) => {
     set({ queueCount: count });
+  },
+
+  setRunningSessionIds: (sessionIds) => {
+    set({ runningSessionIds: sessionIds });
+  },
+
+  addRunningSession: (sessionId) => {
+    if (!sessionId) return;
+    set((state) =>
+      state.runningSessionIds.includes(sessionId)
+        ? state
+        : { runningSessionIds: [...state.runningSessionIds, sessionId] }
+    );
+  },
+
+  removeRunningSession: (sessionId) => {
+    if (!sessionId) return;
+    set((state) =>
+      state.runningSessionIds.includes(sessionId)
+        ? { runningSessionIds: state.runningSessionIds.filter((id) => id !== sessionId) }
+        : state
+    );
   },
 
   clearMessages: () => {

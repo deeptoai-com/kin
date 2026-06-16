@@ -180,6 +180,23 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Wall-clock safety valve (S5 / orphan-worker reclamation): hard-cap how long any
+// single run may execute. With concurrent sessions, a worker now survives its
+// originating connection closing (background continue) — so a stuck or never-ending
+// run could otherwise hold a concurrency slot until the process dies. On expiry we
+// behave like a SIGTERM (ws-server sees the close with no terminal frame and emits a
+// recovery error to current viewers). Opt-in; default 0 = disabled, so normal long
+// background tasks are unaffected unless an operator sets AGENT_WALLCLOCK_TIMEOUT_MS.
+if (WALLCLOCK_TIMEOUT_MS > 0) {
+  const wallclockTimer = setTimeout(() => {
+    console.error(`[Worker] Wall-clock limit ${WALLCLOCK_TIMEOUT_MS}ms reached — force-stopping run`);
+    isTerminating = true;
+    setTimeout(() => process.exit(0), 100);
+  }, WALLCLOCK_TIMEOUT_MS);
+  // Don't let the timer keep the event loop alive past a natural, earlier exit.
+  if (typeof wallclockTimer.unref === 'function') wallclockTimer.unref();
+}
+
 // --- stdin: newline-delimited control channel (kept open for Ask-mode HITL) ---
 // First line = the initial query request → startRun(). Subsequent lines = control
 // messages delivered mid-run by ws-server (e.g. approval_response). ws-server now

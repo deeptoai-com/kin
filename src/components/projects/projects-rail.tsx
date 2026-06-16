@@ -27,7 +27,31 @@ import { ProjectSettingsDialog } from './project-settings-dialog';
 import { useProjects, isShared, type ProjectDTO } from '~/lib/hooks/use-projects';
 import { listProjectSessions } from '~/server/function/projects.server';
 import { useRailStore } from '~/lib/stores/rail-store';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 import { cn, toLocalizedString } from '~/lib/utils';
+
+/**
+ * Concurrent sessions (FR4): a small pulsing green dot at the end of a session row
+ * marking it as currently running in the background (Owner-approved "option B").
+ * Sits in the row's `group/sess relative` wrapper at the far right; fades out on
+ * hover so the row's ⋯ menu takes the slot. Driven by the store's runningSessionIds
+ * (server-authoritative via list_running + live frames), so it's correct across
+ * tabs and survives a refresh.
+ */
+function RunningDot() {
+  return (
+    <span
+      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 transition-opacity group-hover/sess:opacity-0"
+      aria-label="运行中"
+      title="运行中"
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+      </span>
+    </span>
+  );
+}
 
 interface RecentSession {
   id: string;
@@ -58,6 +82,8 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
   const content = useIntlayer('projects');
   const navigate = useNavigate();
   const collapsed = useRailStore((s) => s.collapsed);
+  // Concurrent sessions (FR4): which of this user's sessions are running now.
+  const runningSessionIds = useChatSessionStore((s) => s.runningSessionIds);
   const { projects, isLoading: projectsLoading, ensureDefault, createProject } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -273,6 +299,7 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
                         favorite
                       />
                     </div>
+                    {runningSessionIds.includes(s.sdkSessionId) && <RunningDot />}
                   </div>
                 );
               })}
@@ -311,6 +338,7 @@ export function ProjectsRail({ activeProjectId }: ProjectsRailProps) {
                     personalLabel={toLocalizedString(content.rail.personal)}
                   />
                 </div>
+                {runningSessionIds.includes(session.sdkSessionId) && <RunningDot />}
               </div>
             ))}
           </div>
@@ -356,6 +384,8 @@ function ProjectTreeRow({
   const shared = isShared(project);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const fetchSessions = useServerFn(listProjectSessions);
+  // Concurrent sessions (FR4): running indicator for this project's chats.
+  const runningSessionIds = useChatSessionStore((s) => s.runningSessionIds);
 
   const { data: sessions, isLoading } = useQuery<ProjectSessionRow[]>({
     queryKey: ['project-sessions', project.id],
@@ -430,6 +460,7 @@ function ProjectTreeRow({
                       personalLabel={personalLabel}
                     />
                   </div>
+                  {runningSessionIds.includes(s.sdkSessionId) && <RunningDot />}
                 </div>
               ))}
               {list.length > PROJECT_SESSION_LIMIT && (
