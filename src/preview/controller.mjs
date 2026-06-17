@@ -404,11 +404,11 @@ async function startPreview(body) {
       });
 
   // Serve dir. Build apps serve their output dir (default `dist`). No-build static
-  // serves the manifest dir itself — outputDir may be '' (the workdir root, where
-  // index.html lives), so DON'T fall back to 'dist' in that case.
-  const outputDir = body.manifest?.noBuild
-    ? (body.manifest.outputDir || '')
-    : (body.manifest.outputDir || 'dist');
+  // serves the appWorkdir ITSELF — `appWorkdir` already = {workspace}/rootDir (where
+  // index.html was detected), so we must NOT append outputDir. (Detection set
+  // outputDir = rootDir, which would double the path → e.g.
+  // tiny-world-builder/tiny-world-builder → 404.) Ignore outputDir for no-build.
+  const outputDir = body.manifest?.noBuild ? '' : (body.manifest.outputDir || 'dist');
   const previewRoot = path.posix.join(workdir, outputDir);
   const logPath = path.posix.join(workdir, '.oxygenie/preview.log');
   const pidPath = path.posix.join(workdir, '.oxygenie/preview.pid');

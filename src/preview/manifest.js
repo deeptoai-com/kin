@@ -186,7 +186,6 @@ export async function normalizeManifest(workspacePath, manifest) {
   // — only the FS-fenced static server, pointed at the served directory.
   if (manifest.noBuild === true) {
     const noBuildRoot = normalizeRelativePath(manifest.rootDir ?? '', '');
-    const serveDir = normalizeRelativePath(manifest.outputDir ?? noBuildRoot, noBuildRoot);
     return {
       rootDir: noBuildRoot,
       title: readString(manifest.title ?? manifest.name, 'Static Preview'),
@@ -197,8 +196,10 @@ export async function normalizeManifest(workspacePath, manifest) {
       installCommand: '',
       buildCommand: '',
       devCommand: '',
-      // '' = serve the workspace/rootDir root itself (where index.html lives).
-      outputDir: serveDir,
+      // The served dir IS the appWorkdir (= workspace/rootDir, where index.html lives);
+      // rootDir already applies it, so outputDir stays '' (controller serves workdir).
+      // NEVER set this to rootDir — that doubles the path → 404.
+      outputDir: '',
       port: readPort(manifest.port, DEFAULT_STATIC_PORT),
       entryFiles: ['index.html'],
     };
