@@ -180,6 +180,40 @@ export function useSessionFiles(): SessionFile[] {
   return useMemo(() => selectSessionFiles(messages), [messages]);
 }
 
+/**
+ * The REAL workspace file tree for a session, read from the sandbox FS via
+ * /api/workspace/:id/files — not scraped from Write/Edit messages. This shows
+ * EVERYTHING in the workspace (bash-cloned repos, uploads, generated output),
+ * which the message-derived `useSessionFiles` cannot see. Fetched on demand
+ * (when `enabled`, e.g. the Files tab is open) and re-fetched on session change.
+ */
+export function useWorkspaceFiles(sessionId: string | null, enabled: boolean): SessionFile[] {
+  const [files, setFiles] = useState<SessionFile[]>([]);
+  useEffect(() => {
+    if (!enabled || !sessionId) {
+      setFiles([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/workspace/${sessionId}/files`)
+      .then((r) => (r.ok ? r.json() : { files: [] }))
+      .then((data: { files?: unknown }) => {
+        if (cancelled) return;
+        const list = Array.isArray(data.files) ? (data.files as string[]) : [];
+        setFiles(
+          list.map((p) => ({ path: p, fileName: p.split('/').pop() || p, tool: 'fs' })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setFiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, enabled]);
+  return files;
+}
+
 // ───────────────────────── ④ Context ─────────────────────────
 
 export interface SessionContextInfo {

@@ -19,13 +19,15 @@
  * moved into intlayer content when the sections are actually wired up.
  */
 
-import { useState, type FC, type ReactNode } from 'react';
-import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw } from 'lucide-react';
+import { useState, useEffect, type FC, type ReactNode } from 'react';
+import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw, Play, ExternalLink } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { startPreview } from '~/claude/adapters';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 import {
   useSessionTodos,
   useSessionSubAgents,
-  useSessionFiles,
+  useWorkspaceFiles,
   useSessionContext,
   useSessionRagTraces,
   type TodoItem,
@@ -189,7 +191,77 @@ const SubAgentList: FC<{ subAgents: SubAgentItem[] }> = ({ subAgents }) => (
   </div>
 );
 
-/** ③ Files — workspace files the agent wrote/edited this session. */
+/**
+ * ③ Files tab — the REAL workspace tree + a session-level「运行预览」trigger.
+ *
+ * The trigger appears whenever the workspace has something previewable (an
+ * index.html to serve, or a package.json to build) — decoupled from the old
+ * "only on an Agent-generated artifact" gate, so a bash-cloned repo or any
+ * workspace can be run. It drives the same static preview backend (build→dist
+ * for bundler apps, no-build serve-as-is for plain frontends).
+ */
+const FilesTab: FC<{ files: SessionFile[]; sessionId: string | null }> = ({ files, sessionId }) => {
+  const preview = useChatSessionStore((s) => s.previewState);
+  const [starting, setStarting] = useState(false);
+  useEffect(() => {
+    if (preview?.status) setStarting(false);
+  }, [preview?.status]);
+
+  const status = preview?.status;
+  const busy = starting || status === 'detecting' || status === 'installing' || status === 'building';
+  const liveUrl = status === 'ready' ? preview?.url : undefined;
+  const previewable = files.some((f) => /(^|\/)(index\.html|package\.json)$/i.test(f.path));
+
+  const run = () => {
+    setStarting(true);
+    void startPreview(sessionId ?? undefined, 'static', { force: Boolean(liveUrl) }).catch(() =>
+      setStarting(false),
+    );
+  };
+
+  return (
+    <div className="flex min-h-full flex-col">
+      {previewable && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
+          <button
+            type="button"
+            onClick={run}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {busy ? '构建中…' : liveUrl ? '重新构建' : '运行预览'}
+          </button>
+          {liveUrl && (
+            <a
+              href={liveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+            >
+              打开 <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+          {status === 'error' && (
+            <span className="truncate text-xs text-red-600" title={preview?.error}>
+              预览失败
+            </span>
+          )}
+        </div>
+      )}
+      {files.length > 0 ? (
+        <FilesList files={files} />
+      ) : (
+        <EmptyState
+          title="No files yet"
+          hint="Everything in this session's workspace — agent-written, bash-cloned, or uploaded — lists here."
+        />
+      )}
+    </div>
+  );
+};
+
+/** Files list — workspace files for this session (real FS). */
 const FilesList: FC<{ files: SessionFile[] }> = ({ files }) => (
   <div className="flex h-full flex-col">
     <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -377,7 +449,7 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('progress');
   const todoSummary = useSessionTodos();
   const subAgents = useSessionSubAgents();
-  const files = useSessionFiles();
+  const files = useWorkspaceFiles(currentSessionId, activeTab === 'files');
   const context = useSessionContext();
   // Retrieval is DB-backed — fetch only when its tab is open (and a session exists).
   const ragTraces = useSessionRagTraces(currentSessionId, activeTab === 'retrieval');
@@ -436,15 +508,7 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
               hint="When the agent delegates work via the Task tool, each sub-agent shows here with live status."
             />
           ))}
-        {activeTab === 'files' &&
-          (files.length > 0 ? (
-            <FilesList files={files} />
-          ) : (
-            <EmptyState
-              title="No files yet"
-              hint="Files the agent writes or edits in this session's workspace will be listed here."
-            />
-          ))}
+        {activeTab === 'files' && <FilesTab files={files} sessionId={currentSessionId} />}
         {activeTab === 'context' &&
           (context ? (
             <ContextView ctx={context} />
