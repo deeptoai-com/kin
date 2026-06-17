@@ -195,14 +195,25 @@ export function useWorkspaceFiles(sessionId: string | null, enabled: boolean): S
       return;
     }
     let cancelled = false;
-    fetch(`/api/workspace/${sessionId}/files`)
+    // Use the session-scoped route: it scans the whole session dir and reliably
+    // resolves the session (the workspace-only route came back empty for some
+    // sessions). It returns metadata rows under `workspace/…`; keep only real files
+    // under workspace/ and strip that prefix for clean, workspace-relative paths
+    // (which the /api/workspace content route — used for click-to-open — expects).
+    fetch(`/api/session/${sessionId}/files`)
       .then((r) => (r.ok ? r.json() : { files: [] }))
-      .then((data: { files?: unknown }) => {
+      .then((data: { files?: Array<{ path?: unknown; type?: unknown }> }) => {
         if (cancelled) return;
-        const list = Array.isArray(data.files) ? (data.files as string[]) : [];
-        setFiles(
-          list.map((p) => ({ path: p, fileName: p.split('/').pop() || p, tool: 'fs' })),
-        );
+        const rows = Array.isArray(data.files) ? data.files : [];
+        const mapped: SessionFile[] = [];
+        for (const f of rows) {
+          if (!f || f.type !== 'file' || typeof f.path !== 'string') continue;
+          if (!f.path.startsWith('workspace/')) continue;
+          const path = f.path.replace(/^workspace\//, '');
+          if (!path) continue;
+          mapped.push({ path, fileName: path.split('/').pop() || path, tool: 'fs' });
+        }
+        setFiles(mapped);
       })
       .catch(() => {
         if (!cancelled) setFiles([]);

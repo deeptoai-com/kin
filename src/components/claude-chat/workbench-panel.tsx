@@ -24,6 +24,7 @@ import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Tel
 import { cn } from '~/lib/utils';
 import { startPreview } from '~/claude/adapters';
 import { useChatSessionStore } from '~/lib/chat-session-store';
+import { useWorkbenchUI } from '~/lib/stores/workbench-ui-store';
 import {
   useSessionTodos,
   useSessionSubAgents,
@@ -250,40 +251,50 @@ const FilesTab: FC<{ files: SessionFile[]; sessionId: string | null }> = ({ file
         </div>
       )}
       {files.length > 0 ? (
-        <FilesList files={files} />
+        <FilesList files={files} sessionId={sessionId} />
       ) : (
         <EmptyState
           title="No files yet"
-          hint="Everything in this session's workspace — agent-written, bash-cloned, or uploaded — lists here."
+          hint="Everything in this session's workspace — agent-written, bash-cloned, or uploaded — lists here. Click a file to open it."
         />
       )}
     </div>
   );
 };
 
-/** Files list — workspace files for this session (real FS). */
-const FilesList: FC<{ files: SessionFile[] }> = ({ files }) => (
-  <div className="flex h-full flex-col">
-    <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-      Files · {files.length}
-    </p>
-    <ul className="flex flex-col gap-1 px-3 pb-4">
-      {files.map((f) => (
-        <li
-          key={f.path}
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60"
-          title={f.path}
-        >
-          <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-foreground">{f.fileName}</p>
-            <p className="truncate text-[10px] text-muted-foreground">{f.path}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-);
+/** Files list — workspace files for this session. Click a file to open it (new tab). */
+const FilesList: FC<{ files: SessionFile[]; sessionId: string | null }> = ({ files, sessionId }) => {
+  const openFile = (path: string) => {
+    if (!sessionId) return;
+    const encoded = path.split('/').map((s) => encodeURIComponent(s)).join('/');
+    window.open(`/api/workspace/${sessionId}/file/${encoded}?raw=1`, '_blank', 'noopener');
+  };
+  return (
+    <div className="flex h-full flex-col">
+      <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Files · {files.length}
+      </p>
+      <ul className="flex flex-col gap-1 px-3 pb-4">
+        {files.map((f) => (
+          <li key={f.path}>
+            <button
+              type="button"
+              onClick={() => openFile(f.path)}
+              title={`${f.path} · 点击在新标签打开`}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+            >
+              <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-foreground">{f.fileName}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{f.path}</p>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
 /** ④ Context — model · capabilities · token usage for this session. */
 const ContextView: FC<{ ctx: SessionContextInfo }> = ({ ctx }) => {
@@ -448,7 +459,9 @@ export interface WorkbenchPanelProps {
 }
 
 export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, className, onCollapse }) => {
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>('progress');
+  // Default to Files — the workbench's main entry point is now the composer's
+  // 「会话文件」button, so opening it should land on files.
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>('files');
   const todoSummary = useSessionTodos();
   const subAgents = useSessionSubAgents();
   const files = useWorkspaceFiles(currentSessionId, activeTab === 'files');
@@ -548,56 +561,26 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
 
 // ─────────────────────────── WorkbenchDock (collapsible) ───────────────────────────
 
-const WORKBENCH_OPEN_KEY = 'kin.workbench.open';
-
 /**
- * Persisted open/closed state for the right-side workbench. SSR-safe: starts CLOSED
- * (so first-ever load is collapsed — more chat space, per the default-collapsed ask),
- * then restores the user's last choice from localStorage on mount.
- */
-function useWorkbenchOpen(): [boolean, (v: boolean) => void] {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(WORKBENCH_OPEN_KEY) === 'true') setOpen(true);
-    } catch {
-      /* localStorage unavailable */
-    }
-  }, []);
-  const set = (v: boolean) => {
-    setOpen(v);
-    try {
-      localStorage.setItem(WORKBENCH_OPEN_KEY, String(v));
-    } catch {
-      /* ignore */
-    }
-  };
-  return [open, set];
-}
-
-/**
- * WorkbenchDock — the right rail wrapper that makes the workbench COLLAPSIBLE.
- * Collapsed → a thin rail with an expand button (the default). Open → the full 360px
- * panel with a collapse button in its tab bar. Hidden below lg, same as before.
+ * WorkbenchDock — the right wrapper for the workbench.
+ *
+ * Open/closed is driven by the SHARED workbench-ui store, so the chat composer's
+ * 「会话文件」button (a far-apart sibling in the tree) toggles it and this renders from
+ * it — one control, no dumb rail. CLOSED → renders nothing (the composer button
+ * reopens it). OPEN → the 360px panel with a collapse button in its tab bar. Hidden
+ * below lg (unchanged).
  */
 export const WorkbenchDock: FC<{ currentSessionId: string | null }> = ({ currentSessionId }) => {
-  const [open, setOpen] = useWorkbenchOpen();
+  const open = useWorkbenchUI((s) => s.open);
+  const setOpen = useWorkbenchUI((s) => s.setOpen);
+  const hydrate = useWorkbenchUI((s) => s.hydrate);
 
-  if (!open) {
-    return (
-      <div className="hidden h-full w-11 shrink-0 flex-col items-center gap-1 border-l bg-card py-3 lg:flex">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="展开工作台"
-          title="展开工作台（Progress / Files / Context）"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </button>
-      </div>
-    );
-  }
+  // Restore the persisted open/closed choice once on the client.
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  if (!open) return null;
 
   return (
     <div className="hidden h-full shrink-0 overflow-hidden border-l lg:block" style={{ width: 360 }}>

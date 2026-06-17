@@ -41,7 +41,7 @@ import type { ChangeEvent, FormEvent, MutableRefObject } from 'react';
 import { ContextBadges } from './context-badges';
 import { SkillChip } from './skill-chip';
 import { KnowledgeBasePanel } from './knowledge-base-panel';
-import { SessionFilesPanel } from './session-files-panel';
+import { useWorkbenchUI } from '~/lib/stores/workbench-ui-store';
 import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
 import { type PermissionInfo } from './permission-badge';
 import { PermissionTierSelector } from './permission-tier-selector';
@@ -191,6 +191,10 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const content = useIntlayer('claude-chat');
   const api = useAssistantApi();
+  // The「会话文件」button now toggles the right-side workbench (which owns the file
+  // tree), instead of a separate popover — one place for files. Shared store because
+  // the workbench is a far-apart sibling of this composer in the tree.
+  const toggleWorkbench = useWorkbenchUI((s) => s.toggle);
   const composerText = useAssistantState(({ composer }) => composer.text);
   const composerRunConfig = useAssistantState(({ composer }) => composer.runConfig);
   const composerIsEditing = useAssistantState(({ composer }) => composer.isEditing);
@@ -565,27 +569,14 @@ export function ChatComposer({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => void withSession(() => setShowSessionFiles(!showSessionFiles))}
+                  onClick={() => void withSession(() => toggleWorkbench())}
                   className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="会话文件"
-                  title="会话文件"
+                  aria-label="会话文件（右侧工作台）"
+                  title="会话文件 · 开/关右侧工作台"
                   disabled={ensuringSession}
                 >
                   <FolderTree width={16} height={16} />
                 </button>
-
-                {/* Session Files Panel */}
-                {showSessionFiles && currentSessionId && (
-                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 h-80 overflow-hidden rounded-lg border border-border bg-popover shadow-lg dark:border-border dark:bg-popover">
-                    <SessionFilesPanel
-                      sessionId={currentSessionId}
-                      onClose={() => setShowSessionFiles(false)}
-                      onFileSelect={(path) => {
-                        onSessionFileClick?.(path);
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             )}
 
