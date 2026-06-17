@@ -39,7 +39,7 @@ import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
 import { ApprovalPrompt } from '~/components/claude-chat/approval-prompt';
-import { WorkbenchDock } from '~/components/claude-chat/workbench-panel';
+import { WorkbenchDock, useWorkbenchAutoOpen } from '~/components/claude-chat/workbench-panel';
 import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
@@ -231,6 +231,9 @@ export function ClaudeChatController({
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
+  // Auto-open the workbench to Progress/Sub-agents when they appear (always-mounted
+  // here — the workbench panel itself only mounts when open).
+  useWorkbenchAutoOpen();
   // Key to force re-mount of chat surface when session changes
   const [chatKey, setChatKey] = useState(0);
   // Session list expand/collapse state

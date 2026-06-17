@@ -19,12 +19,12 @@
  * moved into intlayer content when the sections are actually wired up.
  */
 
-import { useState, useEffect, type FC, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type FC, type ReactNode } from 'react';
 import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw, Play, ExternalLink, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { startPreview } from '~/claude/adapters';
 import { useChatSessionStore } from '~/lib/chat-session-store';
-import { useWorkbenchUI } from '~/lib/stores/workbench-ui-store';
+import { useWorkbenchUI, type WorkbenchTab } from '~/lib/stores/workbench-ui-store';
 import {
   useSessionTodos,
   useSessionSubAgents,
@@ -38,8 +38,6 @@ import {
   type SessionRagTracesState,
 } from '~/lib/hooks/use-session-workbench';
 import type { RagTraceChunk, RagTraceView, SessionRagTraces } from '~/server/function/rag-trace.server';
-
-type WorkbenchTab = 'progress' | 'subagents' | 'files' | 'context' | 'retrieval';
 
 interface TabDef {
   id: WorkbenchTab;
@@ -459,9 +457,10 @@ export interface WorkbenchPanelProps {
 }
 
 export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, className, onCollapse }) => {
-  // Default to Files — the workbench's main entry point is now the composer's
-  // 「会话文件」button, so opening it should land on files.
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>('files');
+  // Active tab lives in the shared store so the composer icons (会话文件→Files,
+  // info→Context) and the auto-open watcher can land the workbench on a tab.
+  const activeTab = useWorkbenchUI((s) => s.activeTab);
+  const setActiveTab = useWorkbenchUI((s) => s.setTab);
   const todoSummary = useSessionTodos();
   const subAgents = useSessionSubAgents();
   const files = useWorkspaceFiles(currentSessionId, activeTab === 'files');
@@ -572,7 +571,7 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
  */
 export const WorkbenchDock: FC<{ currentSessionId: string | null }> = ({ currentSessionId }) => {
   const open = useWorkbenchUI((s) => s.open);
-  const setOpen = useWorkbenchUI((s) => s.setOpen);
+  const close = useWorkbenchUI((s) => s.close);
   const hydrate = useWorkbenchUI((s) => s.hydrate);
 
   // Restore the persisted open/closed choice once on the client.
@@ -584,9 +583,45 @@ export const WorkbenchDock: FC<{ currentSessionId: string | null }> = ({ current
 
   return (
     <div className="hidden h-full shrink-0 overflow-hidden border-l lg:block" style={{ width: 360 }}>
-      <WorkbenchPanel currentSessionId={currentSessionId} onCollapse={() => setOpen(false)} />
+      {/* Collapse suppresses auto-open for the rest of this turn (user said "no"). */}
+      <WorkbenchPanel currentSessionId={currentSessionId} onCollapse={close} />
     </div>
   );
 };
+
+/**
+ * Auto-open watcher — call from an ALWAYS-mounted component (the WorkbenchPanel only
+ * mounts when the dock is open, so the trigger can't live there). Opens the workbench
+ * to the relevant tab the first time a plan (→Progress) or sub-agent (→Sub-agents)
+ * appears, UNLESS the user manually closed it this turn. A new run clears that
+ * suppression so the next turn can auto-open again.
+ */
+export function useWorkbenchAutoOpen(): void {
+  const todoSummary = useSessionTodos();
+  const subAgents = useSessionSubAgents();
+  const isRunning = useChatSessionStore((s) => s.isRunning);
+  const autoOpen = useWorkbenchUI((s) => s.autoOpen);
+  const resetSuppress = useWorkbenchUI((s) => s.resetSuppress);
+
+  const prevRunning = useRef(false);
+  useEffect(() => {
+    if (isRunning && !prevRunning.current) resetSuppress();
+    prevRunning.current = isRunning;
+  }, [isRunning, resetSuppress]);
+
+  const hadTodos = useRef(false);
+  useEffect(() => {
+    const has = Boolean(todoSummary);
+    if (has && !hadTodos.current) autoOpen('progress');
+    hadTodos.current = has;
+  }, [todoSummary, autoOpen]);
+
+  const hadSub = useRef(false);
+  useEffect(() => {
+    const has = subAgents.length > 0;
+    if (has && !hadSub.current) autoOpen('subagents');
+    hadSub.current = has;
+  }, [subAgents, autoOpen]);
+}
 
 export default WorkbenchPanel;
