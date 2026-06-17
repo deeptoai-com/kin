@@ -24,18 +24,13 @@ import { db } from '~/db/db-config';
 import { user } from '~/db/schema';
 import { eq } from 'drizzle-orm';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
+import {
+  resolveCapabilityConfig,
+  resolveBashEnabled,
+} from '~/server/config/system-settings.server';
 
 // All supported permission modes (matching SDK)
 export type ServerPermissionMode = PermissionMode;
-
-// All permission modes supported by the SDK
-const ALL_PERMISSION_MODES: PermissionMode[] = [
-  'default',
-  'plan',
-  'dontAsk',
-  'acceptEdits',
-  'bypassPermissions',
-];
 
 /**
  * Get current user's permission info.
@@ -69,35 +64,31 @@ export const getPermissionInfo = createServerFn({ method: 'GET' })
   });
 
 /**
- * Resolve permission info from environment + system role.
+ * Resolve permission info from the runtime capability config (DB → env → default)
+ * + the user's system role / bypass whitelist.
  */
-function resolvePermissionInfo(userId: string | null, systemRole: string | null) {
-  const permissionMode = (process.env.CLAUDE_PERMISSION_MODE as PermissionMode) || 'default';
+async function resolvePermissionInfo(userId: string | null, systemRole: string | null) {
+  const cfg = await resolveCapabilityConfig();
   const bypassUserIds = (process.env.CLAUDE_BYPASS_USER_IDS || '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
-  const allowBash = process.env.CLAUDE_ALLOW_BASH === 'true';
 
   // Privileged = system admin OR explicitly whitelisted by id.
   const isWhitelisted =
     systemRole === 'admin' || (userId ? bypassUserIds.includes(userId) : false);
 
-  const normalizedMode = ALL_PERMISSION_MODES.includes(permissionMode)
-    ? permissionMode
-    : 'default';
-
   // bypassPermissions requires privilege; other modes are used as-is.
   const actualMode: PermissionMode =
-    normalizedMode === 'bypassPermissions'
+    cfg.permissionMode === 'bypassPermissions'
       ? isWhitelisted
         ? 'bypassPermissions'
         : 'default'
-      : normalizedMode;
+      : cfg.permissionMode;
 
-  // allowBash is an INDEPENDENT capability (privileged user + CLAUDE_ALLOW_BASH),
+  // Shell capability is governed by the admin-set audience (everyone/admins/off),
   // decoupled from permissionMode (which only governs Ask/Act interrupt behavior).
-  const bashEnabled = isWhitelisted && allowBash;
+  const bashEnabled = resolveBashEnabled(cfg, isWhitelisted);
 
   // Native Claude Code `Bash` is ALWAYS disallowed — it bypasses our sandbox (path
   // fence, resource limits, egress allowlist, env-stripping). Shell capability is

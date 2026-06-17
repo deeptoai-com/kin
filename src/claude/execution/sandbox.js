@@ -87,26 +87,38 @@ const DEFAULT_EXEC_ALLOWED_DOMAINS = [
  * Admin-backed config simply sets this env when the worker is spawned, so this
  * function is the single source-of-truth and stays storage-agnostic.
  */
-function resolveAllowedDomains() {
+function resolveEgress() {
   const raw = process.env.EXEC_SANDBOX_ALLOWED_DOMAINS;
-  if (raw == null) return DEFAULT_EXEC_ALLOWED_DOMAINS;
+  if (raw == null) return { open: false, domains: DEFAULT_EXEC_ALLOWED_DOMAINS };
   const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
   // Empty string is treated as UNSET → curated default. This matters because docker
   // compose forwards optional vars as `${VAR:-}`, which sets the var to "" when the
   // operator hasn't defined it — a blank env must NEVER silently kill all egress.
   // Deny-all requires an explicit "off"/"none" sentinel (an intentional choice).
-  if (trimmed === '') return DEFAULT_EXEC_ALLOWED_DOMAINS;
-  if (trimmed.toLowerCase() === 'off' || trimmed.toLowerCase() === 'none') return [];
-  return [...new Set(trimmed.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean))];
+  if (trimmed === '') return { open: false, domains: DEFAULT_EXEC_ALLOWED_DOMAINS };
+  if (lower === 'off' || lower === 'none') return { open: false, domains: [] };
+  // Unfiltered egress (admin "全开" posture): omit srt's network filter entirely so
+  // the process reaches whatever the container can. The FS fence, env-strip, and
+  // resource limits STILL apply — only the domain allowlist is dropped. This is the
+  // one posture that exposes internal services / cloud metadata (opt-in, not default).
+  if (lower === 'all' || lower === 'open' || lower === '*') return { open: true, domains: [] };
+  return {
+    open: false,
+    domains: [...new Set(trimmed.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean))],
+  };
 }
 
 function buildConfig(workspace) {
   const allowRead = [workspace, '/usr', '/lib', '/lib64', '/bin', '/sbin', '/etc', '/proc', '/dev', '/tmp'];
   if (srtPkgDir) allowRead.push(srtPkgDir); // srt must read its own apply-seccomp helper
+  const egress = resolveEgress();
   return {
-    // Domain allowlist (see resolveAllowedDomains). Empty = deny-all. Internal
-    // services / cloud metadata are never on the list → blocked for free.
-    network: { allowedDomains: resolveAllowedDomains(), deniedDomains: [] },
+    // Domain allowlist (see resolveEgress). Empty = deny-all; internal services /
+    // cloud metadata are never on the list → blocked for free. When egress.open
+    // ('全开'), OMIT `network` entirely → srt applies NO network restriction
+    // (hasNetworkConfig=false in sandbox-manager); the rest of the sandbox stays on.
+    ...(egress.open ? {} : { network: { allowedDomains: egress.domains, deniedDomains: [] } }),
     filesystem: {
       denyRead: ['/'],
       allowRead,

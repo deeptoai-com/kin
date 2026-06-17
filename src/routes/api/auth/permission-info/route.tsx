@@ -4,24 +4,22 @@ import { db } from '~/db/db-config';
 import { user } from '~/db/schema';
 import { eq } from 'drizzle-orm';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-
-// All permission modes supported by the SDK
-const ALL_PERMISSION_MODES: PermissionMode[] = [
-  'default',
-  'plan',
-  'dontAsk',
-  'acceptEdits',
-  'bypassPermissions',
-];
+import {
+  resolveCapabilityConfig,
+  resolveBashEnabled,
+  egressEnvValue,
+} from '~/server/config/system-settings.server';
 
 /**
  * Get Permission Info API Endpoint (single-organization model).
  *
- * Called by the WebSocket server to fetch the user's effective permission settings.
- * Resolves from environment defaults + the user's system role + an optional per-user
- * bypass whitelist — NOT from a multi-tenant organization/member graph (removed; this
- * mirrors permissions.server.ts `getPermissionInfo`). The `organizationId` field is kept
- * (always null) for response-shape compatibility with the WS server.
+ * Called by the WebSocket server to fetch the user's effective capability settings.
+ * Resolves through the runtime capability config (DB → env → default) + the user's
+ * system role + an optional per-user bypass whitelist — NOT a multi-tenant org graph.
+ * The `organizationId` field is kept (always null) for response-shape compatibility.
+ *
+ * ws-server materializes `egressAllowedDomains` into the worker env, so an admin's
+ * egress / shell / mode change takes effect on the next spawned worker — no restart.
  */
 export const Route = createFileRoute('/api/auth/permission-info')({
   server: {
@@ -45,34 +43,37 @@ export const Route = createFileRoute('/api/auth/permission-info')({
           });
           const systemRole = userRow?.systemRole ?? null;
 
-          const rawMode = (process.env.CLAUDE_PERMISSION_MODE as PermissionMode) || 'default';
-          const permissionMode = ALL_PERMISSION_MODES.includes(rawMode) ? rawMode : 'default';
+          const cfg = await resolveCapabilityConfig();
           const bypassUserIds = (process.env.CLAUDE_BYPASS_USER_IDS || '')
             .split(',')
             .map((id) => id.trim())
             .filter(Boolean);
-          const allowBash = process.env.CLAUDE_ALLOW_BASH === 'true';
 
           // Privileged = system admin OR explicitly whitelisted by id.
-          const isWhitelisted = systemRole === 'admin' || bypassUserIds.includes(sessionUser.id);
+          const isWhitelisted =
+            systemRole === 'admin' || bypassUserIds.includes(sessionUser.id);
 
           // bypassPermissions requires privilege; other modes are used as-is.
           const actualMode: PermissionMode =
-            permissionMode === 'bypassPermissions'
+            cfg.permissionMode === 'bypassPermissions'
               ? isWhitelisted
                 ? 'bypassPermissions'
                 : 'default'
-              : permissionMode;
+              : cfg.permissionMode;
 
-          // allowBash is an INDEPENDENT capability (privileged user + CLAUDE_ALLOW_BASH),
-          // NOT coupled to permissionMode (which only governs Ask/Act). The worker uses
-          // this to expose the sandboxed mcp__bash__run; native Bash stays disallowed.
+          // Shell capability follows the admin-set audience (everyone/admins/off),
+          // decoupled from permissionMode. Native Bash stays disallowed in the worker.
+          const allowBash = resolveBashEnabled(cfg, isWhitelisted);
+
           return Response.json({
             userId: sessionUser.id,
             organizationId: null,
             role: systemRole,
             permissionMode: actualMode,
-            allowBash: isWhitelisted && allowBash,
+            allowBash,
+            // EXEC_SANDBOX_ALLOWED_DOMAINS value for the worker sandbox:
+            // '' curated · 'off' deny-all · 'all' unfiltered · csv → exact list.
+            egressAllowedDomains: egressEnvValue(cfg),
           });
         } catch (error) {
           console.error('[Permission Info API] Error:', error);

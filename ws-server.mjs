@@ -1456,13 +1456,15 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     const permissionInfo = await fetchPermissionInfo(ws.cookie);
 
     // Use fetched permission info or fall back to environment variables
-    let permissionMode, allowBash, organizationId, role;
+    let permissionMode, allowBash, organizationId, role, egressAllowedDomains;
     if (permissionInfo && permissionInfo.userId === ws.userId) {
       permissionMode = permissionInfo.permissionMode;
       allowBash = permissionInfo.allowBash;
       organizationId = permissionInfo.organizationId;
       role = permissionInfo.role;
-      console.log(`[WS Server] Using organization-based permissions: org=${organizationId}, role=${role}, mode=${permissionMode}, bash=${allowBash}`);
+      // Runtime egress posture from the admin-set capability config (DB → env → default).
+      egressAllowedDomains = permissionInfo.egressAllowedDomains;
+      console.log(`[WS Server] Using organization-based permissions: org=${organizationId}, role=${role}, mode=${permissionMode}, bash=${allowBash}, egress=${JSON.stringify(egressAllowedDomains)}`);
     } else {
       // Fallback to environment variables
       permissionMode = resolvePermissionMode(ws.userId);
@@ -1484,6 +1486,13 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
 
     const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
     workerEnv.CLAUDE_PERMISSION_MODE = permissionMode;
+
+    // Materialize the admin-set egress posture into the worker env so the sandbox
+    // honors it. '' curated · 'off' deny-all · 'all' unfiltered · csv → exact list.
+    // Only when permission-info supplied it (else inherit the container default).
+    if (typeof egressAllowedDomains === 'string') {
+      workerEnv.EXEC_SANDBOX_ALLOWED_DOMAINS = egressAllowedDomains;
+    }
 
     // P2-2: audit runs that start with elevated (bypass) permissions — these
     // skip per-tool permission prompts, so they are security-relevant.
