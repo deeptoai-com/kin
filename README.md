@@ -104,7 +104,11 @@ pull new image → run migrations → recreate worker → recreate app → healt
 ```
 
 The update check compares the running build SHA to the latest published image; the apply is
-admin-gated and token-authenticated. See **[docs/deployment/overview.md](docs/deployment/overview.md)**.
+admin-gated and token-authenticated. The updater needs the **production env mounted** so its
+inner `docker compose` can resolve `${...}` — prefer the **directory mount**
+(`UPDATER_PROD_ENV_DIR`) so editing the env file never breaks the bind (the legacy
+`UPDATER_PROD_ENV_FILE` single-file mount still works). See
+**[docs/deployment/overview.md](docs/deployment/overview.md)**.
 
 ## Architecture
 

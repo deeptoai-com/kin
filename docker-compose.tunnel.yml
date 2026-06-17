@@ -470,10 +470,19 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/work:ro
-      # Mount the FULL prod env: set UPDATER_PROD_ENV_FILE to its host path (default /dev/null =
-      # unset → empty → controller falls back to /work/.env). Must hold the secrets + the non-secret
-      # vars the stack was started with (APP_NAME/APP_NAME_SANITIZED/RAG_ENABLED/APP_PULL_POLICY/…).
+      # Mount the FULL prod env (secrets + APP_NAME/APP_NAME_SANITIZED/RAG_ENABLED/APP_PULL_POLICY/…).
+      # TWO ways to provide it:
+      #  • RECOMMENDED — directory mount (robust): set UPDATER_PROD_ENV_DIR to the HOST DIRECTORY
+      #    holding the env file, then set UPDATER_COMPOSE_ENV_FILE=/run/updater/envd/<filename>.
+      #    A directory bind survives the host file being REPLACED — `sed -i` / most editors save by
+      #    swapping the file's inode, which silently breaks a single-FILE bind until the container is
+      #    recreated (especially on macOS/OrbStack). Use this and edits "just work".
+      #  • LEGACY — single-file mount: set UPDATER_PROD_ENV_FILE to the host file path. Still works
+      #    (back-compat), but is inode-fragile per above; recreate `updater` after editing the file.
+      # Both default to harmless empties (/dev/null file, empty named volume) when unset → the
+      # controller falls back to /work/.env, unchanged behaviour.
       - ${UPDATER_PROD_ENV_FILE:-/dev/null}:/run/updater/prod.env:ro
+      - ${UPDATER_PROD_ENV_DIR:-updater-envd}:/run/updater/envd:ro
     restart: unless-stopped
     networks:
       - private
@@ -598,3 +607,6 @@ volumes:
     name: ${APP_NAME_SANITIZED:-oxygenie}-claude-sessions
   skills-store:
     name: ${APP_NAME_SANITIZED:-oxygenie}-skills-store
+  # Empty default backing the updater's directory-mount option. A host bind overrides it when
+  # UPDATER_PROD_ENV_DIR is set; otherwise it's an unused empty volume (feature off / legacy path).
+  updater-envd:

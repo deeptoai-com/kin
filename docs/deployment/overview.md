@@ -42,6 +42,28 @@ reverse proxy / TLS / DNS**:
 > migrate → recreate worker → recreate app → health-gate → auto-rollback on failure — executed
 > by a dedicated `updater` sidecar (it never recreates itself). The apply is admin-gated and
 > token-authenticated.
+>
+> **Mounting the prod env into the updater.** The updater runs `docker compose` against the
+> live stack, so it needs the **full production env** (secrets + `APP_NAME` / `APP_NAME_SANITIZED`
+> / `RAG_ENABLED` / … ) for `${...}` interpolation. Provide it one of two ways:
+>
+> - **Recommended — directory mount.** Point `UPDATER_PROD_ENV_DIR` at the **host directory**
+>   holding your env file and set `UPDATER_COMPOSE_ENV_FILE=/run/updater/envd/<filename>`. A
+>   directory bind survives the host file being **replaced** — an editor or `sed -i` saves by
+>   swapping the file's inode, which silently breaks a single-*file* bind until the container is
+>   recreated (most visible on macOS / OrbStack).
+> - **Legacy — single-file mount.** `UPDATER_PROD_ENV_FILE=/abs/host/prod.env` still works
+>   (back-compat, nothing to change for existing deploys), but is inode-fragile per above.
+>
+> **Symptom of a broken env mount:** clicking update (or the pre-flight service check) fails with
+> `error while interpolating services.app.environment.ANTHROPIC_AUTH_TOKEN: required variable
+> ANTHROPIC_AUTH_TOKEN is missing a value`. The updater couldn't read the env file, so its inner
+> `docker compose` had no values to substitute. **Fix:** recreate just the updater so the mount
+> re-attaches (and switch to the directory mount to prevent recurrence):
+>
+> ```bash
+> docker compose -p <project> -f <compose-file> up -d --no-deps --force-recreate updater
+> ```
 
 > **Legacy / not currently used:** a **Dokploy** path (`docker-compose.dokploy.yml`,
 > [dokploy.md](dokploy.md)) and an older Dokku + GitHub-Actions flow
