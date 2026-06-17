@@ -10,10 +10,12 @@ import RiServerLine from '~icons/ri/server-line';
 import RiPulseLine from '~icons/ri/pulse-line';
 import RiRefreshLine from '~icons/ri/refresh-line';
 import RiFileList3Line from '~icons/ri/file-list-3-line';
+import RiShieldKeyholeLine from '~icons/ri/shield-keyhole-line';
 
 export type AdminSection =
   | 'overview'
   | 'users'
+  | 'permissions'
   | 'usage'
   | 'billing'
   | 'models'
@@ -60,6 +62,13 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: 'Manage users, roles and credits',
         icon: RiUserSettingsLine,
         path: '/admin/users',
+      },
+      {
+        section: 'permissions',
+        label: '访问与权限',
+        description: 'Shell 受众、出网范围与安全姿态',
+        icon: RiShieldKeyholeLine,
+        path: '/admin/permissions',
       },
     ],
   },
