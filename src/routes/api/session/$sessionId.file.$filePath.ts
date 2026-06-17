@@ -87,11 +87,17 @@ export const Route = createFileRoute('/api/session/$sessionId/file/$filePath')({
           );
         }
 
-        // Construct full path
+        // Construct full path. Files live under the session's `workspace/` dir —
+        // the SAME layout the workspace list/content routes use
+        // ({claudeHomePath}/sessions/{sdkSessionId}/workspace/...). The missing
+        // `workspace` segment here meant every file-preview click resolved to a
+        // non-existent path → read failed (list worked because it used the correct
+        // workspace route). Keep this in lockstep with the workspace routes.
         const fullPath = path.join(
           session.claudeHomePath,
           'sessions',
           session.sdkSessionId,
+          'workspace',
           filePath
         );
 
