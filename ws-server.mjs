@@ -215,10 +215,11 @@ function resolvePermissionMode(userId, requestedMode = process.env.CLAUDE_PERMIS
   return normalized;
 }
 
-function resolveDisallowedTools(permissionMode, allowBash) {
-  if (permissionMode === 'bypassPermissions' && allowBash) {
-    return [];
-  }
+function resolveDisallowedTools(_permissionMode, _allowBash) {
+  // Native Claude Code `Bash` is ALWAYS disallowed — it bypasses our sandbox (path
+  // fence, resource limits, egress allowlist, env-stripping). Shell capability is
+  // delivered only via the sandboxed mcp__bash__run wrapper, which the worker gates
+  // on allowBash separately. permissionMode (Ask/Act) does NOT re-open native Bash.
   return ['Bash'];
 }
 

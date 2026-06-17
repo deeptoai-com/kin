@@ -64,12 +64,15 @@ export const Route = createFileRoute('/api/auth/permission-info')({
                 : 'default'
               : permissionMode;
 
+          // allowBash is an INDEPENDENT capability (privileged user + CLAUDE_ALLOW_BASH),
+          // NOT coupled to permissionMode (which only governs Ask/Act). The worker uses
+          // this to expose the sandboxed mcp__bash__run; native Bash stays disallowed.
           return Response.json({
             userId: sessionUser.id,
             organizationId: null,
             role: systemRole,
             permissionMode: actualMode,
-            allowBash: actualMode === 'bypassPermissions' && allowBash,
+            allowBash: isWhitelisted && allowBash,
           });
         } catch (error) {
           console.error('[Permission Info API] Error:', error);

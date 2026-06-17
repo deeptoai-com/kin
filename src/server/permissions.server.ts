@@ -95,12 +95,18 @@ function resolvePermissionInfo(userId: string | null, systemRole: string | null)
         : 'default'
       : normalizedMode;
 
-  const disallowedTools =
-    actualMode === 'bypassPermissions' && allowBash ? [] : ['Bash'];
+  // allowBash is an INDEPENDENT capability (privileged user + CLAUDE_ALLOW_BASH),
+  // decoupled from permissionMode (which only governs Ask/Act interrupt behavior).
+  const bashEnabled = isWhitelisted && allowBash;
+
+  // Native Claude Code `Bash` is ALWAYS disallowed — it bypasses our sandbox (path
+  // fence, resource limits, egress allowlist, env-stripping). Shell capability is
+  // delivered only via the sandboxed mcp__bash__run wrapper (gated on bashEnabled).
+  const disallowedTools = ['Bash'];
 
   return {
     mode: actualMode,
-    bashEnabled: actualMode === 'bypassPermissions' && allowBash,
+    bashEnabled,
     isWhitelisted,
     disallowedTools,
     userId,

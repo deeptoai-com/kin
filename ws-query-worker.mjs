@@ -81,15 +81,13 @@ function resolvePermissionMode(mode, userId) {
   return normalized;
 }
 
-function resolveDisallowedTools(permissionMode, requestedDisallowedTools, allowBash) {
-  if (Array.isArray(requestedDisallowedTools)) {
-    return requestedDisallowedTools;
-  }
-  const effectiveAllowBash = allowBash === undefined ? ALLOW_BASH_IN_BYPASS : allowBash;
-  if (permissionMode === 'bypassPermissions' && effectiveAllowBash) {
-    return [];
-  }
-  return ['Bash'];
+function resolveDisallowedTools(_permissionMode, requestedDisallowedTools, _allowBash) {
+  // Native Claude Code `Bash` is ALWAYS disallowed — it bypasses our sandbox (path
+  // fence, resource limits, egress allowlist, env-stripping). Shell capability is
+  // delivered ONLY via the sandboxed mcp__bash__run wrapper (gated on allowBash above).
+  // Honor an explicit client disallow-list but force-include 'Bash' regardless of mode.
+  const base = Array.isArray(requestedDisallowedTools) ? requestedDisallowedTools : [];
+  return base.includes('Bash') ? base : [...base, 'Bash'];
 }
 
 function normalizeSkillSlug(value) {
