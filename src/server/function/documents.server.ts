@@ -17,6 +17,7 @@ import { estimateTokens } from '~/server/rag/tier';
 import { scheduleRagIngest } from '~/server/rag/queue';
 import { isRagEnabled } from '~/server/rag/flag';
 import { canAccessDocument } from '~/server/projects/access';
+import { isAllowedType, unsupportedTypeMessage } from '~/lib/upload-limits';
 
 const fileService = new S3StaticFileImpl();
 
@@ -333,8 +334,16 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     const user = await requireUser();
 
     const originalName = input.originalName?.trim() || `file-${Date.now()}`;
-    const key = buildObjectKey(user.id, originalName);
     const mimeType = input.mimeType ?? 'application/octet-stream';
+
+    // 返工2: format whitelist server backstop — reject binaries/executables/archives
+    // before creating any row or object (only when an actual file is being uploaded;
+    // text-only documents have no originalName/file and skip this).
+    if (input.originalName && !isAllowedType(originalName, mimeType)) {
+      throw new Error(unsupportedTypeMessage(originalName));
+    }
+
+    const key = buildObjectKey(user.id, originalName);
     const size = input.size ?? 0;
 
     const kbIds = input.knowledgeBaseIds ?? [];

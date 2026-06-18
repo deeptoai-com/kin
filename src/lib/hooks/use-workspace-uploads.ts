@@ -15,7 +15,7 @@
  * and the drag/paste idiom in `references/.../fragments/components/chat-input.tsx`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CHAT_ATTACH_MAX_BYTES, isWithinLimit, tooLargeMessage } from '~/lib/upload-limits';
+import { CHAT_ATTACH_MAX_BYTES, isAllowedType, isWithinLimit, tooLargeMessage, unsupportedTypeMessage } from '~/lib/upload-limits';
 import { getWorkspaceParseStatus } from '~/server/function/workspace-files.server';
 
 export type UploadStatus =
@@ -194,7 +194,7 @@ export function useWorkspaceUploads(sessionId: string | null) {
     [sessionId, patch, pollParse, cleanupHandle],
   );
 
-  /** Add files: size-gate each, then start uploading the allowed ones. */
+  /** Add files: type- + size-gate each (返工2/PRD §3.2), then upload the allowed ones. */
   const addFiles = useCallback(
     (files: File[]) => {
       const newItems: UploadItem[] = [];
@@ -210,6 +210,11 @@ export function useWorkspaceUploads(sessionId: string | null) {
           status: 'uploading',
           progress: 0,
         };
+        // 返工2: format whitelist — block .dmg/.exe/archives/etc. before upload.
+        if (!isAllowedType(file.name, file.type)) {
+          newItems.push({ ...base, status: 'error', error: unsupportedTypeMessage(file.name) });
+          continue;
+        }
         if (!isWithinLimit(file.size, CHAT_ATTACH_MAX_BYTES)) {
           newItems.push({ ...base, status: 'error', error: tooLargeMessage(CHAT_ATTACH_MAX_BYTES, 'chat') });
           continue;

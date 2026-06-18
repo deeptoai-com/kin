@@ -53,3 +53,71 @@ export function tooLargeMessage(maxBytes: number, kind: 'chat' | 'doc' = 'chat')
 export function isWithinLimit(sizeBytes: number, maxBytes: number): boolean {
   return sizeBytes <= maxBytes;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 返工2 — 格式白名单 (format whitelist).
+//
+// The workspace is for documents / text / media the Agent can actually use.
+// Binaries, executables, disk images and archives are pointless (and a footgun —
+// a user uploaded a `.dmg`). We allow a curated, generous set and default-deny the
+// rest, with an explicit block-list so notorious binaries are never let through
+// even if some future allow entry overlaps. Threat model = prevent mistakes (北
+// 极星: 防误操作), not lock down attackers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function extOf(name: string): string {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+
+/** Curated allow-list (lowercase, no dot). Generous across docs/text/code/media. */
+const ALLOWED_EXTS = new Set<string>([
+  // rich documents (parsed → markdown)
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'rtf', 'odt', 'ods', 'odp', 'epub', 'pages', 'key', 'numbers',
+  // plain text / data
+  'txt', 'md', 'markdown', 'mdx', 'csv', 'tsv', 'json', 'jsonl', 'log', 'rst', 'tex', 'bib', 'srt', 'vtt',
+  // code / config text
+  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'py', 'ipynb', 'java', 'kt', 'c', 'h', 'cpp', 'cc', 'hpp', 'cs',
+  'go', 'rs', 'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'fish', 'sql', 'html', 'htm', 'css', 'scss', 'less',
+  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'xml', 'vue', 'svelte', 'dart', 'r', 'lua', 'pl', 'pm',
+  'scala', 'clj', 'cljs', 'ex', 'exs', 'erl', 'hs', 'ml', 'gradle', 'graphql', 'gql', 'proto', 'dockerfile', 'makefile',
+  // images
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'tif', 'tiff', 'heic', 'heif', 'ico', 'avif',
+  // audio
+  'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma', 'aiff',
+  // video
+  'mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'mpg', 'mpeg', 'wmv', '3gp',
+]);
+
+/** Notorious binaries / executables / disk images / archives — always blocked. */
+const BLOCKED_EXTS = new Set<string>([
+  // disk images / installers / packages
+  'dmg', 'iso', 'img', 'vhd', 'vmdk', 'vdi', 'qcow2', 'msi', 'pkg', 'deb', 'rpm', 'apk', 'cab', 'appimage',
+  // executables / libraries / objects
+  'exe', 'app', 'dll', 'so', 'dylib', 'bin', 'com', 'bat', 'cmd', 'scr', 'sys', 'o', 'a', 'lib', 'obj',
+  'class', 'jar', 'wasm', 'node', 'msix', 'apkm',
+  // archives (倾向先挡 — Agent can't use them directly; ask user to extract)
+  'zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst', 'lz', 'lzma', 'z', 'arj', 'ace',
+]);
+
+/**
+ * Whether this file type is allowed into the workspace. Extension-first (the most
+ * reliable signal); falls back to the MIME family for extensionless-but-known
+ * media/text. Unknown → blocked (default-deny).
+ */
+export function isAllowedType(name: string, mime?: string): boolean {
+  const ext = extOf(name);
+  if (ext && BLOCKED_EXTS.has(ext)) return false;
+  if (ext && ALLOWED_EXTS.has(ext)) return true;
+  // No / unknown extension: allow only if the MIME says image/audio/video/text.
+  if (mime && /^(image|audio|video|text)\//i.test(mime)) return true;
+  return false;
+}
+
+/** Clear, user-facing message for a rejected file type. */
+export function unsupportedTypeMessage(name: string): string {
+  const ext = extOf(name);
+  return ext
+    ? `不支持的文件格式（.${ext}）：仅支持文档 / 文本 / 代码 / 图片 / 音视频，二进制与压缩包请勿上传。`
+    : '不支持的文件格式：仅支持文档 / 文本 / 代码 / 图片 / 音视频。';
+}

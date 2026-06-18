@@ -56,6 +56,7 @@ import { formatBytes } from '~/lib/upload-limits';
 import { useChatSessionStore } from '~/lib/chat-session-store';
 import { useDraftAutoSave } from '~/lib/hooks/use-session-protection';
 import { buildSkillMarker, injectSkillMarker } from '~/lib/skills/skill-marker';
+import { stagePendingAttachments } from '~/claude/adapters';
 import { trackClaudeAgentQuerySent } from '~/lib/observability/posthog-events';
 
 /**
@@ -419,6 +420,15 @@ export function ChatComposer({
       });
       // Notify parent before sending (for auto-collapse A2ComposerPanel)
       onSend?.();
+      // 返工1: stage attachments on the RELIABLE side-channel right before send.
+      // The assistant-ui runConfig path below (setRunConfig) is kept belt-and-
+      // suspenders, but runChat reads this stage as the authoritative source — so
+      // the 【附件信息】 block reliably reaches the worker prompt even though the
+      // post-send reset strips runConfig.custom.attachments.
+      if (pendingAttachments.length > 0) {
+        console.log('[Composer] staging', pendingAttachments.length, 'attachment(s) for send:', pendingAttachments.map((a) => a.filePath));
+      }
+      stagePendingAttachments(pendingAttachments);
       api.composer().send();
       if (Object.prototype.hasOwnProperty.call(baseCustom, 'attachments') || Object.prototype.hasOwnProperty.call(baseCustom, 'skill')) {
         api.composer().setRunConfig({

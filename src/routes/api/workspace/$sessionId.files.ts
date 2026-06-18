@@ -12,7 +12,7 @@ import { getWorkspaceSession } from '~/server/workspace-session';
 import { validateRelativePath } from '~/server/security/validate-relative-path';
 import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 import { writeParseStatus } from '~/server/documents/parse-status';
-import { CHAT_ATTACH_MAX_BYTES, tooLargeMessage } from '~/lib/upload-limits';
+import { CHAT_ATTACH_MAX_BYTES, isAllowedType, tooLargeMessage, unsupportedTypeMessage } from '~/lib/upload-limits';
 
 /** Server-side upload ceiling (PRD §3.2). Env-overridable; client gates first. */
 const MAX_UPLOAD_BYTES = Number(process.env.WORKSPACE_UPLOAD_MAX_BYTES ?? CHAT_ATTACH_MAX_BYTES);
@@ -258,6 +258,15 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           return new Response(
             JSON.stringify({ error: tooLargeMessage(MAX_UPLOAD_BYTES, 'chat') }),
             { status: 413, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
+        // 返工2: format whitelist server backstop — reject binaries/executables/
+        // archives (.dmg/.exe/.zip/...) even if the client gate is bypassed.
+        if (!isAllowedType(filePath, file.type)) {
+          return new Response(
+            JSON.stringify({ error: unsupportedTypeMessage(filePath) }),
+            { status: 415, headers: { 'content-type': 'application/json' } }
           );
         }
 

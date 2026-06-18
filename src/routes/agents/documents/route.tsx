@@ -8,7 +8,7 @@ import { AudioLines, Book, FileText, Image as ImageIcon, Video, Plus, Edit2, Tra
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 import * as FileUpload from '~/components/dropzone';
-import { DOC_UPLOAD_MAX_BYTES, isWithinLimit, tooLargeMessage } from '~/lib/upload-limits';
+import { DOC_UPLOAD_MAX_BYTES, isAllowedType, isWithinLimit, tooLargeMessage, unsupportedTypeMessage } from '~/lib/upload-limits';
 import { Button } from '~/components/ui/button';
 import {
   Dialog,
@@ -367,6 +367,12 @@ function DocumentsPage() {
   const handleUploadDoc = async () => {
     if (filesToUpload.length === 0) return;
     const file = filesToUpload[0];
+
+    // 返工2: format whitelist — block binaries/executables/archives (.dmg/.exe/...).
+    if (!isAllowedType(file.name, file.type)) {
+      setErrorMessage(unsupportedTypeMessage(file.name));
+      return;
+    }
 
     // BUG-006: reject oversize uploads up front with a clear message, instead of
     // letting a 200MB+ direct-to-MinIO upload stall (the bar used to crawl at ~1%).

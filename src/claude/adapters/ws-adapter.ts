@@ -389,6 +389,23 @@ let isQueryRunning = false;
 // aborts it to break the stream loop immediately (in addition to the WS abort).
 let activeRunAbort: AbortController | null = null;
 
+// 返工1 (attachment delivery): the composer used to ship attachments through the
+// assistant-ui composer runConfig (setRunConfig → send → reset). That round-trip
+// dropped them — the synchronous post-send reset stripped `custom.attachments`
+// before assistant-ui committed them into the AppendMessage, so the worker prompt
+// arrived with NO 【附件信息】 block (server log: "content length: 7"). We now stage
+// attachments in this module-level slot right before send(); runChat() consumes it
+// (override-once) so delivery no longer depends on the fragile runConfig timing.
+let stagedAttachments: AttachmentDescriptor[] | null = null;
+
+/**
+ * Stage the attachments for the NEXT runChat() (called by the composer immediately
+ * before api.composer().send()). Consumed + cleared by the next runChat().
+ */
+export function stagePendingAttachments(attachments: AttachmentDescriptor[] | null | undefined): void {
+  stagedAttachments = attachments && attachments.length > 0 ? attachments : null;
+}
+
 // Local id generator for the assistant message runChat() grows in the store.
 function genMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -927,6 +944,12 @@ const ClaudeAgentWSAdapter: ChatModelAdapter = {
       const selectedSkill = extractRunConfigSkill(runConfig);
       const attachmentsBlock = buildAttachmentsBlock(attachments);
       const fullPrompt = attachmentsBlock ? `${prompt}\n\n${attachmentsBlock}` : prompt;
+      // 返工1 instrumentation: confirm the 【附件信息】 block actually enters the prompt.
+      // A's bug evidence was server-side "content length: 7" (body only); after the fix
+      // this should show attachments > 0 and a fullPrompt much longer than the raw text.
+      console.log(
+        `[WS Adapter] run: attachments=${attachments.length} promptLen=${prompt.length} fullPromptLen=${fullPrompt.length}`,
+      );
 
       if (!prompt.trim()) {
         throw new Error('Empty prompt');
@@ -1672,6 +1695,21 @@ export async function runChat(
   const abortController = new AbortController();
   activeRunAbort = abortController;
 
+  // 返工1: consume any attachments the composer staged right before send (the
+  // reliable path — see stagePendingAttachments). They OVERRIDE whatever the
+  // assistant-ui runConfig carried (which the post-send reset may have emptied).
+  // Consume-once so a later regenerate/run doesn't re-attach stale files.
+  let effectiveRunConfig = options.runConfig;
+  if (stagedAttachments && stagedAttachments.length > 0) {
+    const baseCustom = (effectiveRunConfig?.custom ?? {}) as Record<string, unknown>;
+    effectiveRunConfig = {
+      ...(effectiveRunConfig ?? {}),
+      custom: { ...baseCustom, attachments: stagedAttachments },
+    } as ChatModelRunOptions['runConfig'];
+    console.log('[WS Adapter] runChat: using', stagedAttachments.length, 'staged attachment(s)');
+  }
+  stagedAttachments = null;
+
   // Synthetic single-message input: the generator only reads the last user
   // message's text for the prompt (SDK keeps conversation context server-side).
   const runOptions = {
@@ -1679,7 +1717,7 @@ export async function runChat(
       { role: 'user', content: [{ type: 'text', text: prompt }] },
     ],
     abortSignal: abortController.signal,
-    runConfig: options.runConfig,
+    runConfig: effectiveRunConfig,
   } as unknown as ChatModelRunOptions;
 
   // run() is typed as Promise | AsyncGenerator (ChatModelAdapter union); our
