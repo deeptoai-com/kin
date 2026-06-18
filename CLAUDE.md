@@ -723,10 +723,16 @@ services:
 
 ```bash
 git pull
-DOCKER_BUILDKIT=1 docker build -t oxygenie:local .     # 本机 arm64 即可，无需 buildx/push
-set -a; . ~/oxygenie-deploy/secrets.env; set +a        # secrets 在仓库外（chmod 600）
-APP_IMAGE=oxygenie APP_TAG=local docker compose -p oxygenie -f docker-compose.tunnel.yml \
-  up -d --no-deps --force-recreate app worker
+# tag 按用途取：kin:local（常规）或 kin:<feature>-test（灰度）；下面 APP_TAG 必须与之一致。
+DOCKER_BUILDKIT=1 docker build --build-arg BUILD_SHA=$(git rev-parse --short HEAD) -t kin:local .   # 本机 arm64 即可
+# ⚠️ 改名(Kin)后必须 source **prod-merged.env**（全量），绝不要 source secrets.env——后者
+#    APP_NAME=oxygenie / APP_NAME_SANITIZED=oxygenie-cc2 是改名前残值，一 source 就把 app/worker
+#    重建到 oxygenie-cc2-private 网络、脱离 kin-private（Kin-redis/Kin-db 所在）→ ENOTFOUND redis = 全站宕机。
+#    prod-merged.env 里 APP_NAME 出现两次（oxygenie 在前、Kin 在后 last-win）+ APP_PULL_POLICY=always，故下面 inline 全覆盖。
+set -a; . ~/oxygenie-deploy/prod-merged.env; set +a
+APP_NAME=Kin APP_NAME_SANITIZED=kin APP_IMAGE=kin APP_TAG=local APP_PULL_POLICY=never \
+  docker compose -p kin -f docker-compose.tunnel.yml up -d --no-deps --force-recreate app worker
+# 验证：docker inspect Kin-app …Networks 含 kin-private；docker logs Kin-app 无 ENOTFOUND/28P01；curl -sI https://oxygenie.cc → 200
 ```
 
 历史资料：2026-06-05 曾按 Dokploy/GHCR 流程完成过部署验证——操作指南
