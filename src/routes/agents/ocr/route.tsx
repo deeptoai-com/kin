@@ -21,6 +21,9 @@ import { saveOcrJob, saveOcrTableResult, listOcrJobs, getOcrJob, deleteOcrJob, a
 
 interface RecognizedTable { pages: number[]; content: string }
 const tableKey = (ps: number[]) => [...ps].sort((a, b) => a - b).join(',');
+/** BUG-008: 单文件大小白名单 — 与后端 OCR_MAX_BODY_BYTES 25MB 留出 base64 inflation 余量。
+ *  超限前端先拒，避免用户上传 80MB 后等几秒才收到 413。 */
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export const Route = createFileRoute('/agents/ocr')({
   loader: async () => ({ history: await listOcrJobs() }),
@@ -155,8 +158,18 @@ function OcrConverterPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
         body: JSON.stringify({ contentBase64: imageB64, mediaType, prompt }),
       });
-      if (!res.ok) throw new Error(`OCR HTTP ${res.status}`);
-      const { markdown } = await res.json();
+      if (!res.ok) {
+        // BUG-008: 把后端的明确错误（413 文件过大 / 504 超时 / 422 空结果 / 500 上游错）原样
+        // 抛给上层，让 UI 能区分「真错」和「超时可重试」。旧版只丢 HTTP 码 → 用户看不出原因。
+        let detail = `OCR HTTP ${res.status}`;
+        try {
+          const j = await res.json();
+          if (j?.error) detail = `OCR HTTP ${res.status}: ${j.error}`;
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      const { markdown, error } = await res.json();
+      if (error) throw new Error(error);
       return markdown ?? '';
     },
     [],
@@ -204,6 +217,8 @@ function OcrConverterPage() {
         void persist(next, { scanned });
       } catch (e) {
         const aborted = (e as Error).name === 'AbortError';
+        // BUG-008: 把后端的明确错误（413/504/422/500）抬到顶部 error 横条，便于诊断 + 重试入口已在页面右侧。
+        if (!aborted) setError(e instanceof Error ? e.message : 'OCR 失败');
         setPages((prev) => prev.map((p, idx) => (idx === i ? { ...p, ocring: false, error: !aborted } : p)));
       }
     },
@@ -213,9 +228,11 @@ function OcrConverterPage() {
   const ocrAll = useCallback(async () => {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    setError(null); // BUG-008: 启动批量前清空旧错误条，避免误导
     setBatchRunning(true);
     const targets = pages.map((p, i) => ({ p, i })).filter(({ p }) => p.imageB64 && p.text === null);
     let cursor = 0;
+    let firstError: string | null = null;
     const worker = async () => {
       while (cursor < targets.length && !ctrl.signal.aborted) {
         const { p, i } = targets[cursor++];
@@ -225,6 +242,7 @@ function OcrConverterPage() {
           setPages((prev) => prev.map((q, idx) => (idx === i ? { ...q, text, source: 'ocr', ocring: false } : q)));
         } catch (e) {
           const aborted = (e as Error).name === 'AbortError';
+          if (!aborted && !firstError) firstError = e instanceof Error ? e.message : 'OCR 失败';
           setPages((prev) => prev.map((q, idx) => (idx === i ? { ...q, ocring: false, error: !aborted } : q)));
           if (aborted) break;
         }
@@ -232,6 +250,8 @@ function OcrConverterPage() {
     };
     await Promise.all([worker(), worker()]);
     setBatchRunning(false);
+    // BUG-008: 批量结束后只展示第一个非 abort 错误，避免错误条疯狂闪
+    if (firstError) setError(firstError);
     setPages((cur) => { void persist(cur, { scanned }); return cur; });
   }, [pages, callOcr, persist, scanned]);
 
@@ -291,7 +311,14 @@ function OcrConverterPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
         body: JSON.stringify({ images: imgs, mediaType: 'image/png', prompt }),
       });
-      const { markdown } = await res.json();
+      if (!res.ok) {
+        // BUG-008: 表格识别同款明确错误回流，不再让 UI 静默吞掉 413 / 504。
+        let detail = `OCR HTTP ${res.status}`;
+        try { const j = await res.json(); if (j?.error) detail = `OCR HTTP ${res.status}: ${j.error}`; } catch {}
+        throw new Error(detail);
+      }
+      const { markdown, error } = await res.json();
+      if (error) throw new Error(error);
       const md = (markdown ?? '').trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/i, '').trim();
       if (!md) return '';
       setRecognizedTables((prev) => [...prev.filter((t) => tableKey(t.pages) !== tableKey(sel)), { pages: sel, content: md }].sort((a, b) => a.pages[0] - b.pages[0]));
@@ -312,7 +339,12 @@ function OcrConverterPage() {
       const md = await recognizeOne(sel, ctrl.signal);
       if (!md) setTableError('识别为空，可重试');
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setTableError('识别失败，可重试');
+      // BUG-008: 把 recognizeOne 抛出的明确错误（413 文件过大 / 504 超时 / 500 上游错）
+      // 显示出来，旧版只 fallback 「识别失败，可重试」一句话用户摸不着头脑。
+      if ((e as Error).name !== 'AbortError') {
+        const msg = e instanceof Error ? e.message : '识别失败';
+        setTableError(msg);
+      }
     } finally { setTableReading(false); }
   }, [recognizeOne]);
 
@@ -356,6 +388,11 @@ function OcrConverterPage() {
   const runLoad = useCallback(
     async (file: File) => {
       resetState();
+      // BUG-008: 上传前先检查大小，超限直接报错（不再让用户等几秒看 413）。
+      if (file.size > MAX_FILE_BYTES) {
+        setError(`文件过大（${(file.size / 1024 / 1024).toFixed(1)} MB），单次 OCR 上限 ${MAX_FILE_BYTES / 1024 / 1024} MB。请压缩或分卷后重试。`);
+        return;
+      }
       fileRef.current = file;
       setFileName(file.name);
       const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -366,6 +403,10 @@ function OcrConverterPage() {
             fetch('/api/ocr/parse', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }).then((r) => r.json()),
             fetch('/api/ocr/render', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }).then((r) => r.json()),
           ]);
+          // BUG-008: 解析/渲染端点也可能返回 { error }（如 sidecar 挂、PDF 损坏）。
+          // 旧版仅看 pages.length === 0 → "无法读取该 PDF"，误导用户以为是文件本身问题。
+          if (parseRes?.error && !parseRes?.pages) throw new Error(`解析失败：${parseRes.error}`);
+          if (renderRes?.error && !renderRes?.pages) throw new Error(`渲染失败：${renderRes.error}`);
           const images: Record<number, string> = {};
           for (const p of (renderRes.pages ?? []) as { page: number; image: string }[]) images[p.page] = p.image;
           const textByPage: Record<number, string> = {};
@@ -378,7 +419,7 @@ function OcrConverterPage() {
             mediaType: 'image/png', text: !isScanned && textByPage[n] ? textByPage[n] : null,
             source: !isScanned && textByPage[n] ? 'parse' : null, ocring: false,
           }));
-          if (work.length === 0) throw new Error('无法读取该 PDF');
+          if (work.length === 0) throw new Error('无法读取该 PDF（可能已损坏或不含可识别页面）');
           setPages(work);
           setPhase('ready');
           if (!isScanned) void persist(work, { scanned: false });
@@ -394,6 +435,11 @@ function OcrConverterPage() {
             setPages(next); void persist(next, { scanned: true });
           } catch (e) {
             const aborted = (e as Error).name === 'AbortError';
+            // BUG-008: 把 callOcr 的明确错误冒泡到顶部 error 横条，不再让"图标常转"。
+            if (!aborted) {
+              const msg = e instanceof Error ? e.message : 'OCR 失败';
+              setError(msg);
+            }
             setPages((prev) => prev.map((p, i) => (i === 0 ? { ...p, ocring: false, error: !aborted } : p)));
           }
         }

@@ -51,6 +51,15 @@ const DEFAULT_PROMPT =
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
+/**
+ * BUG-008 OCR 卡死根治：每个 attempt 单独套超时 timeout；与外层 abort 用 AbortController 串联。
+ * VLM 偶发上游慢/挂时，单次请求在 timeoutMs 内必定返回错误（→ 触发重试 / 上抛），不会把
+ * 整张 OCR 流程吊死。`/api/ocr` 端点也会传入更大的总 budget signal 兜外层。
+ *
+ * Doubao（豆包）官方文档参考: ~20s/页；mimo ~6s/页。给单 attempt 60s 上限，足覆盖 P99，又不会
+ * 让一页卡 5 分钟把整批顶死。重试 3 次共 ≤ ~3 分钟兜底，配合外层总超时形成两道闸。
+ */
+const ATTEMPT_TIMEOUT_MS = Number(process.env.OCR_PROVIDER_ATTEMPT_TIMEOUT_MS) || 60_000;
 
 export function defaultOcrProvider(): OcrProvider {
   return process.env.OCR_PROVIDER === 'mimo' ? 'mimo' : 'doubao';
@@ -74,12 +83,21 @@ async function postJsonWithRetry(
 ): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // BUG-008: 每个 attempt 套独立超时（与外层 signal 串联），上游卡住时绝不挂死，
+    // 触发 AbortError → 进入重试或最终上抛明确错误。
+    const attemptCtl = new AbortController();
+    const linkAbort = () => attemptCtl.abort();
+    if (signal) {
+      if (signal.aborted) attemptCtl.abort();
+      else signal.addEventListener('abort', linkAbort, { once: true });
+    }
+    const timer = setTimeout(() => attemptCtl.abort(), ATTEMPT_TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(body),
-        signal,
+        signal: attemptCtl.signal,
       });
       if (res.ok) return res;
       if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES) {
@@ -90,11 +108,20 @@ async function postJsonWithRetry(
       throw new Error(`OCR provider HTTP ${res.status}: ${text.slice(0, 300)}`);
     } catch (err) {
       lastErr = err;
-      if ((err as Error)?.name === 'AbortError' || (err as Error)?.message === 'aborted') throw err;
+      // 区分外层 abort（用户 Stop / 总超时） vs 单次 attempt 超时：
+      // 外层 abort 直接上抛；单次超时映射成可重试错误。
+      const aborted = (err as Error)?.name === 'AbortError' || (err as Error)?.message === 'aborted';
+      if (aborted && signal?.aborted) throw err;
+      if (aborted && !signal?.aborted) {
+        lastErr = new Error(`OCR provider attempt timeout (${ATTEMPT_TIMEOUT_MS}ms)`);
+      }
       if (attempt < MAX_RETRIES) {
         await sleep(800 * 2 ** attempt, signal);
         continue;
       }
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', linkAbort);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('OCR request failed');
