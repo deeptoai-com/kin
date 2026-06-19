@@ -97,7 +97,7 @@ function PageThumb({
   return (
     <button ref={ref} type="button" onClick={onClick} title={`第 ${page} 页 · ${statusTitle}`}
       className={`group relative flex w-full flex-col items-stretch overflow-hidden rounded-md border transition-colors ${isActive ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
-      <div className="relative aspect-[3/4] w-full bg-muted/40">
+      <div className="relative h-32 w-full bg-muted/40">
         {thumb ? (
           <img src={`data:image/png;base64,${thumb}`} alt={`第 ${page} 页`} loading="lazy" className="h-full w-full object-cover object-top" />
         ) : ocring ? (
@@ -958,7 +958,7 @@ function OcrConverterPage() {
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-[140px_1fr_1fr]">
+        <div className="grid min-h-0 flex-1 grid-cols-[240px_1fr_1fr]">
           {/* OCR-nav: 缩略图导航栏 — 懒渲染低 DPI 缩略图 + 状态徽标 + 页码。用户靠"版式"认页
               （那页是表/是图/是签字页），不是靠页码；缩略图只需"认得出版式"不需"读得清字"。 */}
           <div className="flex min-h-0 flex-col border-r">
@@ -966,7 +966,7 @@ function OcrConverterPage() {
               <span>全部 {pages.length} 页</span>
               {pendingCount > 0 && <span className="rounded bg-amber-500/10 px-1 text-amber-600">待识别 {pendingCount}</span>}
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-1.5 overflow-auto p-1.5">
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5 overflow-auto p-1.5">
               {pages.map((p, i) => {
                 const st = p.ocring ? 'ocring' : p.error ? 'error' : p.text !== null ? (p.source === 'ocr' ? 'ocr' : 'parse') : 'pending';
                 const color = st === 'error' ? 'bg-destructive' : st === 'ocr' ? 'bg-emerald-500' : st === 'parse' ? 'bg-primary' : st === 'ocring' ? 'bg-primary' : 'bg-amber-400';
