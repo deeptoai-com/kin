@@ -65,10 +65,9 @@ reverse proxy / TLS / DNS**:
 > docker compose -p <project> -f <compose-file> up -d --no-deps --force-recreate updater
 > ```
 
-> **Legacy / not currently used:** a **Dokploy** path (`docker-compose.dokploy.yml`,
-> [dokploy.md](dokploy.md)) and an older Dokku + GitHub-Actions flow
-> (`.github/workflows/deploy.yml`, `infra/deploy/`) also exist. They are kept for reference
-> only — production runs on the **VPS** and **tunnel** paths above, not Dokploy.
+> **Optional:** a **Dokploy** path ([`docker-compose.dokploy.yml`](../../docker-compose.dokploy.yml),
+> [dokploy.md](dokploy.md)) for users who already run a Dokploy panel — production runs on the
+> **VPS** and **tunnel** paths above, not Dokploy.
 
 ---
 

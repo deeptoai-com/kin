@@ -32,7 +32,6 @@
     "lint:fix": "oxlint --fix",
     "validate-routes": "node scripts/validate-routes.mjs",
     "auth:init": "npx -y @better-auth/cli@latest generate --config src/server/auth.ts --output src/server/db/auth.schema.ts",
-    "ex0": "tsx cli/index.ts",
     "rules:apply": "ruler apply --nested",
     "webhook:ngrok": "ngrok http 3000",
     "docker:up": "docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build",
