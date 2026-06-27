@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 vite build",
     "heroku-postbuild": "pnpm run build",
     "start": "node .output/server/index.mjs",
     "start:hybrid": "PORT=3000 APP_URL=http://localhost:3000 node start-production.mjs",

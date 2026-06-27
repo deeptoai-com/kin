@@ -53,6 +53,12 @@ jobs:
         run: pnpm test:unit
         env:
           NODE_ENV: test
+          # Some test files import modules that read DATABASE_URL at module-load time
+          # (notably tests/unit/session-workbench-{subagents,todos}.test.ts via the
+          # server DB client). They are pure unit tests that mock the DB, so any
+          # valid-looking URL satisfies the import-time guard. Tracked: refactor the
+          # offending modules to lazy-read DATABASE_URL so this stub becomes unnecessary.
+          DATABASE_URL: postgres://test:test@127.0.0.1:5432/test
 
       - name: Integration/e2e tests
         run: pnpm test

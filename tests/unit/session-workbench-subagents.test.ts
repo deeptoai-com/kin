@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Unit tests for selectSubAgents (Phase 3 Wave 1, ② Sub-agents panel).
  *
