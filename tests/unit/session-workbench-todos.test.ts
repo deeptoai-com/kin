@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Unit tests for selectLatestTodos (Phase 3 Wave 1, ① Progress panel).
  *
